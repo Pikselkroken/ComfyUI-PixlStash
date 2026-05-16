@@ -45,27 +45,31 @@ No other authentication mechanism should be used. Cookie-based sessions are not 
 CLASS_TYPES   = "PixlStashImageLoader"
 DISPLAY_NAME  = "PixlStash Image Loader"
 CATEGORY      = "image/input"
-RETURN_TYPES  = ("IMAGE", "MASK", "STRING")
-RETURN_NAMES  = ("image", "mask", "picture_id")
+RETURN_TYPES  = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING")
+RETURN_NAMES  = ("image", "mask", "picture_ids", "project_id", "set_id", "character_id")
 FUNCTION      = "load_images"
 ```
 
-When more than one image is selected, the node outputs a batched `IMAGE` tensor (shape `[N, H, W, C]`). The `picture_id` output is a comma-separated string of the selected integer IDs, in selection order.
+When more than one image is selected, the node outputs a batched `IMAGE` tensor (shape `[N, H, W, C]`). The `picture_ids` output is a comma-separated string of the selected integer IDs in selection order. The `project_id`, `set_id`, and `character_id` outputs carry the values of the active filters at the time of selection (empty string if no filter was set). These outputs can be wired directly into the corresponding Saver inputs to automatically route saved images back to the same context.
 
 ### Inputs
 
 | Input | Widget type | Notes |
 |---|---|---|
 | `picture_ids` | Hidden string (managed by the picker UI) | Comma-separated integer IDs |
-| `set_id` | `INT` optional | Pre-filter the picker to a specific picture set |
-| `sort` | `COMBO` | `score_desc`, `imported_desc`, `random` — matches PixlStash sort keys |
+| `project_id` | `COMBO` (dynamic) | Filter picker to a project; populated from `GET /projects` |
+| `set_id` | `COMBO` (dynamic) | Filter picker to a picture set; populated from `GET /picture_sets` (filtered by selected project if set) |
+| `character_id` | `COMBO` (dynamic) | Filter picker to a character; populated from `GET /characters` (filtered by selected project if set) |
+| `sort` | `COMBO` | Populated from `GET /sort_mechanisms`; default `imported_at` descending |
 | `limit` | `INT` | Max pictures to load from the selection (default 1) |
+
+All three filter combos include a blank/"(none)" option at the top. When a project is selected, the set and character combos should refresh to show only sets and characters belonging to that project.
 
 ### Picker UI (custom widget)
 
 The node should register a custom widget that opens a modal browser inside ComfyUI. The browser must:
 
-1. Load a paginated thumbnail grid from PixlStash.
+1. Load a paginated thumbnail grid from PixlStash, applying the active project/set/character filters.
 2. Support multi-select (click to toggle selection, shift-click for range).
 3. Show the currently selected count and allow clearing.
 4. On confirm, write the selected IDs into the hidden `picture_ids` input.
@@ -76,11 +80,33 @@ Thumbnail previews for selected pictures should also be shown inline on the node
 
 ### API endpoints used by the Loader
 
-#### 1. List picture sets (populate set filter dropdown)
+#### 1. List projects (populate project filter dropdown)
+
+```
+GET /projects
+Authorization: Bearer <token>
+```
+
+**Response (array):**
+```jsonc
+[
+  { "id": 1, "name": "Character Training" },
+  { "id": 2, "name": "Product Shots" }
+]
+```
+
+A project-scoped token will return only the single authorised project. Use this to populate the project combo.
+
+---
+
+#### 2. List picture sets (populate set filter dropdown)
 
 ```
 GET /picture_sets
 Authorization: Bearer <token>
+
+Query parameters:
+  project_id=<int>   (optional, restrict to one project)
 ```
 
 **Response (array):**
@@ -95,23 +121,44 @@ Authorization: Bearer <token>
 ]
 ```
 
-A scoped token will automatically restrict this to the token's accessible set(s). The node should use the result to populate the optional set filter combo.
+A scoped token will automatically restrict this to the token's accessible set(s). Re-fetch with the selected `project_id` whenever the project combo changes.
 
 ---
 
-#### 2. List / browse pictures (populate the picker grid)
+#### 3. List characters (populate character filter dropdown)
+
+```
+GET /characters
+Authorization: Bearer <token>
+```
+
+**Response (array):**
+```jsonc
+[
+  { "id": 7, "name": "Alice", "project_id": 1 },
+  { "id": 8, "name": "Bob",   "project_id": 1 }
+]
+```
+
+A character-scoped or project-scoped token will restrict the list automatically. Filter client-side by `project_id` when a project is selected in the combo.
+
+---
+
+#### 4. List / browse pictures (populate the picker grid)
 
 ```
 GET /pictures
 Authorization: Bearer <token>
 
 Query parameters:
-  fields=grid          (compact projection: id, format, score, …)
-  sort=<sort_key>      (e.g. imported_at, score — see /sort_mechanisms)
+  fields=grid            (compact projection: id, format, score, …)
+  sort=<sort_key>        (e.g. imported_at, score — see /sort_mechanisms)
   descending=true
   offset=<int>
-  limit=<int>          (page size, suggest 48)
-  set_id=<int>         (optional, filter to one set)
+  limit=<int>            (page size, suggest 48)
+  project_id=<int>       (optional, filter to one project)
+  set_id=<int>           (optional, filter to one set)
+  character_id=<int>     (optional, filter to one character)
 ```
 
 **Response (array of picture objects with grid fields):**
@@ -132,7 +179,7 @@ Pagination: repeat with increasing `offset` until the returned array is shorter 
 
 ---
 
-#### 3. Get picture thumbnail (picker grid thumbnails and node preview)
+#### 5. Get picture thumbnail (picker grid thumbnails and node preview)
 
 ```
 GET /pictures/thumbnails/{id}.webp
@@ -143,7 +190,7 @@ Returns a WebP image. Use this for all preview rendering inside the picker and o
 
 ---
 
-#### 4. Get picture metadata (optional — for richer picker display)
+#### 6. Get picture metadata (optional — for richer picker display)
 
 ```
 GET /pictures/{id}/metadata
@@ -154,14 +201,14 @@ Returns the full picture record including `tags`, `description`, `score`, embedd
 
 ---
 
-#### 5. Download full-resolution image (actual node output)
+#### 7. Download full-resolution image (actual node output)
 
 ```
 GET /pictures/{id}.{ext}
 Authorization: Bearer <token>
 ```
 
-where `ext` is the value of the `format` field returned in step 2 (e.g. `png`, `jpg`, `webp`).
+where `ext` is the value of the `format` field returned in step 4 (e.g. `png`, `jpg`, `webp`).
 
 Returns the raw image bytes. Decode with PIL and convert to a ComfyUI `IMAGE` tensor (float32, range 0–1, shape `[1, H, W, C]`).
 
@@ -169,7 +216,7 @@ If `format` is unknown or unavailable, the node should fall back to PIL's `Image
 
 ---
 
-#### 6. Get available sort mechanisms (populate sort combo)
+#### 8. Get available sort mechanisms (populate sort combo)
 
 ```
 GET /sort_mechanisms
@@ -194,17 +241,23 @@ OUTPUT_NODE   = True
 FUNCTION      = "save_images"
 ```
 
-The node returns the IDs of the newly created pictures as a comma-separated string, so they can be piped into downstream nodes (e.g. a tag writer or set assigner).
+The node returns the IDs of the newly created pictures as a comma-separated string, so they can be piped into downstream nodes.
 
 ### Inputs
 
 | Input | Type | Notes |
 |---|---|---|
 | `images` | `IMAGE` | Batched tensor from upstream |
-| `set_id` | `INT` optional | Add saved pictures to this set immediately |
+| `project_id` | `STRING` or `COMBO` | Assign saved pictures to this project. Accepts a wired string from the Loader or a standalone dropdown populated from `GET /projects`. Empty/0 means no project. |
+| `set_id` | `STRING` or `COMBO` | Add saved pictures to this set. Accepts a wired string from the Loader or a standalone dropdown populated from `GET /picture_sets`. Empty/0 means no set. |
+| `character_id` | `STRING` or `COMBO` | Assign saved pictures to this character. Accepts a wired string from the Loader or a standalone dropdown populated from `GET /characters`. Empty/0 means no character. |
 | `score` | `INT` optional | Pre-assign score (0–5); omit to leave unscored |
 | `filename_prefix` | `STRING` | Prefix for generated filenames (default `"comfyui"`) |
 | `save_workflow` | `BOOLEAN` | Embed the serialised ComfyUI workflow into the file (default `true`) |
+
+All three assignment inputs (`project_id`, `set_id`, `character_id`) accept either a wired connection from the Loader's matching outputs or a value selected in the node's own dropdown. A wired connection always takes precedence. When none of these is provided the saved pictures are imported without any context assignment.
+
+> **Implementation note:** ComfyUI does not natively support an input that is both a typed connection socket and an inline widget. The recommended pattern is to define each as a `STRING` input (which accepts wired connections) and register a separate optional `COMBO` widget in the node's JavaScript that writes into the same input slot when no wire is connected. The Python `INPUT_TYPES` should declare the slots as `("STRING", {"default": "", "forceInput": False})` so they degrade gracefully when empty.
 
 ### Workflow and metadata embedding
 
@@ -220,7 +273,20 @@ If the output format is JPEG or WebP (no lossless metadata chunks), embed the wo
 
 ### API endpoints used by the Saver
 
-#### 1. Upload image(s)
+#### 1. List projects / sets / characters (populate standalone dropdowns)
+
+These are the same three endpoints documented under the Loader. Call them on node initialisation to populate the standalone combo widgets. A scoped token will restrict the lists automatically.
+
+```
+GET /projects
+GET /picture_sets
+GET /characters
+Authorization: Bearer <token>
+```
+
+---
+
+#### 2. Upload image(s)
 
 ```
 POST /pictures/import
@@ -229,7 +295,7 @@ Content-Type: multipart/form-data
 
 Fields:
   file        (one or more UploadFile parts)
-  project_id  (optional INT form field)
+  project_id  (optional INT form field — pass here to associate at import time)
 ```
 
 This is an async endpoint. It returns a `task_id` immediately:
@@ -240,7 +306,7 @@ This is an async endpoint. It returns a `task_id` immediately:
 
 ---
 
-#### 2. Poll import status until complete
+#### 3. Poll import status until complete
 
 ```
 GET /pictures/import/status?task_id=<task_id>
@@ -251,21 +317,42 @@ Authorization: Bearer <token>
 ```jsonc
 {
   "status": "in_progress" | "completed" | "failed",
-  "stage": "hashing" | "importing" | "done",
+  "stage": "queued" | "hash_and_write" | "deduplicated" | "persisting_new_pictures" | "building_results" | "applying_sidecar_tags" | "finalizing_import_context" | "completed" | "failed",
   "total": 4,
   "processed": 2,
   "progress": 50.0,
   "results": [               // only present when status == "completed"
-    { "id": 201, "file_name": "comfyui_00001.png" }
+    { "status": "success",   "picture_id": 201, "file": "/vault/images/comfyui_00001.png" },
+    { "status": "duplicate", "picture_id": 42,  "file": "/vault/images/existing.png" }
   ]
 }
 ```
 
-Poll at a reasonable interval (e.g. 500 ms). On `"failed"`, raise a node error with the `error` field from the response.
+Poll at a reasonable interval (e.g. 500 ms). On `"failed"`, raise a node error with the `error` field from the response. Extract successfully imported IDs with `entry["picture_id"] for entry in results if entry["status"] == "success"`.
+
+> **Prerequisite:** The import endpoint returns HTTP 400 with `"Face worker is not running"` if the PixlStash face extraction worker is not active. Surface this clearly rather than treating it as a generic error.
 
 ---
 
-#### 3. Add saved pictures to a set (if `set_id` is provided)
+#### 4. Assign project (if `project_id` is provided)
+
+```
+PATCH /pictures/project
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "picture_ids": [201, 202, 203],
+  "project_id": 1,
+  "mode": "add"
+}
+```
+
+Only call after import completes. `mode` should be `"add"` (non-destructive). Note: `project_id` can also be passed directly to `POST /pictures/import` as a form field, which is more efficient when the project is known up front.
+
+---
+
+#### 5. Add saved pictures to a set (if `set_id` is provided)
 
 ```
 POST /picture_sets/{set_id}/members
@@ -281,7 +368,23 @@ Only call this after the import task completes and the `results` array is availa
 
 ---
 
-#### 4. Set score on saved pictures (if `score` is provided)
+#### 6. Assign character (if `character_id` is provided)
+
+```
+POST /characters/{character_id}/faces
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "picture_ids": [201, 202, 203]
+}
+```
+
+The server will identify the best face in each picture and assign it to the character. If face extraction has not yet run for a picture, the server queues a pending assignment and applies it automatically once extraction completes — no retry logic is needed in the node.
+
+---
+
+#### 7. Set score on saved pictures (if `score` is provided)
 
 ```
 PATCH /pictures/{id}

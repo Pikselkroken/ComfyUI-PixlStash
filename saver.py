@@ -87,14 +87,36 @@ class PixlStashImageSaver:
                 ),
             },
             "optional": {
-                "set_id": (
-                    "INT",
+                "project_id": (
+                    "STRING",
                     {
-                        "default": 0,
-                        "min": 0,
+                        "default": "",
+                        "forceInput": False,
                         "tooltip": (
-                            "Add saved pictures to this picture set "
-                            "(0 = skip)."
+                            "Assign saved pictures to this project. "
+                            "Accepts a wired string from the Loader or a standalone combo."
+                        ),
+                    },
+                ),
+                "set_id": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "forceInput": False,
+                        "tooltip": (
+                            "Add saved pictures to this picture set. "
+                            "Accepts a wired string from the Loader or a standalone combo."
+                        ),
+                    },
+                ),
+                "character_id": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "forceInput": False,
+                        "tooltip": (
+                            "Assign saved pictures to this character. "
+                            "Accepts a wired string from the Loader or a standalone combo."
                         ),
                     },
                 ),
@@ -126,7 +148,9 @@ class PixlStashImageSaver:
         verify_ssl: bool,
         filename_prefix: str,
         save_workflow: bool,
-        set_id: int = 0,
+        project_id: str = "",
+        set_id: str = "",
+        character_id: str = "",
         score: int = -1,
         prompt=None,
         extra_pnginfo=None,
@@ -155,11 +179,14 @@ class PixlStashImageSaver:
             files.append((filename, png_bytes))
 
         # Upload and wait for import to complete
-        picture_ids = self._upload(client, files)
+        picture_ids = self._upload(client, files, project_id=project_id)
 
         # Optional post-processing
-        if set_id and set_id > 0 and picture_ids:
-            self._add_to_set(client, set_id, picture_ids)
+        if set_id and set_id.strip() and picture_ids:
+            self._add_to_set(client, int(set_id.strip()), picture_ids)
+
+        if character_id and character_id.strip() and picture_ids:
+            self._assign_character(client, int(character_id.strip()), picture_ids)
 
         if score is not None and score >= 0 and picture_ids:
             for pid in picture_ids:
@@ -196,13 +223,17 @@ class PixlStashImageSaver:
     def _upload(
         client: PixlStashClient,
         files: list[tuple[str, bytes]],
+        project_id: str = "",
     ) -> list[int]:
         """Upload all files in one multipart request and poll until done."""
         multipart = [
             ("file", (name, data, "image/png"))
             for name, data in files
         ]
-        response = client.post("/pictures/import", files=multipart)
+        data = {}
+        if project_id and project_id.strip():
+            data["project_id"] = project_id.strip()
+        response = client.post("/pictures/import", files=multipart, data=data or None)
         task_id = response.json()["task_id"]
 
         # Poll the import status endpoint until the task completes or fails.
@@ -215,7 +246,9 @@ class PixlStashImageSaver:
 
             if status == "completed":
                 results = data.get("results", [])
-                return [r["id"] for r in results]
+                # Each result has status "success" or "duplicate"; both
+                # yield a valid picture_id that can be used downstream.
+                return [r["picture_id"] for r in results]
 
             if status == "failed":
                 error_msg = data.get("error", "unknown error")
@@ -235,6 +268,34 @@ class PixlStashImageSaver:
             f"/picture_sets/{set_id}/members",
             json={"picture_ids": picture_ids},
         )
+
+    @staticmethod
+    def _assign_character(
+        client: PixlStashClient,
+        character_id: int,
+        picture_ids: list[int],
+    ) -> None:
+        """Associate pictures with a character.
+
+        The server identifies the best face in each picture and assigns it.
+        If face extraction has not yet run, the server queues a pending
+        assignment — no retry logic is needed here.
+
+        Raises a clear error if the face extraction worker is not running
+        (server returns HTTP 400 in that case).
+        """
+        try:
+            client.post(
+                f"/characters/{character_id}/faces",
+                json={"picture_ids": picture_ids},
+            )
+        except RuntimeError as exc:
+            if "HTTP 400" in str(exc):
+                raise RuntimeError(
+                    "PixlStash: cannot assign character — the face extraction "
+                    "worker is not running. Start the worker and retry."
+                ) from exc
+            raise
 
     @staticmethod
     def _set_score(

@@ -35,8 +35,8 @@ class PixlStashImageLoader:
     """
 
     CATEGORY = "image/input"
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
-    RETURN_NAMES = ("image", "mask", "picture_id")
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("image", "mask", "picture_ids", "project_id", "set_id", "character_id")
     FUNCTION = "load_images"
 
     @classmethod
@@ -100,14 +100,36 @@ class PixlStashImageLoader:
                 ),
             },
             "optional": {
-                "set_id": (
-                    "INT",
+                "project_id": (
+                    "STRING",
                     {
-                        "default": 0,
-                        "min": 0,
+                        "default": "",
+                        "forceInput": False,
                         "tooltip": (
-                            "Filter the browse query to a specific picture set "
-                            "(0 = no filter)."
+                            "Filter picker to a project. "
+                            "Populated by the JS widget from GET /projects."
+                        ),
+                    },
+                ),
+                "set_id": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "forceInput": False,
+                        "tooltip": (
+                            "Filter picker to a picture set. "
+                            "Populated by the JS widget from GET /picture_sets."
+                        ),
+                    },
+                ),
+                "character_id": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "forceInput": False,
+                        "tooltip": (
+                            "Filter picker to a character. "
+                            "Populated by the JS widget from GET /characters."
                         ),
                     },
                 ),
@@ -126,7 +148,9 @@ class PixlStashImageLoader:
         picture_ids: str,
         sort: str,
         limit: int,
-        set_id: int = 0,
+        project_id: str = "",
+        set_id: str = "",
+        character_id: str = "",
     ):
         if not pixlstash_url.strip():
             raise RuntimeError("PixlStash: pixlstash_url is required.")
@@ -134,7 +158,7 @@ class PixlStashImageLoader:
             raise RuntimeError("PixlStash: api_token is required.")
 
         client = PixlStashClient(pixlstash_url, api_token, verify_ssl)
-        ids = self._resolve_ids(client, picture_ids, sort, limit, set_id)
+        ids = self._resolve_ids(client, picture_ids, sort, limit, project_id, set_id, character_id)
         if not ids:
             raise RuntimeError(
                 "PixlStash: no picture IDs to load. "
@@ -170,7 +194,7 @@ class PixlStashImageLoader:
         mask_batch = torch.cat(masks, dim=0)       # [N, H, W]
         picture_ids_out = ",".join(str(i) for i in ids)
 
-        return (image_batch, mask_batch, picture_ids_out)
+        return (image_batch, mask_batch, picture_ids_out, project_id, set_id, character_id)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -182,12 +206,14 @@ class PixlStashImageLoader:
         picture_ids: str,
         sort: str,
         limit: int,
-        set_id: int,
+        project_id: str,
+        set_id: str,
+        character_id: str,
     ) -> list[int]:
         """Return the list of integer picture IDs to load.
 
         If *picture_ids* is non-empty, parse it directly and apply *limit*.
-        Otherwise query ``/pictures`` using the sort / limit / set_id params.
+        Otherwise query ``/pictures`` using the sort / limit / filter params.
         """
         raw = picture_ids.strip()
         if raw:
@@ -205,8 +231,12 @@ class PixlStashImageLoader:
             "limit": limit,
             "offset": 0,
         }
-        if set_id and set_id > 0:
-            params["set_id"] = set_id
+        if project_id and project_id.strip():
+            params["project_id"] = project_id.strip()
+        if set_id and set_id.strip():
+            params["set_id"] = set_id.strip()
+        if character_id and character_id.strip():
+            params["character_id"] = character_id.strip()
 
         if sort in _SORT_MAP:
             sort_key, descending = _SORT_MAP[sort]

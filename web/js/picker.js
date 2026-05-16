@@ -123,10 +123,14 @@ async function openPicker(node, pictureIdsWidget) {
     const header   = row(title, selCount, clearBtn, closeBtn);
 
     // Filter row
-    const setSelect  = el("select", { style: selectStyle() + " flex:1;" });
-    setSelect.innerHTML = '<option value="">All sets</option>';
-    const sortSelect = el("select", { style: selectStyle() });
-    const filterRow  = row(setSelect, sortSelect);
+    const projectSelect   = el("select", { style: selectStyle() + " flex:1;" });
+    projectSelect.innerHTML = '<option value="">(all projects)</option>';
+    const setSelect       = el("select", { style: selectStyle() + " flex:1;" });
+    setSelect.innerHTML   = '<option value="">(all sets)</option>';
+    const characterSelect = el("select", { style: selectStyle() + " flex:1;" });
+    characterSelect.innerHTML = '<option value="">(all characters)</option>';
+    const sortSelect      = el("select", { style: selectStyle() });
+    const filterRow       = row(projectSelect, setSelect, characterSelect, sortSelect);
 
     // Thumbnail grid (scrollable)
     const grid = el("div", {
@@ -173,22 +177,94 @@ async function openPicker(node, pictureIdsWidget) {
         overlay.remove();
     }
 
-    // ---- Load picture sets -----------------------------------------------
+    // ---- Load projects ---------------------------------------------------
 
-    (async () => {
+    // Full lists cached for client-side filtering of sets/characters.
+    let allSets       = [];
+    let allCharacters = [];
+
+    async function loadProjects() {
         try {
-            const resp = await psRequest("GET", "/picture_sets");
-            const sets = await resp.json();
-            for (const s of sets) {
+            const resp     = await psRequest("GET", "/projects");
+            const projects = await resp.json();
+            for (const p of projects) {
                 const opt = document.createElement("option");
-                opt.value = s.id;
-                opt.textContent = `${s.name} (${s.picture_count})`;
-                setSelect.appendChild(opt);
+                opt.value       = p.id;
+                opt.textContent = p.name;
+                projectSelect.appendChild(opt);
             }
         } catch (err) {
-            console.warn("[PixlStash] Could not load picture sets:", err.message);
+            console.warn("[PixlStash] Could not load projects:", err.message);
         }
-    })();
+    }
+
+    // ---- Load picture sets -----------------------------------------------
+
+    async function loadSets(projectId = "") {
+        try {
+            const params = new URLSearchParams();
+            if (projectId) params.set("project_id", projectId);
+            const resp = await psRequest("GET", `/picture_sets${projectId ? "?" + params : ""}`);
+            allSets = await resp.json();
+        } catch (err) {
+            console.warn("[PixlStash] Could not load picture sets:", err.message);
+            allSets = [];
+        }
+        const prevSet = setSelect.value;
+        setSelect.innerHTML = '<option value="">(all sets)</option>';
+        for (const s of allSets) {
+            const opt = document.createElement("option");
+            opt.value       = s.id;
+            opt.textContent = `${s.name} (${s.picture_count})`;
+            setSelect.appendChild(opt);
+        }
+        // Restore previous selection if still valid
+        if (prevSet && setSelect.querySelector(`option[value="${prevSet}"]`)) {
+            setSelect.value = prevSet;
+        }
+    }
+
+    // ---- Load characters -------------------------------------------------
+
+    async function loadCharacters() {
+        try {
+            const resp   = await psRequest("GET", "/characters");
+            allCharacters = await resp.json();
+        } catch (err) {
+            console.warn("[PixlStash] Could not load characters:", err.message);
+            allCharacters = [];
+        }
+        rebuildCharacterSelect("");
+    }
+
+    function rebuildCharacterSelect(projectId) {
+        const prevChar = characterSelect.value;
+        characterSelect.innerHTML = '<option value="">(all characters)</option>';
+        const visible = projectId
+            ? allCharacters.filter(c => String(c.project_id) === String(projectId))
+            : allCharacters;
+        for (const c of visible) {
+            const opt = document.createElement("option");
+            opt.value       = c.id;
+            opt.textContent = c.name;
+            characterSelect.appendChild(opt);
+        }
+        if (prevChar && characterSelect.querySelector(`option[value="${prevChar}"]`)) {
+            characterSelect.value = prevChar;
+        }
+    }
+
+    // Kick off all three loads in parallel, then load the first page.
+    Promise.all([loadProjects(), loadSets(), loadCharacters()]);
+
+    // When the project filter changes, re-fetch sets (server-filtered)
+    // and rebuild characters (client-filtered), then reload the grid.
+    projectSelect.addEventListener("change", async () => {
+        const projectId = projectSelect.value;
+        rebuildCharacterSelect(projectId);
+        await loadSets(projectId);
+        resetAndLoad();
+    });
 
     // ---- Load sort mechanisms --------------------------------------------
 
@@ -228,11 +304,15 @@ async function openPicker(node, pictureIdsWidget) {
         if (loading || exhausted) return;
         loading = true;
 
-        const setId = setSelect.value;
-        const sort  = sortSelect.value;
+        const projectId   = projectSelect.value;
+        const setId       = setSelect.value;
+        const characterId = characterSelect.value;
+        const sort        = sortSelect.value;
 
         const params = new URLSearchParams({ fields: "grid", limit: PAGE_SIZE, offset });
-        if (setId) params.set("set_id", setId);
+        if (projectId)   params.set("project_id",   projectId);
+        if (setId)       params.set("set_id",        setId);
+        if (characterId) params.set("character_id",  characterId);
 
         // Map combo values to API parameters
         if (sort === "score_desc") {
@@ -348,6 +428,7 @@ async function openPicker(node, pictureIdsWidget) {
     }
 
     setSelect.addEventListener("change", resetAndLoad);
+    characterSelect.addEventListener("change", resetAndLoad);
     sortSelect.addEventListener("change", resetAndLoad);
 
     loadPage();
@@ -370,6 +451,20 @@ async function openPicker(node, pictureIdsWidget) {
         if (typeof pictureIdsWidget.callback === "function") {
             pictureIdsWidget.callback(pictureIdsWidget.value);
         }
+
+        // Write active filter values back into the node's input widgets so
+        // they flow through as the project_id / set_id / character_id outputs.
+        function setWidgetValue(name, value) {
+            const w = node.widgets?.find(w => w.name === name);
+            if (w) {
+                w.value = value;
+                if (typeof w.callback === "function") w.callback(value);
+            }
+        }
+        setWidgetValue("project_id",   projectSelect.value);
+        setWidgetValue("set_id",        setSelect.value);
+        setWidgetValue("character_id",  characterSelect.value);
+
         await updateNodePreviews(node, ids);
         close();
     });
