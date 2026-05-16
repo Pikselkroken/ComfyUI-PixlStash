@@ -1,0 +1,12 @@
+# ComfyUI-PixlStash dependencies
+#
+# All packages listed here are already present in a standard ComfyUI
+# environment.  The list exists for completeness and for users who install
+# ComfyUI-PixlStash into a fresh virtual environment.
+#
+# torch and numpy are intentionally omitted — they are always present in
+# any ComfyUI installation and their version requirements are managed by
+# ComfyUI itself.
+
+requests>=2.28.0
+Pillow>=9.0.0
