@@ -13,6 +13,8 @@
 
 ![Example workflow](Workflow.png)
 
+[Download example workflow](PixlStash-LoadAndSave.json)
+
 ## Overview
 
 ComfyUI-PixlStash connects your ComfyUI workflows directly to a PixlStash vault. You can browse and load images by project, set, or character, run them through any pipeline, and save the results back with full metadata and optional workflow embedding.
