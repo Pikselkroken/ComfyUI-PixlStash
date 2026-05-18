@@ -1,0 +1,1 @@
+# PixlStash node package

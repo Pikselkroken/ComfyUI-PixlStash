@@ -2,21 +2,44 @@
 
 ComfyUI's node loader imports ``NODE_CLASS_MAPPINGS`` and optionally
 ``NODE_DISPLAY_NAME_MAPPINGS`` from this file, then serves every file
-under the ``WEB_DIRECTORY`` path to the frontend automatically.
+under ``WEB_DIRECTORY`` automatically.
+
+Typical workflow:
+
+    PixlStashProjectLoader  (optional)
+        ├─> PixlStashSetLoader       (optional)
+        └─> PixlStashCharacterLoader (optional)
+                └─> PixlStashPictureLoader
+                        └─> PixlStashPictureSaver
+
+Credentials (URL, token, SSL) are configured once in
+ComfyUI Settings › PixlStash and injected automatically at run time.
 """
-from .loader import PixlStashImageLoader
-from .saver import PixlStashImageSaver
+from .nodes.project_loader   import PixlStashProjectLoader
+from .nodes.set_loader       import PixlStashSetLoader
+from .nodes.character_loader import PixlStashCharacterLoader
+from .nodes.picture_loader   import PixlStashPictureLoader
+from .nodes.picture_saver    import PixlStashPictureSaver
+from .proxy_routes           import register_routes
+
+register_routes()
 
 NODE_CLASS_MAPPINGS = {
-    "PixlStashImageLoader": PixlStashImageLoader,
-    "PixlStashImageSaver": PixlStashImageSaver,
+    "PixlStashProjectLoader":   PixlStashProjectLoader,
+    "PixlStashSetLoader":       PixlStashSetLoader,
+    "PixlStashCharacterLoader": PixlStashCharacterLoader,
+    "PixlStashPictureLoader":   PixlStashPictureLoader,
+    "PixlStashPictureSaver":    PixlStashPictureSaver,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "PixlStashImageLoader": "PixlStash Image Loader",
-    "PixlStashImageSaver": "PixlStash Image Saver",
+    "PixlStashProjectLoader":   "PixlStash Project Loader",
+    "PixlStashSetLoader":       "PixlStash Set Loader",
+    "PixlStashCharacterLoader": "PixlStash Character Loader",
+    "PixlStashPictureLoader":   "PixlStash Picture Loader",
+    "PixlStashPictureSaver":    "PixlStash Picture Saver",
 }
 
-WEB_DIRECTORY = "web"
+WEB_DIRECTORY = "web/js"
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
