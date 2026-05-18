@@ -90,13 +90,13 @@ class PixlStashPictureSaver:
                         "tooltip": "Assign pictures to this character after import.",
                     },
                 ),
-                # Injected at runtime by the JS queuePrompt interceptor from
-                # ComfyUI Settings › PixlStash — never entered manually.
-                "url": ("STRING", {"default": ""}),
-                "token": ("STRING", {"default": ""}),
-                "verify_ssl": ("BOOLEAN", {"default": True}),
             },
             "hidden": {
+                # Injected at runtime by the JS queuePrompt interceptor from
+                # ComfyUI Settings › PixlStash — never entered manually.
+                "url": "STRING",
+                "token": "STRING",
+                "verify_ssl": "BOOLEAN",
                 "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO",
             },

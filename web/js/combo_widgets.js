@@ -35,28 +35,6 @@ const WH = () => (typeof LiteGraph !== "undefined" ? (LiteGraph.NODE_WIDGET_HEIG
 const MARGIN = 15;
 
 // ---------------------------------------------------------------------------
-// Logo — preloaded once, drawn in every PixlStash node title bar
-// ---------------------------------------------------------------------------
-
-const _logo = new Image();
-_logo.src = new URL("../img/Logo.png", import.meta.url).href;
-
-const LOGO_H = 14; // height in pixels inside the title bar
-
-/** Draw the logo at the left edge of the node title bar if loaded. */
-function drawLogoInTitle(ctx, node) {
-    if (_logo.complete && _logo.naturalWidth > 0) {
-        const aspect = _logo.naturalWidth / _logo.naturalHeight;
-        const w = Math.round(LOGO_H * aspect);
-        const titleH = LiteGraph.NODE_TITLE_HEIGHT ?? 20;
-        ctx.save();
-        ctx.globalAlpha = 0.85;
-        ctx.drawImage(_logo, 6, (titleH - LOGO_H) / 2, w, LOGO_H);
-        ctx.restore();
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Credential helper — reads from ComfyUI Settings at call time
 // ---------------------------------------------------------------------------
 
@@ -504,15 +482,6 @@ app.registerExtension({
     // ------------------------------------------------------------------
     async beforeRegisterNodeDef(nodeType, nodeData) {
 
-        // Logo in the title bar — applied to every PixlStash node
-        if (nodeData.name?.startsWith("PixlStash")) {
-            const origTitle = nodeType.prototype.onDrawTitle;
-            nodeType.prototype.onDrawTitle = function (ctx) {
-                origTitle?.call(this, ctx);
-                drawLogoInTitle(ctx, this);
-            };
-        }
-
         // ============================================================
         // PixlStash Picture Loader  — Browse button + hide credential widgets
         // ============================================================
@@ -520,12 +489,6 @@ app.registerExtension({
             const orig = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 orig?.call(this);
-
-                // Hide credential widgets — injected at run time by queuePrompt.
-                for (const name of ["url", "token", "verify_ssl"]) {
-                    const w = this.widgets?.find(w => w.name === name);
-                    if (w) { w.hidden = true; w.computeSize = () => [0, -4]; }
-                }
 
                 const picIdsWidget = this.widgets?.find(w => w.name === "picture_ids");
                 if (!picIdsWidget) return;
@@ -557,18 +520,5 @@ app.registerExtension({
             };
         }
 
-        // ============================================================
-        // PixlStash Picture Saver  — hide credential widgets
-        // ============================================================
-        if (nodeData.name === "PixlStashPictureSaver") {
-            const orig = nodeType.prototype.onNodeCreated;
-            nodeType.prototype.onNodeCreated = function () {
-                orig?.call(this);
-                for (const name of ["url", "token", "verify_ssl"]) {
-                    const w = this.widgets?.find(w => w.name === name);
-                    if (w) { w.hidden = true; w.computeSize = () => [0, -4]; }
-                }
-            };
-        }
     },
 });
