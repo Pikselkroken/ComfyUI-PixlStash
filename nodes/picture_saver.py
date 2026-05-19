@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import time
 
+import folder_paths
 import numpy as np
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
@@ -149,6 +151,15 @@ class PixlStashPictureSaver:
                 )
             )
 
+        # Write previews to ComfyUI's temp directory before uploading.
+        preview_images: list[dict] = []
+        temp_dir = folder_paths.get_temp_directory()
+        for fname, png_bytes in files:
+            temp_path = os.path.join(temp_dir, fname)
+            with open(temp_path, "wb") as fh:
+                fh.write(png_bytes)
+            preview_images.append({"filename": fname, "subfolder": "", "type": "temp"})
+
         new_ids, all_ids = self._upload(client, files, project_id=project_id)
 
         # Post-import assignments — applied to ALL ids (new + duplicates)
@@ -164,7 +175,10 @@ class PixlStashPictureSaver:
             self._assign_character(client, character_id, all_ids)
 
         ids_str = ",".join(str(i) for i in new_ids)
-        return {"ui": {"picture_ids": [ids_str]}, "result": (ids_str,)}
+        return {
+            "ui": {"images": preview_images, "picture_ids": [ids_str]},
+            "result": (ids_str,),
+        }
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -196,52 +210,67 @@ class PixlStashPictureSaver:
         files: list[tuple[str, bytes]],
         project_id: str = "",
     ) -> tuple[list[int], list[int]]:
-        """Upload files via ``POST /pictures/import``, poll until done.
+        """Upload files one-by-one via ``POST /pictures/import``, polling each
+        task to completion before starting the next.
 
-        Returns ``(new_ids, all_ids)`` where ``new_ids`` contains only
-        entries with status "success" and ``all_ids`` includes duplicates.
+        The import endpoint accepts a single file per request.  Results are
+        accumulated across all calls and returned as ``(new_ids, all_ids)``
+        where ``new_ids`` contains only entries with status "success" and
+        ``all_ids`` includes duplicates.
         """
-        multipart = [("file", (name, data, "image/png")) for name, data in files]
         form_data = {"project_id": project_id} if project_id else {}
 
-        try:
-            response = client.post(
-                "/api/v1/pictures/import",
-                is_write=True,
-                files=multipart,
-                data=form_data or None,
-            )
-        except RuntimeError as exc:
-            msg = str(exc).lower()
-            if any(hint in msg for hint in _FACE_WORKER_HINTS):
-                raise RuntimeError(
-                    "PixlStash: face extraction worker is not running. "
-                    "Start it in PixlStash before importing."
-                ) from exc
-            raise
+        new_ids: list[int] = []
+        all_ids: list[int] = []
 
-        task_id = response.json()["task_id"]
-
-        while True:
-            data = client.get(
-                "/api/v1/pictures/import/status", params={"task_id": task_id}
-            ).json()
-            status = data.get("status")
-
-            if status == "completed":
-                results = data.get("results", [])
-                new_ids = [
-                    r["picture_id"] for r in results if r.get("status") == "success"
-                ]
-                all_ids = [r["picture_id"] for r in results]
-                return new_ids, all_ids
-
-            if status == "failed":
-                raise RuntimeError(
-                    f"PixlStash: import failed — {data.get('error', 'unknown error')}"
+        for name, data in files:
+            try:
+                response = client.post(
+                    "/api/v1/pictures/import",
+                    is_write=True,
+                    files=[("file", (name, data, "image/png"))],
+                    data=form_data or None,
                 )
+            except RuntimeError as exc:
+                msg = str(exc).lower()
+                if any(hint in msg for hint in _FACE_WORKER_HINTS):
+                    raise RuntimeError(
+                        "PixlStash: face extraction worker is not running. "
+                        "Start it in PixlStash before importing."
+                    ) from exc
+                raise
 
-            time.sleep(_POLL_INTERVAL)
+            task_id = response.json()["task_id"]
+
+            while True:
+                status_data = client.get(
+                    "/api/v1/pictures/import/status", params={"task_id": task_id}
+                ).json()
+                status = status_data.get("status")
+
+                if status == "completed":
+                    results = status_data.get("results", [])
+                    new_ids.extend(
+                        r["picture_id"]
+                        for r in results
+                        if r.get("status") == "success"
+                        and r.get("picture_id") is not None
+                    )
+                    all_ids.extend(
+                        r["picture_id"]
+                        for r in results
+                        if r.get("picture_id") is not None
+                    )
+                    break
+
+                if status == "failed":
+                    raise RuntimeError(
+                        f"PixlStash: import failed — {status_data.get('error', 'unknown error')}"
+                    )
+
+                time.sleep(_POLL_INTERVAL)
+
+        return new_ids, all_ids
 
     @staticmethod
     def _assign_character(
