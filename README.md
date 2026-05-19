@@ -50,16 +50,25 @@ Outputs the loaded images together with pass-through `PIXLSTASH_PROJECT`, `PIXLS
 
 Uploads images to PixlStash and optionally assigns them to a project, set, and/or character. Supports embedded workflow metadata in PNG output. Returns the IDs of successfully imported pictures as a comma-separated string.
 
+
 ## Installation
+
+### Via ComfyUI Manager (recommended)
+
+Search for **ComfyUI-PixlStash** in the Custom Nodes Manager and click Install.
+
+![Install via ComfyUI Manager](ScreenshotInstallation.jpg)
+
+### Manual
 
 Clone this repository into your ComfyUI `custom_nodes` directory:
 
 ```bash
 cd custom_nodes
-git clone https://github.com/your-org/ComfyUI-PixlStash.git
+git clone https://github.com/Pikselkroken/ComfyUI-PixlStash.git
 ```
 
-Restart ComfyUI and configure your PixlStash URL and API token under **Settings > PixlStash**.
+After installation, restart ComfyUI and configure your PixlStash URL and API token under **Settings > PixlStash**.
 
 ## Configuration
 
