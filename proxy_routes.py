@@ -15,6 +15,7 @@ backend.
 The synchronous ``requests`` calls are executed in a thread-pool
 executor via ``asyncio.to_thread`` so they don't block the event loop.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -31,6 +32,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _build_client(request: web.Request) -> PixlStashClient:
     """Extract connection params from *request* and return a client.
@@ -49,7 +51,7 @@ def _build_client(request: web.Request) -> PixlStashClient:
         raise web.HTTPBadRequest(
             reason="Missing or invalid Authorization header (expected 'Bearer <token>')."
         )
-    token = auth[len("Bearer "):]
+    token = auth[len("Bearer ") :]
 
     return PixlStashClient(base_url=url, api_token=token, verify_ssl=verify_ssl)
 
@@ -85,15 +87,11 @@ async def _proxy_get(
 
     # Forward all query params except the ones we consumed.
     forward_params = {
-        k: v
-        for k, v in request.rel_url.query.items()
-        if k not in ("url", "verify_ssl")
+        k: v for k, v in request.rel_url.query.items() if k not in ("url", "verify_ssl")
     }
 
     try:
-        resp = await asyncio.to_thread(
-            client.get, path, params=forward_params or None
-        )
+        resp = await asyncio.to_thread(client.get, path, params=forward_params or None)
         return _ok(resp.json())
     except RuntimeError as exc:
         log.warning("[PixlStash proxy] %s: %s", path, exc)
@@ -103,6 +101,7 @@ async def _proxy_get(
 # ---------------------------------------------------------------------------
 # Route handlers
 # ---------------------------------------------------------------------------
+
 
 async def proxy_projects(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/projects")
@@ -124,10 +123,10 @@ async def proxy_pictures(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/pictures")
 
 
-
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
+
 
 def register_routes() -> None:
     """Register all proxy routes on the ComfyUI PromptServer.

@@ -16,6 +16,7 @@ The three filter IDs (``project_id``, ``set_id``, ``character_id``) are
 passed through as outputs so a downstream Saver can receive them without
 requiring extra wires from each individual filter node.
 """
+
 from __future__ import annotations
 
 import io
@@ -118,8 +119,11 @@ class PixlStashPictureLoader:
         client = make_client(url.strip(), token.strip(), verify_ssl)
 
         ids = self._resolve_ids(
-            client, picture_ids,
-            pixlstash_project, pixlstash_set, pixlstash_character,
+            client,
+            picture_ids,
+            pixlstash_project,
+            pixlstash_set,
+            pixlstash_character,
         )
         if not ids:
             raise RuntimeError(
@@ -147,10 +151,10 @@ class PixlStashPictureLoader:
 
             img_np = np.array(pil_img.convert("RGB"), dtype=np.float32) / 255.0
             tensors.append(torch.from_numpy(img_np).unsqueeze(0))  # [1,H,W,3]
-            masks.append(torch.from_numpy(mask_np).unsqueeze(0))   # [1,H,W]
+            masks.append(torch.from_numpy(mask_np).unsqueeze(0))  # [1,H,W]
 
-        image_batch = torch.cat(tensors, dim=0)   # [N,H,W,3]
-        mask_batch  = torch.cat(masks,   dim=0)   # [N,H,W]
+        image_batch = torch.cat(tensors, dim=0)  # [N,H,W,3]
+        mask_batch = torch.cat(masks, dim=0)  # [N,H,W]
 
         return (
             image_batch,
@@ -180,9 +184,7 @@ class PixlStashPictureLoader:
         raw = picture_ids.strip()
         if raw:
             try:
-                return [
-                    int(x.strip()) for x in raw.split(",") if x.strip()
-                ][:200]
+                return [int(x.strip()) for x in raw.split(",") if x.strip()][:200]
             except ValueError as exc:
                 raise RuntimeError(
                     f"PixlStash: picture_ids contains a non-integer value: {exc}"

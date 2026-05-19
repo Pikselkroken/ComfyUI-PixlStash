@@ -5,6 +5,7 @@ JavaScript extension (``combo_widgets.js``).  When ``project_id`` is
 wired in, the proxy call passes it as a query parameter so PixlStash
 returns only the sets that belong to that project.
 """
+
 from __future__ import annotations
 
 

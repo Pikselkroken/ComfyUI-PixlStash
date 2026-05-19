@@ -1,4 +1,5 @@
 """Shared authenticated HTTP client for PixlStash nodes."""
+
 from __future__ import annotations
 
 import requests
@@ -121,9 +122,7 @@ class PixlStashClient:
         except Timeout:
             raise RuntimeError(f"PixlStash: request timed out for {url}.")
         except RequestsConnectionError as exc:
-            raise RuntimeError(
-                f"PixlStash: connection error for {url}: {exc}"
-            ) from exc
+            raise RuntimeError(f"PixlStash: connection error for {url}: {exc}") from exc
         self._check(response, url, is_write=is_write)
         return response
 
@@ -137,5 +136,7 @@ class PixlStashClient:
     def post(self, path: str, *, is_write: bool = False, **kwargs) -> requests.Response:
         return self._request("POST", path, is_write=is_write, **kwargs)
 
-    def patch(self, path: str, *, is_write: bool = False, **kwargs) -> requests.Response:
+    def patch(
+        self, path: str, *, is_write: bool = False, **kwargs
+    ) -> requests.Response:
         return self._request("PATCH", path, is_write=is_write, **kwargs)

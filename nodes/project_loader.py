@@ -4,6 +4,7 @@ The ``project_id`` STRING input is converted into a live dropdown by the
 JavaScript extension (``combo_widgets.js``).  On the Python side it is a
 plain STRING so the node works in headless / API mode too.
 """
+
 from __future__ import annotations
 
 

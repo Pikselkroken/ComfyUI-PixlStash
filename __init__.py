@@ -15,29 +15,30 @@ Typical workflow:
 Credentials (URL, token, SSL) are configured once in
 ComfyUI Settings › PixlStash and injected automatically at run time.
 """
-from .nodes.project_loader   import PixlStashProjectLoader
-from .nodes.set_loader       import PixlStashSetLoader
+
+from .nodes.project_loader import PixlStashProjectLoader
+from .nodes.set_loader import PixlStashSetLoader
 from .nodes.character_loader import PixlStashCharacterLoader
-from .nodes.picture_loader   import PixlStashPictureLoader
-from .nodes.picture_saver    import PixlStashPictureSaver
-from .proxy_routes           import register_routes
+from .nodes.picture_loader import PixlStashPictureLoader
+from .nodes.picture_saver import PixlStashPictureSaver
+from .proxy_routes import register_routes
 
 register_routes()
 
 NODE_CLASS_MAPPINGS = {
-    "PixlStashProjectLoader":   PixlStashProjectLoader,
-    "PixlStashSetLoader":       PixlStashSetLoader,
+    "PixlStashProjectLoader": PixlStashProjectLoader,
+    "PixlStashSetLoader": PixlStashSetLoader,
     "PixlStashCharacterLoader": PixlStashCharacterLoader,
-    "PixlStashPictureLoader":   PixlStashPictureLoader,
-    "PixlStashPictureSaver":    PixlStashPictureSaver,
+    "PixlStashPictureLoader": PixlStashPictureLoader,
+    "PixlStashPictureSaver": PixlStashPictureSaver,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "PixlStashProjectLoader":   "PixlStash Project Loader",
-    "PixlStashSetLoader":       "PixlStash Set Loader",
+    "PixlStashProjectLoader": "PixlStash Project Loader",
+    "PixlStashSetLoader": "PixlStash Set Loader",
     "PixlStashCharacterLoader": "PixlStash Character Loader",
-    "PixlStashPictureLoader":   "PixlStash Picture Loader",
-    "PixlStashPictureSaver":    "PixlStash Picture Saver",
+    "PixlStashPictureLoader": "PixlStash Picture Loader",
+    "PixlStashPictureSaver": "PixlStash Picture Saver",
 }
 
 WEB_DIRECTORY = "web/js"

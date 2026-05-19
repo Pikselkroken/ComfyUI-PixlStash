@@ -8,6 +8,7 @@ Credentials are injected via hidden inputs from ComfyUI Settings at
 queue time.  HTTP 403 responses from any write operation raise a message
 that explicitly names the write-scope requirement.
 """
+
 from __future__ import annotations
 
 import io
@@ -126,17 +127,15 @@ class PixlStashPictureSaver:
             )
         client = make_client(url.strip(), token.strip(), verify_ssl)
 
-        project_id   = pixlstash_project.strip()
-        set_id       = pixlstash_set.strip()
+        project_id = pixlstash_project.strip()
+        set_id = pixlstash_set.strip()
         character_id = pixlstash_character.strip()
 
         # Encode each tensor to PNG bytes.
         files: list[tuple[str, bytes]] = []
         for idx in range(images.shape[0]):
-            img_np = (
-                images[idx].cpu().numpy() * 255.0
-            ).clip(0, 255).astype(np.uint8)
-            pil_img  = Image.fromarray(img_np, mode="RGB")
+            img_np = (images[idx].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+            pil_img = Image.fromarray(img_np, mode="RGB")
             filename = f"{filename_prefix}_{idx + 1:05d}.png"
             files.append(
                 (
@@ -202,9 +201,7 @@ class PixlStashPictureSaver:
         Returns ``(new_ids, all_ids)`` where ``new_ids`` contains only
         entries with status "success" and ``all_ids`` includes duplicates.
         """
-        multipart = [
-            ("file", (name, data, "image/png")) for name, data in files
-        ]
+        multipart = [("file", (name, data, "image/png")) for name, data in files]
         form_data = {"project_id": project_id} if project_id else {}
 
         try:
@@ -234,9 +231,7 @@ class PixlStashPictureSaver:
             if status == "completed":
                 results = data.get("results", [])
                 new_ids = [
-                    r["picture_id"]
-                    for r in results
-                    if r.get("status") == "success"
+                    r["picture_id"] for r in results if r.get("status") == "success"
                 ]
                 all_ids = [r["picture_id"] for r in results]
                 return new_ids, all_ids
