@@ -88,7 +88,7 @@ class PixlStashClient:
             )
 
         if response.status_code == 404:
-            raise RuntimeError("PixlStash: picture or set not found.")
+            raise RuntimeError(f"PixlStash: not found — {url}")
 
         if not response.ok:
             excerpt = response.text[:500] if response.text else "(empty body)"

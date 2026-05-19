@@ -20,12 +20,15 @@ requiring extra wires from each individual filter node.
 from __future__ import annotations
 
 import io
+import logging
 
 import numpy as np
 import torch
 from PIL import Image
 
 from ..connection import make_client
+
+log = logging.getLogger(__name__)
 
 
 class PixlStashPictureLoader:
@@ -133,8 +136,29 @@ class PixlStashPictureLoader:
             )
 
         pil_pairs: list[tuple[Image.Image, np.ndarray]] = []
+        skipped: list[int] = []
         for pid in ids:
-            pil_pairs.append(self._fetch_image(client, pid))
+            try:
+                pil_pairs.append(self._fetch_image(client, pid))
+            except RuntimeError as exc:
+                if "not found" in str(exc).lower():
+                    log.warning("[PixlStash] Picture %s not found — skipping.", pid)
+                    skipped.append(pid)
+                else:
+                    raise
+
+        if skipped:
+            log.warning(
+                "[PixlStash] %d picture(s) skipped (not found): %s",
+                len(skipped),
+                skipped,
+            )
+        if not pil_pairs:
+            raise RuntimeError(
+                f"PixlStash Picture Loader: none of the {len(skipped)} selected "
+                "picture(s) could be found. "
+                "Open Browse and re-select valid pictures."
+            )
 
         # Resize all images to the first image's dimensions so torch.cat works.
         ref_w, ref_h = pil_pairs[0][0].size  # PIL size is (W, H)
