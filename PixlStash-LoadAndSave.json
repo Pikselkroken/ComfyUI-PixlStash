@@ -1,94 +1,9 @@
 {
   "id": "9e80ef14-25f8-463a-9868-07336b1275a9",
   "revision": 0,
-  "last_node_id": 176,
-  "last_link_id": 286,
+  "last_node_id": 178,
+  "last_link_id": 289,
   "nodes": [
-    {
-      "id": 75,
-      "type": "7b34ab90-36f9-45ba-a665-71d418f0df18",
-      "pos": [
-        147.9386281022664,
-        734.5981432799923
-      ],
-      "size": [
-        400,
-        527.6666870117188
-      ],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "prompt",
-          "name": "text",
-          "type": "STRING",
-          "widget": {
-            "name": "text"
-          },
-          "link": null
-        },
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 273
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            280
-          ]
-        }
-      ],
-      "properties": {
-        "proxyWidgets": [
-          [
-            "70",
-            "unet_name"
-          ],
-          [
-            "71",
-            "clip_name"
-          ],
-          [
-            "72",
-            "vae_name"
-          ],
-          [
-            "74",
-            "text"
-          ],
-          [
-            "73",
-            "noise_seed"
-          ],
-          [
-            "73",
-            "control_after_generate"
-          ]
-        ],
-        "cnr_id": "comfy-core",
-        "ver": "0.8.2",
-        "enableTabs": false,
-        "tabWidth": 65,
-        "tabXOffset": 10,
-        "hasSecondTab": false,
-        "secondTabText": "Send Back",
-        "secondTabOffset": 80,
-        "secondTabWidth": 65,
-        "ue_properties": {
-          "widget_ue_connectable": {
-            "text": true
-          },
-          "version": "7.7",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": []
-    },
     {
       "id": 176,
       "type": "PixlStashSetLoader",
@@ -177,7 +92,7 @@
         }
       },
       "widgets_values": [
-        "2"
+        ""
       ]
     },
     {
@@ -229,8 +144,154 @@
         }
       },
       "widgets_values": [
-        "19"
+        ""
       ]
+    },
+    {
+      "id": 175,
+      "type": "PixlStashPictureSaver",
+      "pos": [
+        569.0679252780191,
+        734.9966899080416
+      ],
+      "size": [
+        613.6988395150556,
+        488.7569000172641
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 280
+        },
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": 284
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": 285
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": 286
+        }
+      ],
+      "outputs": [
+        {
+          "name": "picture_ids",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash",
+        "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
+        "Node name for S&R": "PixlStashPictureSaver",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "comfyui",
+        true
+      ]
+    },
+    {
+      "id": 75,
+      "type": "7b34ab90-36f9-45ba-a665-71d418f0df18",
+      "pos": [
+        147.9386281022664,
+        734.5981432799923
+      ],
+      "size": [
+        400,
+        527.6666870117188
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "prompt",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 273
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            280
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [
+          [
+            "70",
+            "unet_name"
+          ],
+          [
+            "71",
+            "clip_name"
+          ],
+          [
+            "72",
+            "vae_name"
+          ],
+          [
+            "74",
+            "text"
+          ],
+          [
+            "73",
+            "noise_seed"
+          ],
+          [
+            "73",
+            "control_after_generate"
+          ]
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.8.2",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "text": true
+          },
+          "version": "7.7",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": []
     },
     {
       "id": 171,
@@ -240,7 +301,7 @@
         734.2853294875398
       ],
       "size": [
-        264.4333190917969,
+        264.44000244140625,
         350
       ],
       "flags": {},
@@ -312,69 +373,8 @@
         }
       },
       "widgets_values": [
-        "9982",
+        "",
         ""
-      ]
-    },
-    {
-      "id": 175,
-      "type": "PixlStashPictureSaver",
-      "pos": [
-        569.0679252780191,
-        734.9966899080416
-      ],
-      "size": [
-        372.6666564941406,
-        382.3500061035156
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 280
-        },
-        {
-          "name": "pixlstash_project",
-          "shape": 7,
-          "type": "PIXLSTASH_PROJECT",
-          "link": 284
-        },
-        {
-          "name": "pixlstash_set",
-          "shape": 7,
-          "type": "PIXLSTASH_SET",
-          "link": 285
-        },
-        {
-          "name": "pixlstash_character",
-          "shape": 7,
-          "type": "PIXLSTASH_CHARACTER",
-          "link": 286
-        }
-      ],
-      "outputs": [
-        {
-          "name": "picture_ids",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "aux_id": "Pikselkroken/ComfyUI-PixlStash",
-        "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashPictureSaver",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.8"
-        }
-      },
-      "widgets_values": [
-        "comfyui",
-        true
       ]
     }
   ],
@@ -468,8 +468,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 7,
-          "lastNodeId": 176,
-          "lastLinkId": 286,
+          "lastNodeId": 178,
+          "lastLinkId": 289,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -628,7 +628,7 @@
             ],
             "size": [
               230,
-              170
+              326
             ],
             "flags": {},
             "order": 4,
@@ -801,7 +801,7 @@
               }
             },
             "widgets_values": [
-              641964980046789,
+              91563140998613,
               "randomize"
             ]
           },
@@ -966,6 +966,15 @@
                   "name": "height"
                 },
                 "link": 174
+              },
+              {
+                "localized_name": "batch_size",
+                "name": "batch_size",
+                "type": "INT",
+                "widget": {
+                  "name": "batch_size"
+                },
+                "link": 289
               }
             ],
             "outputs": [
@@ -1132,73 +1141,6 @@
               1024,
               1024
             ]
-          },
-          {
-            "id": 99,
-            "type": "GetImageSize",
-            "pos": [
-              530,
-              980
-            ],
-            "size": [
-              230,
-              120
-            ],
-            "flags": {},
-            "order": 13,
-            "mode": 0,
-            "inputs": [
-              {
-                "localized_name": "image",
-                "name": "image",
-                "type": "IMAGE",
-                "link": 170
-              }
-            ],
-            "outputs": [
-              {
-                "localized_name": "width",
-                "name": "width",
-                "type": "INT",
-                "links": [
-                  171,
-                  172
-                ]
-              },
-              {
-                "localized_name": "height",
-                "name": "height",
-                "type": "INT",
-                "links": [
-                  173,
-                  174
-                ]
-              },
-              {
-                "localized_name": "batch_size",
-                "name": "batch_size",
-                "type": "INT",
-                "links": null
-              }
-            ],
-            "properties": {
-              "cnr_id": "comfy-core",
-              "ver": "0.8.2",
-              "Node name for S&R": "GetImageSize",
-              "enableTabs": false,
-              "tabWidth": 65,
-              "tabXOffset": 10,
-              "hasSecondTab": false,
-              "secondTabText": "Send Back",
-              "secondTabOffset": 80,
-              "secondTabWidth": 65,
-              "ue_properties": {
-                "widget_ue_connectable": {},
-                "version": "7.7",
-                "input_ue_unconnectable": {}
-              }
-            },
-            "widgets_values": []
           },
           {
             "id": 123,
@@ -1505,7 +1447,7 @@
               }
             },
             "widgets_values": [
-              "Replace the background with a quiet coastal cliff at overcast sunset. Remove all buildings and streets. Add wind-shaped grass and a distant ocean horizon. Keep the subject’s pose and framing unchanged."
+              "Give the woman a clown nose, fake moustache and fake glasses"
             ],
             "color": "#232",
             "bgcolor": "#353"
@@ -1609,6 +1551,75 @@
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
               "Node name for S&R": "VAEEncode",
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65,
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "version": "7.7",
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": []
+          },
+          {
+            "id": 99,
+            "type": "GetImageSize",
+            "pos": [
+              530,
+              980
+            ],
+            "size": [
+              230,
+              120
+            ],
+            "flags": {},
+            "order": 13,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 170
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": [
+                  171,
+                  172
+                ]
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": [
+                  173,
+                  174
+                ]
+              },
+              {
+                "localized_name": "batch_size",
+                "name": "batch_size",
+                "type": "INT",
+                "links": [
+                  289
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.8.2",
+              "Node name for S&R": "GetImageSize",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1939,6 +1950,14 @@
             "target_id": 123,
             "target_slot": 0,
             "type": "CONDITIONING"
+          },
+          {
+            "id": 289,
+            "origin_id": 99,
+            "origin_slot": 2,
+            "target_id": 66,
+            "target_slot": 2,
+            "type": "INT"
           }
         ],
         "extra": {
@@ -1958,10 +1977,10 @@
     "VHS_MetadataImage": true,
     "VHS_KeepIntermediate": true,
     "ds": {
-      "scale": 0.7087575272411404,
+      "scale": 0.5325000204666721,
       "offset": [
-        1121.5601670673132,
-        -382.9647861669317
+        1674.470726779375,
+        -165.83456563158848
       ]
     },
     "ue_links": [],
