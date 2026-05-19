@@ -4,10 +4,9 @@ Encodes IMAGE tensors to PNG (with optional embedded workflow metadata),
 uploads them to PixlStash via the async import endpoint, then optionally
 assigns the new pictures to a project, set, and/or character.
 
-The ``connection`` input is **independent** — wire a separate Connector
-with a write-scoped (ALL) token if the upstream Connector only has read
-access.  HTTP 403 responses from any write operation raise a message that
-explicitly names the write-scope requirement.
+Credentials are injected via hidden inputs from ComfyUI Settings at
+queue time.  HTTP 403 responses from any write operation raise a message
+that explicitly names the write-scope requirement.
 """
 from __future__ import annotations
 

@@ -124,22 +124,6 @@ async def proxy_pictures(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/pictures")
 
 
-async def proxy_test_connection(request: web.Request) -> web.Response:
-    """Call ``GET /projects`` and return ``{"ok": true}`` or ``{"ok": false, "error": "..."}``.
-
-    Used by the Connector node's Test Connection button.
-    """
-    try:
-        client = _build_client(request)
-    except web.HTTPBadRequest as exc:
-        return _ok({"ok": False, "error": exc.reason})
-
-    try:
-        await asyncio.to_thread(client.get, "/api/v1/projects")
-        return _ok({"ok": True})
-    except RuntimeError as exc:
-        return _ok({"ok": False, "error": str(exc)})
-
 
 # ---------------------------------------------------------------------------
 # Registration
@@ -161,7 +145,6 @@ def register_routes() -> None:
         r.get("/pixlstash/characters")(proxy_characters)
         r.get("/pixlstash/sort_mechanisms")(proxy_sort_mechanisms)
         r.get("/pixlstash/pictures")(proxy_pictures)
-        r.get("/pixlstash/test_connection")(proxy_test_connection)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:
         log.warning("[PixlStash] Could not register proxy routes: %s", exc)

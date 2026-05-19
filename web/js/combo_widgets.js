@@ -14,9 +14,9 @@
  *     which is our custom handler.
  *   • The widget value is serialised / deserialised normally.
  *
- * The Connector node and the Picture Loader Browse button are handled
- * separately in `beforeRegisterNodeDef` because they modify
- * *existing* built-in widgets, not create new ones.
+ * The Picture Loader Browse button is handled separately in
+ * `beforeRegisterNodeDef` because it modifies an *existing* built-in
+ * widget, not creates a new one.
  */
 
 import { app } from "../../scripts/app.js";
@@ -132,20 +132,6 @@ async function fetchCharacters(node) {
         .then(data => data.map(c => ({ value: String(c.id), label: c.name ?? String(c.id) })));
 }
 
-async function fetchAllCharacters(_node) {
-    return proxyFetch("/pixlstash/characters", getSettingsCredentials())
-        .then(data => data.map(c => ({ value: String(c.id), label: c.name ?? String(c.id) })));
-}
-
-async function fetchSortMechanisms(node) {
-    return proxyFetch("/pixlstash/sort_mechanisms", getSettingsCredentials())
-        .then(data => data
-            .filter(m => (m.key ?? m.sort_key ?? m.name) !== "LIKENESS_GROUPS")
-            .map(m => ({
-                value: m.key   ?? m.sort_key ?? m.name ?? String(m),
-                label: m.label ?? m.description ?? m.key ?? String(m),
-            })));
-}
 
 // ---------------------------------------------------------------------------
 // Canvas drawing helpers
@@ -327,7 +313,7 @@ function buildPickerWidget(inputName, defaultVal, fetchFn) {
                         }
                     })
                     .catch(() => {
-                        // Connector probably not wired yet; retry a few times
+                        // Credentials may not be configured yet; retry a few times
                         if (attemptsLeft > 0) {
                             setTimeout(() => attempt(attemptsLeft - 1), 500);
                         }
@@ -472,8 +458,7 @@ app.registerExtension({
             PIXLSTASH_PROJECT_ID: makeProject(),
             PIXLSTASH_SET_ID:     make(withNoneOption(fetchSets)),
             PIXLSTASH_CHAR_ID:    make(withNoneOption(fetchCharacters)),
-            PIXLSTASH_SORT:       make(fetchSortMechanisms),
-            PIXLSTASH_CHARACTER:  make(fetchAllCharacters),
+
         };
     },
 
