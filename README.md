@@ -34,6 +34,7 @@ Selects a set within a project. Outputs `PIXLSTASH_PROJECT` and `PIXLSTASH_SET` 
 ### PixlStash Character Loader
 
 Selects a character from your vault. Outputs `PIXLSTASH_PROJECT` and `PIXLSTASH_CHARACTER` wires.
+Note this requires PixlStash v1.2.1+ to function properly as it relies on an API addition in 1.2.1.
 
 ### PixlStash Picture Loader
 
