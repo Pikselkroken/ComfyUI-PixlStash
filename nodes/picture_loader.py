@@ -218,8 +218,6 @@ class PixlStashPictureLoader:
             "fields": "grid",
             "sort": "IMPORTED_AT",
             "descending": "true",
-            "limit": 200,
-            "offset": 0,
         }
         if project_id.strip():
             params["project_id"] = project_id.strip()
