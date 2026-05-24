@@ -335,6 +335,8 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
             }));
         } finally {
             loading = false;
+            // If the grid isn't scrollable yet and there are more pages, keep loading.
+            if (!exhausted && grid.scrollHeight <= grid.clientHeight) loadPage();
         }
     }
 
