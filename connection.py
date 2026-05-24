@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import requests
+import urllib3
 from requests.exceptions import (
     SSLError,
     Timeout,
@@ -42,6 +43,8 @@ class PixlStashClient:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.verify_ssl = verify_ssl
+        if not verify_ssl:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self._session = requests.Session()
         self._session.headers.update(
             {
