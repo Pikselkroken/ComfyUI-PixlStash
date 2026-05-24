@@ -141,15 +141,12 @@ class PixlStashPictureLoader:
             try:
                 pil_pairs.append(self._fetch_image(client, pid))
             except RuntimeError as exc:
-                if "not found" in str(exc).lower():
-                    log.warning("[PixlStash] Picture %s not found — skipping.", pid)
-                    skipped.append(pid)
-                else:
-                    raise
+                log.warning("[PixlStash] Picture %s skipped — %s", pid, exc)
+                skipped.append(pid)
 
         if skipped:
             log.warning(
-                "[PixlStash] %d picture(s) skipped (not found): %s",
+                "[PixlStash] %d picture(s) skipped: %s",
                 len(skipped),
                 skipped,
             )
