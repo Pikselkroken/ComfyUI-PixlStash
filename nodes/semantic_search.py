@@ -22,8 +22,22 @@ class PixlStashSemanticSearch:
     """Returns vault pictures that match a free-text query."""
 
     CATEGORY = "PixlStash"
-    RETURN_TYPES = ("IMAGE", "MASK", "INT")
-    RETURN_NAMES = ("image", "mask", "batch_size")
+    RETURN_TYPES = (
+        "IMAGE",
+        "MASK",
+        "PIXLSTASH_PROJECT",
+        "PIXLSTASH_SET",
+        "PIXLSTASH_CHARACTER",
+        "INT",
+    )
+    RETURN_NAMES = (
+        "image",
+        "mask",
+        "pixlstash_project",
+        "pixlstash_set",
+        "pixlstash_character",
+        "batch_size",
+    )
     FUNCTION = "search"
 
     @classmethod
@@ -61,6 +75,29 @@ class PixlStashSemanticSearch:
                     },
                 ),
             },
+            "optional": {
+                "pixlstash_project": (
+                    "PIXLSTASH_PROJECT",
+                    {
+                        "forceInput": True,
+                        "tooltip": "Wire from a Project Loader to restrict the search.",
+                    },
+                ),
+                "pixlstash_set": (
+                    "PIXLSTASH_SET",
+                    {
+                        "forceInput": True,
+                        "tooltip": "Wire from a Set Loader to restrict the search.",
+                    },
+                ),
+                "pixlstash_character": (
+                    "PIXLSTASH_CHARACTER",
+                    {
+                        "forceInput": True,
+                        "tooltip": "Wire from a Character Loader to restrict the search.",
+                    },
+                ),
+            },
             "hidden": {
                 "url": "STRING",
                 "token": "STRING",
@@ -75,6 +112,9 @@ class PixlStashSemanticSearch:
         query: str,
         limit: int,
         threshold: float,
+        pixlstash_project: str = "",
+        pixlstash_set: str = "",
+        pixlstash_character: str = "",
         url: str = "",
         token: str = "",
         verify_ssl: bool = True,
@@ -89,14 +129,22 @@ class PixlStashSemanticSearch:
 
         client = make_client(url.strip(), token.strip(), verify_ssl)
 
+        params: dict[str, object] = {
+            "query": query.strip(),
+            "limit": limit,
+            "threshold": threshold,
+            "offset": 0,
+        }
+        if pixlstash_project.strip():
+            params["project_id"] = pixlstash_project.strip()
+        if pixlstash_set.strip():
+            params["set_id"] = pixlstash_set.strip()
+        if pixlstash_character.strip():
+            params["character_id"] = pixlstash_character.strip()
+
         results = client.get(
             "/api/v1/pictures/search",
-            params={
-                "query": query.strip(),
-                "limit": limit,
-                "threshold": threshold,
-                "offset": 0,
-            },
+            params=params,
         ).json()
 
         if not isinstance(results, list):
@@ -148,7 +196,14 @@ class PixlStashSemanticSearch:
         image_batch = torch.cat(tensors, dim=0)  # [N,H,W,3]
         mask_batch = torch.cat(masks, dim=0)  # [N,H,W]
 
-        return (image_batch, mask_batch, len(pil_pairs))
+        return (
+            image_batch,
+            mask_batch,
+            pixlstash_project,
+            pixlstash_set,
+            pixlstash_character,
+            len(pil_pairs),
+        )
 
     # ------------------------------------------------------------------
     # Private helpers

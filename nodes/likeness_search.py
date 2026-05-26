@@ -47,8 +47,22 @@ class PixlStashLikenessSearch:
     """Returns vault pictures that are visually similar to one or more query images."""
 
     CATEGORY = "PixlStash"
-    RETURN_TYPES = ("IMAGE", "MASK", "INT")
-    RETURN_NAMES = ("image", "mask", "batch_size")
+    RETURN_TYPES = (
+        "IMAGE",
+        "MASK",
+        "PIXLSTASH_PROJECT",
+        "PIXLSTASH_SET",
+        "PIXLSTASH_CHARACTER",
+        "INT",
+    )
+    RETURN_NAMES = (
+        "image",
+        "mask",
+        "pixlstash_project",
+        "pixlstash_set",
+        "pixlstash_character",
+        "batch_size",
+    )
     FUNCTION = "search"
 
     @classmethod
@@ -126,6 +140,29 @@ class PixlStashLikenessSearch:
                     },
                 ),
             },
+            "optional": {
+                "pixlstash_project": (
+                    "PIXLSTASH_PROJECT",
+                    {
+                        "forceInput": True,
+                        "tooltip": "Wire from a Project Loader to restrict the search.",
+                    },
+                ),
+                "pixlstash_set": (
+                    "PIXLSTASH_SET",
+                    {
+                        "forceInput": True,
+                        "tooltip": "Wire from a Set Loader to restrict the search.",
+                    },
+                ),
+                "pixlstash_character": (
+                    "PIXLSTASH_CHARACTER",
+                    {
+                        "forceInput": True,
+                        "tooltip": "Wire from a Character Loader to restrict the search.",
+                    },
+                ),
+            },
             "hidden": {
                 "url": "STRING",
                 "token": "STRING",
@@ -143,6 +180,9 @@ class PixlStashLikenessSearch:
         pool_size: int,
         select_count: int,
         threshold: float,
+        pixlstash_project: str = "",
+        pixlstash_set: str = "",
+        pixlstash_character: str = "",
         url: str = "",
         token: str = "",
         verify_ssl: bool = True,
@@ -177,6 +217,13 @@ class PixlStashLikenessSearch:
         else:
             params["random"] = "false"
             params["top_n"] = pool_size
+
+        if pixlstash_project.strip():
+            params["project_id"] = pixlstash_project.strip()
+        if pixlstash_set.strip():
+            params["set_id"] = pixlstash_set.strip()
+        if pixlstash_character.strip():
+            params["character_id"] = pixlstash_character.strip()
 
         response = client.post(
             endpoint,
@@ -234,7 +281,14 @@ class PixlStashLikenessSearch:
         image_batch = torch.cat(tensors, dim=0)  # [N,H,W,3]
         mask_batch = torch.cat(masks, dim=0)  # [N,H,W]
 
-        return (image_batch, mask_batch, len(pil_pairs))
+        return (
+            image_batch,
+            mask_batch,
+            pixlstash_project,
+            pixlstash_set,
+            pixlstash_character,
+            len(pil_pairs),
+        )
 
     # ------------------------------------------------------------------
     # Private helpers
