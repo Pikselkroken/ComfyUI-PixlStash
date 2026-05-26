@@ -8,6 +8,17 @@ returns only the characters that belong to that project.
 
 from __future__ import annotations
 
+import re
+
+_ID_RE = re.compile(r"#(\d+)\s*$")
+
+
+def _extract_id(value: str) -> str:
+    if not value:
+        return ""
+    m = _ID_RE.search(value)
+    return m.group(1) if m else ""
+
 
 class PixlStashCharacterLoader:
     """Lets the user pick a character from the PixlStash vault.
@@ -27,10 +38,8 @@ class PixlStashCharacterLoader:
         return {
             "required": {
                 "pixlstash_character": (
-                    "PIXLSTASH_CHAR_ID",
+                    ["(loading…)"],
                     {
-                        "default": "",
-                        "multiline": False,
                         "tooltip": (
                             "Select a character. Populated live from "
                             "PixlStash. Wire a Project Loader to filter by project."
@@ -57,4 +66,8 @@ class PixlStashCharacterLoader:
         pixlstash_character: str,
         pixlstash_project: str = "",
     ):
-        return (pixlstash_project, pixlstash_character.strip())
+        return (pixlstash_project, _extract_id(pixlstash_character))
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, pixlstash_character):
+        return True

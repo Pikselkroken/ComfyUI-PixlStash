@@ -123,6 +123,35 @@ async def proxy_pictures(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/pictures")
 
 
+async def proxy_version(request: web.Request) -> web.Response:
+    try:
+        client = _build_client(request)
+    except web.HTTPBadRequest as exc:
+        return _err(exc.reason, status=400)
+    try:
+        resp = await asyncio.to_thread(client.get, "/version")
+        # The endpoint may return plain text ("1.4.0") or JSON ({"version":"1.4.0"}).
+        # Normalise to {"version": "..."} so the JS side always receives JSON.
+        text = resp.text.strip()
+        try:
+            data = resp.json()
+            version = data if isinstance(data, str) else data.get("version", text)
+        except Exception:
+            version = text
+        # Sanity-check: must look like a version number, not HTML or an error page.
+        import re as _re
+
+        if not _re.match(r"^\d+\.\d+", str(version or "")):
+            return _err(
+                f"Server did not return a valid version string (got: {str(version)[:80]})",
+                status=502,
+            )
+        return _ok({"version": version})
+    except RuntimeError as exc:
+        log.warning("[PixlStash proxy] /api/v1/version: %s", exc)
+        return _err(str(exc))
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -144,6 +173,7 @@ def register_routes() -> None:
         r.get("/pixlstash/characters")(proxy_characters)
         r.get("/pixlstash/sort_mechanisms")(proxy_sort_mechanisms)
         r.get("/pixlstash/pictures")(proxy_pictures)
+        r.get("/pixlstash/version")(proxy_version)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:
         log.warning("[PixlStash] Could not register proxy routes: %s", exc)

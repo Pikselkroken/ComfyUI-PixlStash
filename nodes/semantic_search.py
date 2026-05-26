@@ -85,9 +85,7 @@ class PixlStashSemanticSearch:
                 "Configure them in ComfyUI Settings › PixlStash."
             )
         if not query.strip():
-            raise RuntimeError(
-                "PixlStash Semantic Search: query must not be empty."
-            )
+            raise RuntimeError("PixlStash Semantic Search: query must not be empty.")
 
         client = make_client(url.strip(), token.strip(), verify_ssl)
 
@@ -123,9 +121,7 @@ class PixlStashSemanticSearch:
                 skipped.append(pid)
 
         if skipped:
-            log.warning(
-                "[PixlStash] %d picture(s) skipped: %s", len(skipped), skipped
-            )
+            log.warning("[PixlStash] %d picture(s) skipped: %s", len(skipped), skipped)
         if not pil_pairs:
             raise RuntimeError(
                 f"PixlStash Semantic Search: none of the {len(skipped)} matched "
@@ -147,10 +143,10 @@ class PixlStashSemanticSearch:
 
             img_np = np.array(pil_img.convert("RGB"), dtype=np.float32) / 255.0
             tensors.append(torch.from_numpy(img_np).unsqueeze(0))  # [1,H,W,3]
-            masks.append(torch.from_numpy(mask_np).unsqueeze(0))   # [1,H,W]
+            masks.append(torch.from_numpy(mask_np).unsqueeze(0))  # [1,H,W]
 
         image_batch = torch.cat(tensors, dim=0)  # [N,H,W,3]
-        mask_batch = torch.cat(masks, dim=0)     # [N,H,W]
+        mask_batch = torch.cat(masks, dim=0)  # [N,H,W]
 
         return (image_batch, mask_batch, len(pil_pairs))
 

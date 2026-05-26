@@ -8,6 +8,17 @@ returns only the sets that belong to that project.
 
 from __future__ import annotations
 
+import re
+
+_ID_RE = re.compile(r"#(\d+)\s*$")
+
+
+def _extract_id(value: str) -> str:
+    if not value:
+        return ""
+    m = _ID_RE.search(value)
+    return m.group(1) if m else ""
+
 
 class PixlStashSetLoader:
     """Lets the user pick a picture set from the PixlStash vault.
@@ -27,10 +38,8 @@ class PixlStashSetLoader:
         return {
             "required": {
                 "pixlstash_set": (
-                    "PIXLSTASH_SET_ID",
+                    ["(loading…)"],
                     {
-                        "default": "",
-                        "multiline": False,
                         "tooltip": (
                             "Select a picture set. Populated live from "
                             "PixlStash. Wire a Project Loader to filter by project."
@@ -57,4 +66,8 @@ class PixlStashSetLoader:
         pixlstash_set: str,
         pixlstash_project: str = "",
     ):
-        return (pixlstash_project, pixlstash_set.strip())
+        return (pixlstash_project, _extract_id(pixlstash_set))
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, pixlstash_set):
+        return True

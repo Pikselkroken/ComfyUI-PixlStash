@@ -39,7 +39,7 @@ COMBINE_MODES = ["mean", "max", "min", "harmonic_mean", "geometric_mean"]
 SEARCH_MODES = ["picture_likeness", "face_search"]
 SEARCH_ENDPOINTS = {
     "picture_likeness": "/api/v1/pictures/likeness-search",
-    "face_search":      "/api/v1/pictures/face-search",
+    "face_search": "/api/v1/pictures/face-search",
 }
 
 
@@ -155,7 +155,9 @@ class PixlStashLikenessSearch:
 
         client = make_client(url.strip(), token.strip(), verify_ssl)
 
-        endpoint = SEARCH_ENDPOINTS.get(search_mode, SEARCH_ENDPOINTS["picture_likeness"])
+        endpoint = SEARCH_ENDPOINTS.get(
+            search_mode, SEARCH_ENDPOINTS["picture_likeness"]
+        )
 
         # Convert every frame in the batch to PNG bytes for upload.
         query_files = [
@@ -205,9 +207,7 @@ class PixlStashLikenessSearch:
                 skipped.append(pid)
 
         if skipped:
-            log.warning(
-                "[PixlStash] %d picture(s) skipped: %s", len(skipped), skipped
-            )
+            log.warning("[PixlStash] %d picture(s) skipped: %s", len(skipped), skipped)
         if not pil_pairs:
             raise RuntimeError(
                 f"PixlStash Likeness Search: none of the {len(skipped)} matched "
@@ -229,10 +229,10 @@ class PixlStashLikenessSearch:
 
             img_np = np.array(pil_img.convert("RGB"), dtype=np.float32) / 255.0
             tensors.append(torch.from_numpy(img_np).unsqueeze(0))  # [1,H,W,3]
-            masks.append(torch.from_numpy(mask_np).unsqueeze(0))   # [1,H,W]
+            masks.append(torch.from_numpy(mask_np).unsqueeze(0))  # [1,H,W]
 
         image_batch = torch.cat(tensors, dim=0)  # [N,H,W,3]
-        mask_batch = torch.cat(masks, dim=0)     # [N,H,W]
+        mask_batch = torch.cat(masks, dim=0)  # [N,H,W]
 
         return (image_batch, mask_batch, len(pil_pairs))
 

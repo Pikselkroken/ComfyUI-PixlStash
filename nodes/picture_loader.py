@@ -41,6 +41,7 @@ class PixlStashPictureLoader:
         "PIXLSTASH_PROJECT",
         "PIXLSTASH_SET",
         "PIXLSTASH_CHARACTER",
+        "INT",
     )
     RETURN_NAMES = (
         "image",
@@ -48,6 +49,7 @@ class PixlStashPictureLoader:
         "pixlstash_project",
         "pixlstash_set",
         "pixlstash_character",
+        "batch_size",
     )
     FUNCTION = "load_pictures"
 
@@ -183,6 +185,7 @@ class PixlStashPictureLoader:
             pixlstash_project,
             pixlstash_set,
             pixlstash_character,
+            len(pil_pairs),
         )
 
     # ------------------------------------------------------------------

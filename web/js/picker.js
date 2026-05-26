@@ -97,6 +97,14 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     const itemElements = [];
     let lastClickedIdx = -1;
 
+    // First pre-selected ID (lowest by file order in the widget value) — we
+    // keep paging until we find it, then scroll it into view once.
+    const initiallySelectedFirst = (pictureIdsWidget.value ?? "")
+        .split(",")
+        .map(s => Number(s.trim()))
+        .find(n => n > 0) ?? null;
+    let pendingScrollToId = initiallySelectedFirst;
+
     // -----------------------------------------------------------------------
     // Build DOM
     // -----------------------------------------------------------------------
@@ -185,10 +193,18 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     }
 
     function close() {
+        document.removeEventListener("keydown", onKeyDown, true);
         for (const item of itemElements) {
             if (item._objectUrl) URL.revokeObjectURL(item._objectUrl);
         }
         overlay.remove();
+    }
+
+    function onKeyDown(e) {
+        if (e.key === "Escape") {
+            e.preventDefault();
+            close();
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -303,7 +319,7 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
                     })
                     .catch(() => {});
 
-                // Click / shift-click selection
+                // Click / ctrl-click / shift-click selection
                 item.addEventListener("click", e => {
                     if (e.shiftKey && lastClickedIdx >= 0) {
                         const lo      = Math.min(lastClickedIdx, itemIdx);
@@ -316,9 +332,15 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
                             else         selectedIds.delete(other._picId);
                             highlight(other);
                         }
-                    } else {
+                    } else if (e.ctrlKey || e.metaKey) {
                         if (selectedIds.has(pic.id)) selectedIds.delete(pic.id);
                         else                          selectedIds.add(pic.id);
+                        highlight(item);
+                        lastClickedIdx = itemIdx;
+                    } else {
+                        selectedIds.clear();
+                        for (const other of itemElements) highlight(other);
+                        selectedIds.add(pic.id);
                         highlight(item);
                         lastClickedIdx = itemIdx;
                     }
@@ -335,6 +357,24 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
             }));
         } finally {
             loading = false;
+
+            // If we need to auto-scroll to a pre-selected item, find it now;
+            // otherwise keep paging until it shows up or the list is exhausted.
+            if (pendingScrollToId != null) {
+                const target = itemElements.find(e => e._picId === pendingScrollToId);
+                if (target) {
+                    pendingScrollToId = null;
+                    // Defer one frame so layout (thumbnail/img) is settled.
+                    requestAnimationFrame(() =>
+                        target.scrollIntoView({ block: "center" }));
+                } else if (!exhausted) {
+                    loadPage();
+                    return;
+                } else {
+                    pendingScrollToId = null;
+                }
+            }
+
             // If the grid isn't scrollable yet and there are more pages, keep loading.
             if (!exhausted && grid.scrollHeight <= grid.clientHeight) loadPage();
         }
@@ -346,6 +386,7 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
         offset    = 0;
         exhausted = false;
         lastClickedIdx = -1;
+        pendingScrollToId = null; // re-load (e.g. after filter change) cancels auto-scroll
         loadPage();
     }
 
@@ -376,6 +417,7 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     closeBtn.addEventListener("click",  close);
     cancelBtn.addEventListener("click", close);
     overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+    document.addEventListener("keydown", onKeyDown, true);
 
     confirmBtn.addEventListener("click", async () => {
         const ids = Array.from(selectedIds);

@@ -3,20 +3,16 @@
  *
  * Design
  * ──────
- * The Project / Set / Character / Sort picker widgets are registered as
- * *custom widget types* via `getCustomWidgets`.  This is the correct
- * ComfyUI hook for creating widgets whose type names aren't built-in
- * (STRING / INT / COMBO etc.).  Using it means:
+ * The Project / Set / Character pickers are declared on the Python side as
+ * standard COMBO inputs with a placeholder value.  After each node is
+ * created, we replace `widget.options.values` with a getter that returns a
+ * cached list fetched from the PixlStash server.  This way ComfyUI's stock
+ * combo widget handles all the UI (search popup, theming, sizing) and we
+ * only worry about data.
  *
- *   • ComfyUI never creates a DOM <textarea> for these inputs.
- *   • `toConcreteWidget()` in the new Vue-based frontend sees an
- *     unknown type and falls through to calling `widget.mouse`,
- *     which is our custom handler.
- *   • The widget value is serialised / deserialised normally.
- *
- * The Picture Loader Browse button is handled separately in
- * `beforeRegisterNodeDef` because it modifies an *existing* built-in
- * widget, not creates a new one.
+ * Saved values use the format `"<name> #<id>"` so the human-readable name
+ * is shown in the dropdown and the numeric ID can be recovered server-side
+ * by a simple regex (see ``nodes/*_loader.py``).
  */
 
 import { app } from "../../scripts/app.js";
@@ -31,8 +27,163 @@ const S_TOKEN = "PixlStash.APIToken";
 const S_SSL   = "PixlStash.VerifySSL";
 
 // Widget height helper (falls back gracefully if LiteGraph isn't loaded yet)
-const WH = () => (typeof LiteGraph !== "undefined" ? (LiteGraph.NODE_WIDGET_HEIGHT ?? 20) : 20);
-const MARGIN = 15;
+// ---------------------------------------------------------------------------
+// Version checking
+// ---------------------------------------------------------------------------
+
+/** Minimum required PixlStash server version per node type. */
+const NODE_MIN_VERSION = {
+    "PixlStashProjectLoader":   "1.2.0",
+    "PixlStashCharacterLoader": "1.2.0",
+    "PixlStashSetLoader":       "1.2.0",
+    "PixlStashPictureLoader":   "1.2.0",
+    "PixlStashPictureSaver":    "1.2.0",
+    "PixlStashSemanticSearch":  "1.2.0",
+    "PixlStashLikenessSearch":  "1.4.0",
+};
+
+// Cache: serverUrl → { state: "checking"|"resolved"|"error", version: string|null }
+const _versionCache = new Map();
+
+/** Strip pre-release suffixes and return [major, minor, patch]. */
+function _parseBaseVersion(str) {
+    const m = (str ?? "").match(/^(\d+)\.(\d+)\.(\d+)/);
+    return m ? [+m[1], +m[2], +m[3]] : null;
+}
+
+/**
+ * Returns true when serverVer ≥ requiredVer (comparing only major.minor.patch).
+ * Dev / RC tags on serverVer are stripped, treating them as the base release.
+ * e.g. "1.4.0.dev2" and "1.4.0rc1" both satisfy a "1.4.0" requirement.
+ */
+function _versionSatisfies(serverVer, requiredVer) {
+    const sv = _parseBaseVersion(serverVer);
+    const rv = _parseBaseVersion(requiredVer);
+    if (!sv || !rv) return true; // unparseable → don't block
+    for (let i = 0; i < 3; i++) {
+        if (sv[i] > rv[i]) return true;
+        if (sv[i] < rv[i]) return false;
+    }
+    return true; // equal
+}
+
+async function _fetchPixlStashVersion(creds) {
+    const params = new URLSearchParams({
+        url:        creds.url,
+        verify_ssl: creds.verifySsl ? "true" : "false",
+    });
+    const resp = await fetch(`/pixlstash/version?${params}`, {
+        headers: { "Authorization": `Bearer ${creds.token}` },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    // Accept both {"version":"1.4.0"} and plain "1.4.0"
+    const version = typeof data === "string" ? data : (data.version ?? null);
+    // Sanity-check: must start with digits (semver), not HTML or an error string.
+    if (!version || !/^\d+\.\d+/.test(version)) throw new Error(`Unexpected version: ${String(version).slice(0, 40)}`);
+    return version;
+}
+
+/**
+ * Return the current version-compatibility state for a node type.
+ * Triggers an async fetch on the first call per server URL; subsequent calls
+ * return the cached result.  `onRedraw` is called once when the fetch resolves
+ * so callers can trigger a canvas refresh.
+ *
+ * While checking or on error, returns { ok: true } (don't block normal UI).
+ */
+function _getVersionState(nodeTypeName, onRedraw) {
+    const required = NODE_MIN_VERSION[nodeTypeName];
+    if (!required) return { ok: true };
+
+    const creds = getSettingsCredentials();
+    if (!creds.url || !creds.token) return { ok: true }; // no credentials → don't block
+
+    const key = creds.url;
+    if (!_versionCache.has(key)) {
+        _versionCache.set(key, { state: "checking", version: null });
+        _fetchPixlStashVersion(creds)
+            .then(version => {
+                _versionCache.set(key, { state: "resolved", version });
+                onRedraw?.();
+            })
+            .catch(() => {
+                _versionCache.set(key, { state: "error", version: null });
+            });
+    }
+
+    const entry = _versionCache.get(key);
+    if (entry.state !== "resolved") return { ok: true }; // still fetching or error
+
+    return {
+        ok:       _versionSatisfies(entry.version, required),
+        required,
+        found:    entry.version,
+    };
+}
+
+/**
+ * Draw a "version too old" banner covering the node body.
+ * Returns true if the banner was drawn (node is incompatible), false otherwise.
+ * Coordinates are in LiteGraph node-local space (origin = body top-left).
+ */
+function _drawVersionBanner(ctx, node, nodeTypeName) {
+    const vs = _getVersionState(nodeTypeName, () => {
+        node.setDirtyCanvas?.(true, true);
+        app.graph?.setDirtyCanvas?.(true, true);
+    });
+    if (vs.ok) return false;
+
+    const W = node.size[0];
+    const H = node.size[1];
+
+    ctx.save();
+    ctx.fillStyle = "#5c0000";
+    ctx.beginPath();
+    ctx.roundRect(0, 0, W, H, 4);
+    ctx.fill();
+
+    ctx.fillStyle    = "#ffbbbb";
+    ctx.font         = "bold 11px Arial";
+    ctx.textAlign    = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`PixlStash ${vs.required} required`, W / 2, H / 2 - 9);
+    ctx.fillText(`but ${vs.found ?? "unknown"} found`,  W / 2, H / 2 + 9);
+
+    ctx.restore();
+    return true;
+}
+
+/**
+ * Draw a small "hostname  vX.Y.Z" label in the bottom-right corner of the node.
+ * Only shown when the server version has been successfully resolved.
+ * Skip drawing when the incompatibility banner already covers the node.
+ */
+function _drawServerInfo(ctx, node, nodeTypeName) {
+    // Piggy-back on _getVersionState to trigger the async fetch if not yet done.
+    const creds = getSettingsCredentials();
+    if (!creds.url) return;
+
+    const entry = _versionCache.get(creds.url);
+    if (!entry || entry.state !== "resolved" || !entry.version) return;
+
+    let hostname;
+    try { hostname = new URL(creds.url).hostname; }
+    catch { hostname = creds.url; }
+
+    const text = `${hostname}  v${entry.version}`;
+    const W = node.size[0];
+    const H = node.size[1];
+    const PAD = 4;
+
+    ctx.save();
+    ctx.font         = "9px Arial";
+    ctx.fillStyle    = "rgba(255,255,255,0.35)";
+    ctx.textAlign    = "right";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(text, W - PAD, H - PAD);
+    ctx.restore();
+}
 
 // ---------------------------------------------------------------------------
 // Credential helper — reads from ComfyUI Settings at call time
@@ -47,8 +198,17 @@ function getSettingsCredentials() {
 }
 
 /**
+ * Extract the numeric ID from a `"<name> #<id>"` combo selection,
+ * or return "" for the placeholder / "— None —" sentinels.
+ */
+function extractId(value) {
+    const m = String(value ?? "").match(/#(\d+)\s*$/);
+    return m ? m[1] : "";
+}
+
+/**
  * Follow the link on `inputName` to the origin node and read the widget
- * value for that output slot.  Used to get upstream IDs in Picture Loader.
+ * value for that output slot, returning the numeric ID portion only.
  */
 function getWiredValue(node, inputName) {
     const slotIdx = node.inputs?.findIndex(i => i.name === inputName);
@@ -65,7 +225,7 @@ function getWiredValue(node, inputName) {
 
     const outputName = origin.outputs?.[link.origin_slot]?.name;
     const w = origin.widgets?.find(w => w.name === outputName);
-    return w?.value ?? "";
+    return extractId(w?.value);
 }
 
 /**
@@ -101,261 +261,149 @@ async function proxyFetch(path, credentials, extraParams = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Fetch functions for each picker type
+// Combo value format helpers
+// ---------------------------------------------------------------------------
+//
+// Selected values are stored as `"<name> #<id>"` so the human-readable name
+// stays visible while Python can extract the ID server-side.
+
+const NONE_LABEL    = "— None —";
+const LOADING_LABEL = "(loading…)";
+
+const fmt = (id, name) => `${name ?? id} #${id}`;
+
+// ---------------------------------------------------------------------------
+// Fetch functions for each picker type — return arrays of formatted strings
 // ---------------------------------------------------------------------------
 
-// Wraps a fetch function to prepend a “— None —” entry.
-const withNoneOption = (fetchFn) => (node) =>
-    fetchFn(node).then(items => [{ value: "", label: "— None —" }, ...items]);
-
-async function fetchProjects(node) {
-    return proxyFetch("/pixlstash/projects", getSettingsCredentials())
-        .then(data => data.map(p => ({ value: String(p.id), label: p.name ?? String(p.id) })));
+async function fetchProjectOptions() {
+    const data = await proxyFetch("/pixlstash/projects", getSettingsCredentials());
+    return [NONE_LABEL, ...data.map(p => fmt(p.id, p.name))];
 }
 
-async function fetchSets(node) {
-    const pid   = findUpstreamProjectId(node);
-    const extra = pid ? { project_id: pid } : {};
-    return proxyFetch("/pixlstash/picture_sets", getSettingsCredentials(), extra)
-        .then(data => data
+async function fetchSetOptions(projectId) {
+    const extra = projectId ? { project_id: projectId } : {};
+    const data  = await proxyFetch("/pixlstash/picture_sets", getSettingsCredentials(), extra);
+    return [
+        NONE_LABEL,
+        ...data
             .filter(s => !s.reference_character)
-            .map(s => ({
-                value: String(s.id),
-                label: `${s.name ?? s.id} (${s.picture_count ?? "?"})`,
-            })));
+            .map(s => fmt(s.id, `${s.name ?? s.id} (${s.picture_count ?? "?"})`)),
+    ];
 }
 
-async function fetchCharacters(node) {
-    const pid   = findUpstreamProjectId(node);
-    const extra = pid ? { project_id: pid } : {};
-    return proxyFetch("/pixlstash/characters", getSettingsCredentials(), extra)
-        .then(data => data.map(c => ({ value: String(c.id), label: c.name ?? String(c.id) })));
-}
-
-
-// ---------------------------------------------------------------------------
-// Canvas drawing helpers
-// ---------------------------------------------------------------------------
-
-function truncateText(ctx, text, maxWidth) {
-    if (ctx.measureText(text).width <= maxWidth) return text;
-    let t = text;
-    while (t.length > 1 && ctx.measureText(t + "…").width > maxWidth) t = t.slice(0, -1);
-    return t + "…";
+async function fetchCharacterOptions(projectId) {
+    const extra = projectId ? { project_id: projectId } : {};
+    const data  = await proxyFetch("/pixlstash/characters", getSettingsCredentials(), extra);
+    return [NONE_LABEL, ...data.map(c => fmt(c.id, c.name))];
 }
 
 // ---------------------------------------------------------------------------
-// Custom widget factory  (used by getCustomWidgets)
+// Cache + dynamic options binding
 // ---------------------------------------------------------------------------
+//
+// One cache per (kind, projectId) tuple.  An entry has `items` (the list
+// returned to the combo widget) and `state` ('loading' | 'ready' | 'error').
+// The first read of `widget.options.values` kicks off the fetch; subsequent
+// reads return whatever is cached so the combobox can render synchronously.
+
+const _optsCache = new Map();
+
+function _cacheKey(kind, projectId) {
+    return `${kind}|${projectId ?? ""}`;
+}
+
+function _kickOffFetch(kind, projectId, node, widget) {
+    const key = _cacheKey(kind, projectId);
+    const entry = { items: [LOADING_LABEL], state: "loading" };
+    _optsCache.set(key, entry);
+
+    const fetcher =
+        kind === "projects"   ? fetchProjectOptions()
+      : kind === "sets"       ? fetchSetOptions(projectId)
+      : /* characters */        fetchCharacterOptions(projectId);
+
+    fetcher
+        .then(items => {
+            entry.items = items;
+            entry.state = "ready";
+            node.setDirtyCanvas?.(true, true);
+        })
+        .catch(err => {
+            entry.items = [`⚠ ${err.message}`];
+            entry.state = "error";
+            node.setDirtyCanvas?.(true, true);
+        });
+}
+
+/** Drop all cached entries for a kind so the next read re-fetches. */
+function _invalidateKind(kind) {
+    for (const k of [..._optsCache.keys()]) {
+        if (k.startsWith(`${kind}|`)) _optsCache.delete(k);
+    }
+}
 
 /**
- * Build a live-picker widget object.
- *
- * @param {string}   inputName  — widget name / serialisation key
- * @param {string}   defaultVal — default value
- * @param {Function} fetchFn    — async (node) → [{value, label}]
- * @returns {object} LiteGraph widget
+ * Replace `widget.options.values` with a getter returning cached items.
+ * `getProjectId` is called on each read so the set/character lists track
+ * the current upstream project selection.
  */
-function buildPickerWidget(inputName, defaultVal, fetchFn) {
-    let _label    = "";
-    let _loading  = false;
-    let _error    = null;
-
-    const widget = {
-        type:  "PS_DROPDOWN",
-        name:  inputName,
-        value: defaultVal,
-        // Serialise the selected ID, not the display label
-        serialize: true,
-
-        draw(ctx, node, widgetWidth, y, widgetHeight) {
-            const H = WH(); // fixed height — don't stretch to fill node
-            ctx.save();
-
-            // Background
-            ctx.fillStyle   = LiteGraph.WIDGET_BGCOLOR   ?? "#2a2a2a";
-            ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR ?? "#555";
-            ctx.lineWidth   = 1;
-            ctx.beginPath();
-            ctx.roundRect(MARGIN, y, widgetWidth - MARGIN * 2, H, 3);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.font         = "11px Arial";
-            ctx.textBaseline = "middle";
-
-            // If we have a value but no label yet (e.g. first draw after load),
-            // kick off a background label refresh without blocking the draw.
-            if (this.value && !_label && !_loading && !_error) {
-                _loading = true;
-                fetchFn(node)
-                    .then(items => {
-                        _loading = false;
-                        const match = items.find(i => i.value === String(this.value));
-                        if (match) { _label = match.label; _error = null; }
-                        node.setDirtyCanvas(true, true);
-                    })
-                    .catch(() => { _loading = false; });
+function bindDynamicValues(node, widget, kind, getProjectId) {
+    Object.defineProperty(widget.options, "values", {
+        configurable: true,
+        get() {
+            const pid = getProjectId();
+            const key = _cacheKey(kind, pid);
+            let entry = _optsCache.get(key);
+            if (!entry) {
+                _kickOffFetch(kind, pid, node, widget);
+                entry = _optsCache.get(key);
             }
-
-            if (_loading) {
-                ctx.fillStyle = "#888";
-                ctx.textAlign = "center";
-                ctx.fillText("Loading…", widgetWidth / 2, y + H / 2);
-            } else if (_error) {
-                ctx.fillStyle = "#f88";
-                ctx.textAlign = "left";
-                ctx.fillText(
-                    truncateText(ctx, `⚠ ${_error}`, widgetWidth - MARGIN * 2 - 8),
-                    MARGIN + 6, y + H / 2,
-                );
-            } else {
-                const label = _label || this.value || "(click to select)";
-                ctx.fillStyle = (this.value) ? (LiteGraph.WIDGET_TEXT_COLOR ?? "#ddd") : "#666";
-                ctx.textAlign = "left";
-                ctx.fillText(
-                    truncateText(ctx, label, widgetWidth - MARGIN * 2 - 24),
-                    MARGIN + 6, y + H / 2,
-                );
-                ctx.fillStyle = "#999";
-                ctx.textAlign = "right";
-                ctx.fillText("▼", widgetWidth - MARGIN - 5, y + H / 2);
+            // Make sure the currently-selected value is in the list so the
+            // combo widget displays it even after a workflow reload (before
+            // the fetch finishes the cache may not contain it yet).
+            const v = widget.value;
+            if (v && v !== LOADING_LABEL && !entry.items.includes(v)) {
+                return [v, ...entry.items];
             }
-
-            ctx.restore();
+            return entry.items;
         },
-
-        mouse(event, pos, node) {
-            // In new ComfyUI the event is a PointerEvent (type = "pointerdown")
-            // In old ComfyUI it's a MouseEvent (type = "mousedown")
-            // We only act on the initial press, not on release.
-            if (event.type !== "pointerdown" && event.type !== "mousedown") return false;
-
-            _loading = true;
-            _error   = null;
-            node.setDirtyCanvas(true, true);
-
-            // Capture the event for ContextMenu positioning
-            const capturedEvent = event;
-
-            fetchFn(node)
-                .then(items => {
-                    _loading = false;
-
-                    if (!items?.length) {
-                        _error = "No items found";
-                        node.setDirtyCanvas(true, true);
-                        return;
-                    }
-
-                    const menuItems = items.map(item => ({
-                        content:  item.label,
-                        callback: () => {
-                            widget.value = item.value;
-                            _label       = item.label;
-                            _error       = null;
-                            if (typeof widget.callback === "function") {
-                                widget.callback(widget.value);
-                            }
-                            if (typeof widget.onValueChange === "function") {
-                                widget.onValueChange(widget.value, node);
-                            }
-                            node.setDirtyCanvas(true, true);
-                        },
-                    }));
-
-                    new LiteGraph.ContextMenu(menuItems, { event: capturedEvent });
-                    node.setDirtyCanvas(true, true);
-                })
-                .catch(err => {
-                    _loading = false;
-                    _error   = err.message;
-                    node.setDirtyCanvas(true, true);
-                });
-
-            return true;
-        },
-
-        computeSize(width) {
-            return [width, WH()];
-        },
-
-        /** Clear selection — called when an upstream filter changes. */
-        reset() {
-            widget.value = "";
-            _label       = "";
-            _error       = null;
-        },
-
-        /**
-         * Optional hook called after the user confirms a new value.
-         * Signature: (newValue: string, node: LGraphNode) => void
-         */
-        onValueChange: null,
-
-        // Called on node load (onConfigure) to resolve the saved ID back to a label.
-        // Retries are scheduled because links may not be restored yet when
-        // onConfigure fires.
-        refreshLabel(node) {
-            if (!widget.value) return;
-
-            const attempt = (attemptsLeft) => {
-                fetchFn(node)
-                    .then(items => {
-                        const match = items.find(i => i.value === String(widget.value));
-                        if (match) {
-                            _label = match.label;
-                            _error = null;
-                            node.setDirtyCanvas(true, true);
-                        } else if (attemptsLeft > 0) {
-                            // Item not in list yet — graph may still be loading
-                            setTimeout(() => attempt(attemptsLeft - 1), 500);
-                        }
-                    })
-                    .catch(() => {
-                        // Credentials may not be configured yet; retry a few times
-                        if (attemptsLeft > 0) {
-                            setTimeout(() => attempt(attemptsLeft - 1), 500);
-                        }
-                    });
-            };
-
-            // First attempt after a short delay so graph links are restored
-            setTimeout(() => attempt(5), 200);
-        },
-    };
-
-    return widget;
+        set() { /* ignore writes — list is owned by the cache */ },
+    });
 }
 
-// ---------------------------------------------------------------------------
-// Cascade reset — called when an upstream project/set changes
-// ---------------------------------------------------------------------------
-
 /**
- * Walk all output links of `node` and reset every PS_DROPDOWN widget found
- * on the immediate and transitive downstream nodes.
- * This clears stale set_id / character_id selections after a project change.
+ * Reset all PixlStash combo widgets on downstream nodes to “— None —”
+ * and invalidate the sets/characters caches so they re-fetch with the
+ * new project filter.
  */
 function resetDownstreamFilters(node) {
-    for (const output of node.outputs ?? []) {
-        for (const linkId of output.links ?? []) {
-            const link = app.graph.links[linkId];
-            if (!link) continue;
-            const target = app.graph.getNodeById(link.target_id);
-            if (!target) continue;
-            let dirty = false;
-            for (const w of target.widgets ?? []) {
-                if (w.type === "PS_DROPDOWN" && typeof w.reset === "function") {
-                    w.reset();
-                    dirty = true;
+    _invalidateKind("sets");
+    _invalidateKind("characters");
+
+    const visited = new Set();
+    const walk = (n) => {
+        if (visited.has(n.id)) return;
+        visited.add(n.id);
+        for (const output of n.outputs ?? []) {
+            for (const linkId of output.links ?? []) {
+                const link = app.graph.links[linkId];
+                if (!link) continue;
+                const target = app.graph.getNodeById(link.target_id);
+                if (!target) continue;
+                let dirty = false;
+                for (const w of target.widgets ?? []) {
+                    if (w.name === "pixlstash_set" || w.name === "pixlstash_character") {
+                        w.value = NONE_LABEL;
+                        dirty = true;
+                    }
                 }
+                if (dirty) target.setDirtyCanvas(true, true);
+                walk(target);
             }
-            if (dirty) target.setDirtyCanvas(true, true);
-            // Recurse: Project → Set Loader → Character Loader
-            resetDownstreamFilters(target);
         }
-    }
+    };
+    walk(node);
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +450,8 @@ app.registerExtension({
                     const injectFor = [
                         "PixlStashPictureLoader",
                         "PixlStashPictureSaver",
+                        "PixlStashLikenessSearch",
+                        "PixlStashSemanticSearch",
                     ];
                     for (const nodeId in output) {
                         if (injectFor.includes(output[nodeId].class_type)) {
@@ -417,55 +467,70 @@ app.registerExtension({
     },
 
     // ------------------------------------------------------------------
-    // 2. Register custom widget types
-    //    Called before any nodes are created, so ComfyUI uses our
-    //    handlers when it sees these types in INPUT_TYPES.
-    // ------------------------------------------------------------------
-    getCustomWidgets(app) {
-        const make = (fetchFn) => (node, inputName, inputData) => {
-            const defaultVal = inputData[1]?.default ?? "";
-            const widget     = buildPickerWidget(inputName, defaultVal, fetchFn);
-            node.addCustomWidget(widget);
-
-            // When a workflow is loaded, the saved value is restored before
-            // onConfigure fires.  Hook it to resolve the ID back to a label.
-            const prevConfigure = node.onConfigure;
-            node.onConfigure = function (data) {
-                prevConfigure?.call(this, data);
-                widget.refreshLabel(this);
-            };
-
-            return { widget, minWidth: 160, minHeight: WH() };
-        };
-
-        // Project ID widget gets a cascade-reset hook so that changing the
-        // project automatically clears any selected set_id / character_id
-        // on all downstream nodes.
-        const makeProject = () => (node, inputName, inputData) => {
-            const defaultVal = inputData[1]?.default ?? "";
-            const widget     = buildPickerWidget(inputName, defaultVal, withNoneOption(fetchProjects));
-            widget.onValueChange = (_val, srcNode) => resetDownstreamFilters(srcNode);
-            node.addCustomWidget(widget);
-            const prevConfigure = node.onConfigure;
-            node.onConfigure = function (data) {
-                prevConfigure?.call(this, data);
-                widget.refreshLabel(this);
-            };
-            return { widget, minWidth: 160, minHeight: WH() };
-        };
-
-        return {
-            PIXLSTASH_PROJECT_ID: makeProject(),
-            PIXLSTASH_SET_ID:     make(withNoneOption(fetchSets)),
-            PIXLSTASH_CHAR_ID:    make(withNoneOption(fetchCharacters)),
-
-        };
-    },
-
-    // ------------------------------------------------------------------
-    // 3. Per-node customisation (non-custom-widget changes only)
+    // 2. Per-node customisation
     // ------------------------------------------------------------------
     async beforeRegisterNodeDef(nodeType, nodeData) {
+
+        // ============================================================
+        // Version banner — overlay all PixlStash nodes when server is
+        // older than the minimum required version for that node type.
+        // ============================================================
+        if (nodeData.name in NODE_MIN_VERSION) {
+            const _nodeTypeName = nodeData.name;
+            const _origFG = nodeType.prototype.onDrawForeground;
+            nodeType.prototype.onDrawForeground = function (ctx) {
+                _origFG?.call(this, ctx);
+                if (!_drawVersionBanner(ctx, this, _nodeTypeName)) {
+                    _drawServerInfo(ctx, this, _nodeTypeName);
+                }
+            };
+        }
+
+        // ============================================================
+        // Project Loader — dynamic project list + cascade reset
+        // ============================================================
+        if (nodeData.name === "PixlStashProjectLoader") {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+                const w = this.widgets?.find(x => x.name === "pixlstash_project");
+                if (!w) return;
+                bindDynamicValues(this, w, "projects", () => null);
+                const prevCb = w.callback;
+                w.callback = (...args) => {
+                    prevCb?.(...args);
+                    resetDownstreamFilters(this);
+                };
+            };
+        }
+
+        // ============================================================
+        // Set Loader — dynamic set list, filtered by upstream project
+        // ============================================================
+        if (nodeData.name === "PixlStashSetLoader") {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+                const w = this.widgets?.find(x => x.name === "pixlstash_set");
+                if (!w) return;
+                bindDynamicValues(this, w, "sets",
+                    () => findUpstreamProjectId(this) || null);
+            };
+        }
+
+        // ============================================================
+        // Character Loader — dynamic character list, filtered by upstream project
+        // ============================================================
+        if (nodeData.name === "PixlStashCharacterLoader") {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+                const w = this.widgets?.find(x => x.name === "pixlstash_character");
+                if (!w) return;
+                bindDynamicValues(this, w, "characters",
+                    () => findUpstreamProjectId(this) || null);
+            };
+        }
 
         // ============================================================
         // PixlStash Picture Loader  — Browse button + hide credential widgets
@@ -477,6 +542,21 @@ app.registerExtension({
 
                 const picIdsWidget = this.widgets?.find(w => w.name === "picture_ids");
                 if (!picIdsWidget) return;
+
+                // Re-load inline previews when a saved workflow is restored.
+                const prevConfigure = this.onConfigure;
+                this.onConfigure = function (data) {
+                    prevConfigure?.call(this, data);
+                    const ids = (picIdsWidget.value ?? "")
+                        .split(",")
+                        .map(s => Number(s.trim()))
+                        .filter(n => n > 0);
+
+                    const creds = getSettingsCredentials();
+                    if (creds.url && creds.token) {
+                        updateNodePreviews(this, ids, creds).catch(() => {});
+                    }
+                };
 
                 // Hide the raw text widget \u2014 values are managed by the Browse button.
                 picIdsWidget.hidden = true;
