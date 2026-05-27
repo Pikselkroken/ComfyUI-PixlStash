@@ -63,6 +63,8 @@ You can also use image embedding search with multiple images so you can combine 
 
 You can filter by project, character and set by providing those inputs.
 
+**Note:** Requires PixlStash v1.4 (for now only available as development releases)
+
 ### Semantic Search
 
 Search using a text string and the node will use PixlStash's semantic search feature to extract pictures based on similarity to the search.
@@ -70,6 +72,8 @@ Search using a text string and the node will use PixlStash's semantic search fea
 ![Semantic Search](SemanticSearch.jpg)
 
 You can filter by project, character and set by providing those inputs.
+
+**Note:** Requires PixlStash v1.4 (for now only available as development releases)
 
 ## Installation
 
