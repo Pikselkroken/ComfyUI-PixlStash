@@ -1,0 +1,302 @@
+{
+  "id": "pixlstash-search-to-set",
+  "revision": 0,
+  "last_node_id": 5,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PixlStashProjectLoader",
+      "pos": [
+        -980,
+        120
+      ],
+      "size": [
+        230,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": [
+            1,
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashProjectLoader",
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 2,
+      "type": "PixlStashSetLoader",
+      "pos": [
+        -700,
+        120
+      ],
+      "size": [
+        230,
+        90
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "link": 1,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": [
+            5
+          ]
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashSetLoader",
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 3,
+      "type": "PixlStashSemanticSearch",
+      "pos": [
+        -700,
+        360
+      ],
+      "size": [
+        320,
+        130
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "link": 2,
+          "shape": 7
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            3,
+            4
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": []
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": []
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": []
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashSemanticSearch",
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        "product shot on white background",
+        40,
+        0.55
+      ]
+    },
+    {
+      "id": 4,
+      "type": "PixlStashPictureSaver",
+      "pos": [
+        -320,
+        120
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "link": 5,
+          "shape": 7
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "link": 6,
+          "shape": 7
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "picture_ids",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashPictureSaver",
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        "semantic-pick",
+        true
+      ]
+    },
+    {
+      "id": 5,
+      "type": "PreviewImage",
+      "pos": [
+        50,
+        360
+      ],
+      "size": [
+        300,
+        280
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "PIXLSTASH_PROJECT"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "PIXLSTASH_PROJECT"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      2,
+      0,
+      4,
+      1,
+      "PIXLSTASH_PROJECT"
+    ],
+    [
+      6,
+      2,
+      1,
+      4,
+      2,
+      "PIXLSTASH_SET"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

@@ -11,6 +11,11 @@
 
 ---
 
+<div align="center">
+  <a href="examples/PixlStash-SearchImageEdit.json"><img src="ScreenshotSearchEdit.jpg" alt="Semantic search feeding a ComfyUI image-edit pipeline" width="100%"></a>
+  <p><sub>Semantic search → image edit, end to end. <a href="examples/PixlStash-SearchImageEdit.json">Open this workflow</a>.</sub></p>
+</div>
+
 ![Example workflow](Workflow.png)
 
 [Download example workflow](PixlStash-LoadAndSave.json)
@@ -74,6 +79,34 @@ Search using a text string and the node will use PixlStash's semantic search fea
 You can filter by project, character and set by providing those inputs.
 
 **Note:** Requires PixlStash v1.4 (for now only available as development releases)
+
+## Workflow examples
+
+Ready-to-load workflow JSON files live in the [`examples/`](examples/) directory. Click any screenshot to open its workflow.
+
+### Search → Image Edit
+
+Pull source images out of the vault by meaning, then run them through an edit pipeline.
+
+[![Semantic search feeding a ComfyUI image-edit pipeline](ScreenshotImageEdit.jpg)](examples/PixlStash-SearchImageEdit.json)
+
+→ [PixlStash-SearchImageEdit.json](examples/PixlStash-SearchImageEdit.json)
+
+### Outpaint
+
+Extend a loaded vault image beyond its original frame.
+
+[![Outpainting a vault image in ComfyUI](ScreenshotOutpaint.png)](examples/PixlStash-Outpaint.json)
+
+→ [PixlStash-Outpaint.json](examples/PixlStash-Outpaint.json)
+
+### Upscale
+
+Upscale a vault image and save the result back with metadata intact.
+
+[![Upscaling a vault image in ComfyUI](ScreenshotUpscale.jpg)](examples/PixlStash-Upscale.json)
+
+→ [PixlStash-Upscale.json](examples/PixlStash-Upscale.json)
 
 ## Installation
 

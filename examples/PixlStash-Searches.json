@@ -1,0 +1,905 @@
+{
+  "id": "ef4463fd-5ed2-4fd4-9663-953f73a1db59",
+  "revision": 0,
+  "last_node_id": 330,
+  "last_link_id": 576,
+  "nodes": [
+    {
+      "id": 322,
+      "type": "PixlStashSemanticSearch",
+      "pos": [
+        -1006.5896070272751,
+        1602.42614759164
+      ],
+      "size": [
+        275.76666259765625,
+        219.6666717529297
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": null
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": null
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            566
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": null
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": null
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": null
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "pixlstash",
+        "ver": "f11d61f0671a7b7be1bef6b620427b6c816fc2d1",
+        "Node name for S&R": "PixlStashSemanticSearch",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "man searching for photos",
+        9,
+        0.5
+      ]
+    },
+    {
+      "id": 323,
+      "type": "PreviewImage",
+      "pos": [
+        -690.4436477740953,
+        1608.9276096739989
+      ],
+      "size": [
+        362.3027522815048,
+        284.797255374418
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 566
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.22.0",
+        "Node name for S&R": "PreviewImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 328,
+      "type": "LoadImage",
+      "pos": [
+        -198.62558635300317,
+        1613.4064926215872
+      ],
+      "size": [
+        282.8199996948242,
+        314
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            574
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.22.0",
+        "Node name for S&R": "LoadImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "Liam Neeson.jpeg",
+        "image"
+      ]
+    },
+    {
+      "id": 327,
+      "type": "PixlStashLikenessSearch",
+      "pos": [
+        99.01464969802643,
+        1618.2486328444152
+      ],
+      "size": [
+        279.7155065965196,
+        302.3586586767435
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 574
+        },
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": null
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": null
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            575
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": null
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": null
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": null
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "pixlstash",
+        "ver": "f11d61f0671a7b7be1bef6b620427b6c816fc2d1",
+        "Node name for S&R": "PixlStashLikenessSearch",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "face_search",
+        "mean",
+        9,
+        9,
+        0.4
+      ]
+    },
+    {
+      "id": 329,
+      "type": "PreviewImage",
+      "pos": [
+        393.0873014372212,
+        1619.598961318726
+      ],
+      "size": [
+        496.456700764154,
+        290.8383007083527
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 575
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.22.0",
+        "Node name for S&R": "PreviewImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 325,
+      "type": "PixlStashPictureLoader",
+      "pos": [
+        -127.11383073984533,
+        2165.678180873513
+      ],
+      "size": [
+        297.2060818801908,
+        392.8099377668145
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": 569
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": null
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": 570
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            572
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": []
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": []
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": []
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "pixlstash",
+        "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
+        "Node name for S&R": "PixlStashPictureLoader",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        "14066",
+        null
+      ]
+    },
+    {
+      "id": 312,
+      "type": "PixlStashPictureLoader",
+      "pos": [
+        -116.55446724734958,
+        2616.491088285878
+      ],
+      "size": [
+        264.63999938964844,
+        382
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": 571
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": 541
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            568
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": []
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": []
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": []
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "pixlstash",
+        "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
+        "Node name for S&R": "PixlStashPictureLoader",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        "13933",
+        null
+      ]
+    },
+    {
+      "id": 313,
+      "type": "PixlStashCharacterLoader",
+      "pos": [
+        -522.9438707341255,
+        2172.554345944541
+      ],
+      "size": [
+        348.7662423657846,
+        122.42795973191642
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": [
+            569
+          ]
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": [
+            570
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "pixlstash",
+        "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
+        "Node name for S&R": "PixlStashCharacterLoader",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        "Bernhard #10"
+      ]
+    },
+    {
+      "id": 310,
+      "type": "PixlStashSetLoader",
+      "pos": [
+        -516.7168378751467,
+        2352.164896478151
+      ],
+      "size": [
+        338.1626343681545,
+        117.15213526924481
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": [
+            571
+          ]
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": [
+            541
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "pixlstash",
+        "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
+        "Node name for S&R": "PixlStashSetLoader",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        "Different situations (14) #137"
+      ]
+    },
+    {
+      "id": 324,
+      "type": "BatchImagesNode",
+      "pos": [
+        234.16228888932537,
+        2164.56258830818
+      ],
+      "size": [
+        169.26000213623047,
+        86
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "image0",
+          "name": "images.image0",
+          "type": "IMAGE",
+          "link": 572
+        },
+        {
+          "label": "image1",
+          "name": "images.image1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 568
+        },
+        {
+          "label": "image2",
+          "name": "images.image2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            573
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.22.0",
+        "Node name for S&R": "BatchImagesNode",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 319,
+      "type": "PixlStashLikenessSearch",
+      "pos": [
+        435.4425889249429,
+        2166.3124768936696
+      ],
+      "size": [
+        272.2833251953125,
+        254
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 573
+        },
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": null
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": null
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            555
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": null
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": null
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": null
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "pixlstash",
+        "ver": "f11d61f0671a7b7be1bef6b620427b6c816fc2d1",
+        "Node name for S&R": "PixlStashLikenessSearch",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "picture_likeness",
+        "min",
+        4,
+        4,
+        0.4
+      ]
+    },
+    {
+      "id": 320,
+      "type": "PreviewImage",
+      "pos": [
+        746.861228440026,
+        2166.446279272578
+      ],
+      "size": [
+        501.651059478143,
+        793.1904114280183
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 555
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.22.0",
+        "Node name for S&R": "PreviewImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      541,
+      310,
+      1,
+      312,
+      1,
+      "PIXLSTASH_SET"
+    ],
+    [
+      555,
+      319,
+      0,
+      320,
+      0,
+      "IMAGE"
+    ],
+    [
+      566,
+      322,
+      0,
+      323,
+      0,
+      "IMAGE"
+    ],
+    [
+      568,
+      312,
+      0,
+      324,
+      1,
+      "IMAGE"
+    ],
+    [
+      569,
+      313,
+      0,
+      325,
+      0,
+      "PIXLSTASH_PROJECT"
+    ],
+    [
+      570,
+      313,
+      1,
+      325,
+      2,
+      "PIXLSTASH_CHARACTER"
+    ],
+    [
+      571,
+      310,
+      0,
+      312,
+      0,
+      "PIXLSTASH_PROJECT"
+    ],
+    [
+      572,
+      325,
+      0,
+      324,
+      0,
+      "IMAGE"
+    ],
+    [
+      573,
+      324,
+      0,
+      319,
+      0,
+      "IMAGE"
+    ],
+    [
+      574,
+      328,
+      0,
+      327,
+      0,
+      "IMAGE"
+    ],
+    [
+      575,
+      327,
+      0,
+      329,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 2,
+      "title": "Semantic Search",
+      "bounding": [
+        -1034.9449339285263,
+        1517.0632160229925,
+        790.3157818807391,
+        435.5060405993563
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Face Likeness Search",
+      "bounding": [
+        -214.92755575373516,
+        1515.0815126740454,
+        1152.0154279475958,
+        435.505995236922
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Likeness Search Combining Several Concepts",
+      "bounding": [
+        -566.7533268225218,
+        2038.6758268176,
+        1838.1408482397787,
+        975.2399499409566
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "0246.VERSION": [
+      0,
+      0,
+      4
+    ],
+    "VHS_KeepIntermediate": true,
+    "VHS_MetadataImage": true,
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "ds": {
+      "scale": 0.41772481694157726,
+      "offset": [
+        1508.86840853512,
+        -1198.1526653776154
+      ]
+    },
+    "frontendVersion": "1.43.18",
+    "links_added_by_ue": [],
+    "ue_links": [],
+    "workflowRendererVersion": "Vue-corrected"
+  },
+  "version": 0.4
+}
