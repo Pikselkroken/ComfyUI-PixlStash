@@ -10,7 +10,7 @@ from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
 )
 
-VERSION = "1.0.0"
+VERSION = "1.1.2"
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
 
 
