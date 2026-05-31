@@ -1,0 +1,10 @@
+# Documentation/marketing assets — rendered from the GitHub repo, not needed in the registry package.
+*.jpg
+*.jpeg
+Workflow.png
+doc/
+examples/
+
+# Dev-only tooling
+venv/
+.ruff_cache/
