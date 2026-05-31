@@ -12,11 +12,11 @@
 ---
 
 <div align="center">
-  <a href="examples/PixlStash-SearchImageEdit.json"><img src="ScreenshotSearchEdit.jpg" alt="Semantic search feeding a ComfyUI image-edit pipeline" width="100%"></a>
+  <a href="examples/PixlStash-SearchImageEdit.json"><img src="screenshots/ScreenshotSearchEdit.jpg" alt="Semantic search feeding a ComfyUI image-edit pipeline" width="100%"></a>
   <p><sub>Semantic search → image edit, end to end. <a href="examples/PixlStash-SearchImageEdit.json">Open this workflow</a>.</sub></p>
 </div>
 
-![Example workflow](Workflow.png)
+![Example workflow](screenshots/Workflow.png)
 
 [Download example workflow](PixlStash-LoadAndSave.json)
 
@@ -60,11 +60,11 @@ Uploads images to PixlStash and optionally assigns them to a project, set, and/o
 
 Search for likeness to a provided face with facial features comparison. Add the face image with LoadImage or use the PixlStash Picture Loader to load it from the PixlStash database. The following uses a picture not in the PixlStash database.
 
-![Face Likeness](FaceLikenessSearch.jpg)
+![Face Likeness](screenshots/FaceLikenessSearch.jpg)
 
 You can also use image embedding search with multiple images so you can combine concepts. An old man and a young man drinking beer. The result here is 4 older men drinking beer.
 
-![Picture Likeness](MultiLikenessSearch.jpg)
+![Picture Likeness](screenshots/MultiLikenessSearch.jpg)
 
 You can filter by project, character and set by providing those inputs.
 
@@ -74,7 +74,7 @@ You can filter by project, character and set by providing those inputs.
 
 Search using a text string and the node will use PixlStash's semantic search feature to extract pictures based on similarity to the search.
 
-![Semantic Search](SemanticSearch.jpg)
+![Semantic Search](screenshots/SemanticSearch.jpg)
 
 You can filter by project, character and set by providing those inputs.
 
@@ -88,7 +88,7 @@ Ready-to-load workflow JSON files live in the [`examples/`](examples/) directory
 
 Pull source images out of the vault by meaning, then run them through an edit pipeline.
 
-[![Semantic search feeding a ComfyUI image-edit pipeline](ScreenshotImageEdit.jpg)](examples/PixlStash-SearchImageEdit.json)
+[![Semantic search feeding a ComfyUI image-edit pipeline](screenshots/ScreenshotImageEdit.jpg)](examples/PixlStash-SearchImageEdit.json)
 
 → [PixlStash-SearchImageEdit.json](examples/PixlStash-SearchImageEdit.json)
 
@@ -96,7 +96,7 @@ Pull source images out of the vault by meaning, then run them through an edit pi
 
 Extend a loaded vault image beyond its original frame.
 
-[![Outpainting a vault image in ComfyUI](ScreenshotOutpaint.png)](examples/PixlStash-Outpaint.json)
+[![Outpainting a vault image in ComfyUI](screenshots/ScreenshotOutpaint.jpg)](examples/PixlStash-Outpaint.json)
 
 → [PixlStash-Outpaint.json](examples/PixlStash-Outpaint.json)
 
@@ -104,7 +104,7 @@ Extend a loaded vault image beyond its original frame.
 
 Upscale a vault image and save the result back with metadata intact.
 
-[![Upscaling a vault image in ComfyUI](ScreenshotUpscale.jpg)](examples/PixlStash-Upscale.json)
+[![Upscaling a vault image in ComfyUI](screenshots/ScreenshotUpscale.jpg)](examples/PixlStash-Upscale.json)
 
 → [PixlStash-Upscale.json](examples/PixlStash-Upscale.json)
 
@@ -114,7 +114,7 @@ Upscale a vault image and save the result back with metadata intact.
 
 Search for **ComfyUI-PixlStash** in the Custom Nodes Manager and click Install.
 
-![Install via ComfyUI Manager](ScreenshotInstallation.jpg)
+![Install via ComfyUI Manager](screenshots/ScreenshotInstallation.jpg)
 
 ### Manual
 
