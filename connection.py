@@ -13,7 +13,7 @@ from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
 )
 
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
 
 # ComfyUI Settings keys (must match the IDs registered in web/js/combo_widgets.js).
@@ -63,7 +63,7 @@ def _comfy_settings() -> dict:
     except Exception:
         base = os.path.join(getattr(folder_paths, "base_path", "."), "user")
 
-    user_id = os.environ.get("PIXLSTASH_USER", "default")
+    user_id = os.environ.get("PIXLSTASH_USER", "").strip() or "default"
     candidates = [
         os.path.join(base, user_id, "comfy.settings.json"),
         os.path.join(base, "comfy.settings.json"),
