@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from ..connection import make_client
+from ..connection import make_client, read_credentials
 
 _POLL_INTERVAL = 0.5  # seconds between import-status polls
 
@@ -94,11 +94,6 @@ class PixlStashPictureSaver:
                 ),
             },
             "hidden": {
-                # Injected at runtime by the JS queuePrompt interceptor from
-                # ComfyUI Settings › PixlStash — never entered manually.
-                "url": "STRING",
-                "token": "STRING",
-                "verify_ssl": "BOOLEAN",
                 "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO",
             },
@@ -122,12 +117,15 @@ class PixlStashPictureSaver:
         prompt=None,
         extra_pnginfo=None,
     ):
-        if not url.strip() or not token.strip():
+        # Credentials are resolved server-side from ComfyUI Settings ->
+        # PixlStash (or PIXLSTASH_* env vars) and never injected into the prompt.
+        url, token, verify_ssl = read_credentials(url, token, verify_ssl)
+        if not url or not token:
             raise RuntimeError(
                 "PixlStash Picture Saver: URL and API Token are required. "
                 "Configure them in ComfyUI Settings \u203a PixlStash."
             )
-        client = make_client(url.strip(), token.strip(), verify_ssl)
+        client = make_client(url, token, verify_ssl)
 
         project_id = pixlstash_project.strip()
         set_id = pixlstash_set.strip()

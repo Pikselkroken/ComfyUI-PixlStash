@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ..connection import make_client
+from ..connection import make_client, read_credentials
 
 log = logging.getLogger(__name__)
 
@@ -98,11 +98,6 @@ class PixlStashSemanticSearch:
                     },
                 ),
             },
-            "hidden": {
-                "url": "STRING",
-                "token": "STRING",
-                "verify_ssl": "BOOLEAN",
-            },
         }
 
     # ------------------------------------------------------------------
@@ -119,7 +114,10 @@ class PixlStashSemanticSearch:
         token: str = "",
         verify_ssl: bool = True,
     ):
-        if not url.strip() or not token.strip():
+        # Credentials are resolved server-side from ComfyUI Settings ->
+        # PixlStash (or PIXLSTASH_* env vars) and never injected into the prompt.
+        url, token, verify_ssl = read_credentials(url, token, verify_ssl)
+        if not url or not token:
             raise RuntimeError(
                 "PixlStash Semantic Search: URL and API Token are required. "
                 "Configure them in ComfyUI Settings › PixlStash."
@@ -127,7 +125,7 @@ class PixlStashSemanticSearch:
         if not query.strip():
             raise RuntimeError("PixlStash Semantic Search: query must not be empty.")
 
-        client = make_client(url.strip(), token.strip(), verify_ssl)
+        client = make_client(url, token, verify_ssl)
 
         params: dict[str, object] = {
             "query": query.strip(),

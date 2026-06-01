@@ -30,7 +30,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ..connection import make_client
+from ..connection import make_client, read_credentials
 
 log = logging.getLogger(__name__)
 
@@ -163,11 +163,6 @@ class PixlStashLikenessSearch:
                     },
                 ),
             },
-            "hidden": {
-                "url": "STRING",
-                "token": "STRING",
-                "verify_ssl": "BOOLEAN",
-            },
         }
 
     # ------------------------------------------------------------------
@@ -187,13 +182,16 @@ class PixlStashLikenessSearch:
         token: str = "",
         verify_ssl: bool = True,
     ):
-        if not url.strip() or not token.strip():
+        # Credentials are resolved server-side from ComfyUI Settings ->
+        # PixlStash (or PIXLSTASH_* env vars) and never injected into the prompt.
+        url, token, verify_ssl = read_credentials(url, token, verify_ssl)
+        if not url or not token:
             raise RuntimeError(
                 "PixlStash Likeness Search: URL and API Token are required. "
                 "Configure them in ComfyUI Settings › PixlStash."
             )
 
-        client = make_client(url.strip(), token.strip(), verify_ssl)
+        client = make_client(url, token, verify_ssl)
 
         endpoint = SEARCH_ENDPOINTS.get(
             search_mode, SEARCH_ENDPOINTS["picture_likeness"]

@@ -24,7 +24,7 @@
 
 ComfyUI-PixlStash connects your ComfyUI workflows directly to a PixlStash vault. You can browse and load images by project, set, or character, run them through any pipeline, and save the results back with full metadata and optional workflow embedding.
 
-Connection credentials (URL and API token) are configured once in **ComfyUI Settings > PixlStash** and are injected automatically at runtime. They never appear as node widgets.
+Connection credentials (URL and API token) are configured once in **ComfyUI Settings > PixlStash** and are read by the nodes at runtime. They never appear as node widgets or in saved workflow JSON. For headless / API-only servers you can instead set the `PIXLSTASH_URL`, `PIXLSTASH_API_TOKEN`, and `PIXLSTASH_VERIFY_SSL` environment variables.
 
 ## Nodes
 

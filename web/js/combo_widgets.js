@@ -438,32 +438,10 @@ app.registerExtension({
             defaultValue: true,
             tooltip:      "Disable to accept self-signed certificates.",
         });
-        // Inject credentials from Settings into PictureLoader / PictureSaver
-        // nodes just before execution so they reach Python without appearing
-        // in the UI or being saved into exported workflow JSON.
-        const _origQueuePrompt = app.api.queuePrompt?.bind(app.api);
-        if (_origQueuePrompt) {
-            app.api.queuePrompt = async function (number, promptData) {
-                const output = promptData?.output;
-                if (output) {
-                    const creds     = getSettingsCredentials();
-                    const injectFor = [
-                        "PixlStashPictureLoader",
-                        "PixlStashPictureSaver",
-                        "PixlStashLikenessSearch",
-                        "PixlStashSemanticSearch",
-                    ];
-                    for (const nodeId in output) {
-                        if (injectFor.includes(output[nodeId].class_type)) {
-                            output[nodeId].inputs.url        = creds.url;
-                            output[nodeId].inputs.token      = creds.token;
-                            output[nodeId].inputs.verify_ssl = creds.verifySsl;
-                        }
-                    }
-                }
-                return _origQueuePrompt(number, promptData);
-            };
-        }
+        // Credentials (URL / token / Verify SSL) live only in these ComfyUI
+        // settings.  ComfyUI persists them server-side, so the PixlStash nodes
+        // read them directly at execution time (see connection.read_credentials).
+        // Nothing is injected into the prompt or saved into workflow JSON.
     },
 
     // ------------------------------------------------------------------
