@@ -183,7 +183,7 @@ class PixlStashLikenessSearch:
         verify_ssl: bool = True,
     ):
         # Credentials are resolved server-side from ComfyUI Settings ->
-        # PixlStash (or PIXLSTASH_* env vars) and never injected into the prompt.
+        # PixlStash and never injected into the prompt.
         url, token, verify_ssl = read_credentials(url, token, verify_ssl)
         if not url or not token:
             raise RuntimeError(

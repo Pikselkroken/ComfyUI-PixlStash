@@ -13,7 +13,7 @@ from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
 )
 
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
 
 # ComfyUI Settings keys (must match the IDs registered in web/js/combo_widgets.js).
@@ -32,7 +32,7 @@ def make_client(url: str, token: str, verify_ssl: bool = True) -> "PixlStashClie
 
 
 def _as_bool(value, default: bool = True) -> bool:
-    """Coerce a settings / env value to bool (accepts JSON bools and strings)."""
+    """Coerce a settings value to bool (accepts JSON bools and strings)."""
     if isinstance(value, bool):
         return value
     if value is None:
@@ -46,12 +46,9 @@ def _comfy_settings() -> dict:
     """Read ComfyUI's persisted frontend settings (a flat key→value dict).
 
     ComfyUI writes the values set in its Settings panel to
-    ``<user_directory>/<user>/comfy.settings.json`` server-side, so node
+    ``<user_directory>/default/comfy.settings.json`` server-side, so node
     execution can read them directly without the browser injecting anything
     into the prompt.  Returns ``{}`` if the file cannot be located or parsed.
-
-    The user id defaults to ``"default"`` (single-user installs); set the
-    ``PIXLSTASH_USER`` env var for a ``--multi-user`` server.
     """
     try:
         import folder_paths  # noqa: PLC0415 — only available inside ComfyUI
@@ -63,9 +60,8 @@ def _comfy_settings() -> dict:
     except Exception:
         base = os.path.join(getattr(folder_paths, "base_path", "."), "user")
 
-    user_id = os.environ.get("PIXLSTASH_USER", "").strip() or "default"
     candidates = [
-        os.path.join(base, user_id, "comfy.settings.json"),
+        os.path.join(base, "default", "comfy.settings.json"),
         os.path.join(base, "comfy.settings.json"),
     ]
     for path in candidates:
@@ -88,13 +84,11 @@ def read_credentials(
     """Resolve PixlStash credentials for server-side node execution.
 
     Resolution order (first non-empty wins): explicit arguments →
-    ``PIXLSTASH_URL`` / ``PIXLSTASH_API_TOKEN`` / ``PIXLSTASH_VERIFY_SSL``
-    environment variables → ComfyUI Settings (``PixlStash.*``).
+    ComfyUI Settings (``PixlStash.*``).
 
     Credentials are configured in ComfyUI Settings -> PixlStash, which ComfyUI
     persists server-side, so the token never travels through the prompt or the
-    saved workflow JSON.  Environment variables additionally support headless /
-    API-only servers where there is no browser to populate the Settings panel.
+    saved workflow JSON.
     """
     url = (url or "").strip()
     token = (token or "").strip()
@@ -102,20 +96,12 @@ def read_credentials(
     settings = _comfy_settings() if (not url or not token) else {}
 
     if not url:
-        url = (
-            os.environ.get("PIXLSTASH_URL", "").strip()
-            or str(settings.get(_SETTING_URL, "") or "").strip()
-        )
+        url = str(settings.get(_SETTING_URL, "") or "").strip()
     if not token:
-        token = (
-            os.environ.get("PIXLSTASH_API_TOKEN", "").strip()
-            or str(settings.get(_SETTING_TOKEN, "") or "").strip()
-        )
+        token = str(settings.get(_SETTING_TOKEN, "") or "").strip()
 
     if _SETTING_SSL in settings:
         verify_ssl = _as_bool(settings.get(_SETTING_SSL))
-    if "PIXLSTASH_VERIFY_SSL" in os.environ:
-        verify_ssl = _as_bool(os.environ.get("PIXLSTASH_VERIFY_SSL"))
 
     return url, token, verify_ssl
 
