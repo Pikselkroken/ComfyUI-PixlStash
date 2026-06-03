@@ -3,6 +3,11 @@ screenshots/
 doc/
 examples/
 
+# Screen recordings / demo captures — large, never needed in the runtime artifact.
+*.mp4
+*.mov
+*.webm
+
 # Dev-only tooling
 venv/
 .ruff_cache/
