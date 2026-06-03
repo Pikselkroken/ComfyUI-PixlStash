@@ -23,6 +23,7 @@ from .nodes.picture_loader import PixlStashPictureLoader
 from .nodes.picture_saver import PixlStashPictureSaver
 from .nodes.likeness_search import PixlStashLikenessSearch
 from .nodes.face_likeness_gate import PixlStashFaceLikenessGate
+from .nodes.picture_likeness_gate import PixlStashPictureLikenessGate
 from .nodes.semantic_search import PixlStashSemanticSearch
 from .proxy_routes import register_routes
 
@@ -36,6 +37,7 @@ NODE_CLASS_MAPPINGS = {
     "PixlStashPictureSaver": PixlStashPictureSaver,
     "PixlStashLikenessSearch": PixlStashLikenessSearch,
     "PixlStashFaceLikenessGate": PixlStashFaceLikenessGate,
+    "PixlStashPictureLikenessGate": PixlStashPictureLikenessGate,
     "PixlStashSemanticSearch": PixlStashSemanticSearch,
 }
 
@@ -47,6 +49,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixlStashPictureSaver": "PixlStash Picture Saver",
     "PixlStashLikenessSearch": "PixlStash Likeness Search",
     "PixlStashFaceLikenessGate": "PixlStash Face Likeness Gate",
+    "PixlStashPictureLikenessGate": "PixlStash Picture Likeness Gate",
     "PixlStashSemanticSearch": "PixlStash Semantic Search",
 }
 

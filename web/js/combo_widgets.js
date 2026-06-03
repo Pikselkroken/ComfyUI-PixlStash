@@ -41,6 +41,7 @@ const NODE_MIN_VERSION = {
     "PixlStashSemanticSearch":  "1.2.0",
     "PixlStashLikenessSearch":  "1.4.0",
     "PixlStashFaceLikenessGate": "1.6.0",
+    "PixlStashPictureLikenessGate": "1.4.0",
 };
 
 // Cache: serverUrl → { state: "checking"|"resolved"|"error", version: string|null }

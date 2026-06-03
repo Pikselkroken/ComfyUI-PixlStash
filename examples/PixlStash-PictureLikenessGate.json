@@ -1,0 +1,330 @@
+{
+  "id": "pixlstash-picture-likeness-gate",
+  "revision": 0,
+  "last_node_id": 6,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PixlStashProjectLoader",
+      "pos": [
+        -980,
+        120
+      ],
+      "size": [
+        230,
+        60
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashProjectLoader",
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 2,
+      "type": "PixlStashSetLoader",
+      "pos": [
+        -700,
+        120
+      ],
+      "size": [
+        230,
+        90
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "link": 1,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": []
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashSetLoader",
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "title": "Reference set",
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 3,
+      "type": "PixlStashPictureLoader",
+      "pos": [
+        -700,
+        280
+      ],
+      "size": [
+        264,
+        350
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": []
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": []
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": []
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashPictureLoader",
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "title": "Generations to gate",
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 4,
+      "type": "PixlStashPictureLikenessGate",
+      "pos": [
+        -400,
+        120
+      ],
+      "size": [
+        260,
+        130
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "accepted",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        },
+        {
+          "name": "rejected",
+          "type": "IMAGE",
+          "links": [
+            5
+          ]
+        },
+        {
+          "name": "accepted_count",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "rejected_count",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashPictureLikenessGate",
+        "aux_id": "Pikselkroken/ComfyUI-PixlStash"
+      },
+      "widgets_values": [
+        "min",
+        0.25
+      ]
+    },
+    {
+      "id": 5,
+      "type": "PreviewImage",
+      "pos": [
+        -100,
+        120
+      ],
+      "size": [
+        300,
+        280
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [],
+      "title": "Accepted",
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 6,
+      "type": "PreviewImage",
+      "pos": [
+        -100,
+        430
+      ],
+      "size": [
+        300,
+        280
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "title": "Rejected",
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "PIXLSTASH_PROJECT"
+    ],
+    [
+      2,
+      2,
+      1,
+      4,
+      1,
+      "PIXLSTASH_SET"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      4,
+      1,
+      6,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
