@@ -70,6 +70,16 @@ You can filter by project, character and set by providing those inputs.
 
 **Note:** Requires PixlStash v1.4 (for now only available as development releases)
 
+### Picture Likeness Gate
+
+Splits a batch of generations into `accepted` and `rejected` outputs by judging each frame's whole-image likeness against a reference **picture set**. Wire a batch of generated images plus a **Set Loader** into the gate, pick a `combine` mode and a `threshold`, and route `accepted` into an upscale / save branch while `rejected` goes nowhere or to a "rejects" saver — so you never waste compute polishing an off-target render. Also outputs `accepted_count` / `rejected_count`, and passes the reference set through so an accepted branch can be saved straight back into the same set.
+
+Each frame is scored against every member of the set. The `combine` mode decides how those per-member scores become one verdict — the default `min` means **must match all** (a `[monkey, banana, bicycle]` reference set keeps only frames that resemble all three), while `max` matches any one and the means fall in between.
+
+Scoring is read-only and synchronous: each frame is sent as the query image to PixlStash's image-likeness search with the set as the corpus, so the server embeds it on the fly and ranks it against the set's members. **Nothing is uploaded to your vault, nothing is persisted, and no write scope is needed** — there's no import step and no embedding-readiness wait. (Cost is one request per frame; the reference set must have ≤ 500 members.)
+
+**Note:** Requires PixlStash v1.4 (for now only available as development releases). A read-scope token is sufficient.
+
 ### Semantic Search
 
 Search using a text string and the node will use PixlStash's semantic search feature to extract pictures based on similarity to the search.
@@ -99,6 +109,12 @@ Extend a loaded vault image beyond its original frame.
 [![Outpainting a vault image in ComfyUI](screenshots/ScreenshotOutpaint.jpg)](examples/PixlStash-Outpaint.json)
 
 → [PixlStash-Outpaint.json](examples/PixlStash-Outpaint.json)
+
+### Picture Likeness Gate
+
+Generate wide, keep only the frames that match a reference picture set, and preview the accepted and rejected streams side by side — no vault writes required.
+
+→ [PixlStash-PictureLikenessGate.json](examples/PixlStash-PictureLikenessGate.json)
 
 ### Upscale
 
