@@ -30,7 +30,7 @@ class ExtractIdTests(unittest.TestCase):
         payloads = [
             "../../../../etc/passwd #5",  # path traversal in the name part
             "#5/../../etc/passwd",  # traversal AFTER the id
-            "#5; rm -rf /",  # shell metacharacters
+            "#5; ls -la /",  # shell metacharacters
             "' OR '1'='1 #1",  # SQL-ish
             "<img src=x onerror=alert(1)> #3",  # XSS-ish
             "#5\n#9",  # newline smuggling
