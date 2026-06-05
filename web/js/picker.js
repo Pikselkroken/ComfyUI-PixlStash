@@ -218,13 +218,17 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     ];
 
     function buildSortOptions(mechanisms) {
-        sortSel.innerHTML = mechanisms
-            .filter(m => (m.key ?? m.sort_key ?? m.name) !== "LIKENESS_GROUPS")
-            .map(m => {
-                const k = m.key ?? m.sort_key ?? m.name ?? String(m);
-                const l = m.label ?? m.description ?? k;
-                return `<option value="${k}">${l}</option>`;
-            }).join("");
+        // Build <option>s via the DOM (textContent), not innerHTML — the
+        // labels/keys come from the server and must not be parsed as HTML.
+        sortSel.replaceChildren(
+            ...mechanisms
+                .filter(m => (m.key ?? m.sort_key ?? m.name) !== "LIKENESS_GROUPS")
+                .map(m => {
+                    const k = m.key ?? m.sort_key ?? m.name ?? String(m);
+                    const l = m.label ?? m.description ?? k;
+                    return el("option", { value: String(k), textContent: String(l) });
+                }),
+        );
     }
 
     buildSortOptions(FALLBACK_SORTS);
@@ -235,9 +239,15 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     // Populate likeness character dropdown
     proxyFetch("/pixlstash/characters", credentials)
         .then(chars => {
-            likenessSel.innerHTML = chars
-                .map(c => `<option value="${c.id}">${c.name ?? c.id}</option>`)
-                .join("");
+            // textContent, not innerHTML — character names are server data.
+            likenessSel.replaceChildren(
+                ...chars.map(c =>
+                    el("option", {
+                        value:       String(c.id),
+                        textContent: String(c.name ?? c.id),
+                    }),
+                ),
+            );
         })
         .catch(err => console.warn("[PixlStash picker] characters:", err.message));
 
