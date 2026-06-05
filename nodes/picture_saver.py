@@ -132,31 +132,41 @@ class PixlStashPictureSaver:
         character_id = pixlstash_character.strip()
 
         # Encode each tensor to PNG bytes.
-        files: list[tuple[str, bytes]] = []
+        encoded: list[bytes] = []
         for idx in range(images.shape[0]):
             img_np = (images[idx].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np, mode="RGB")
-            filename = f"{filename_prefix}_{idx + 1:05d}.png"
-            files.append(
-                (
-                    filename,
-                    self._encode_png(
-                        pil_img,
-                        save_workflow=save_workflow,
-                        prompt=prompt,
-                        extra_pnginfo=extra_pnginfo,
-                    ),
+            encoded.append(
+                self._encode_png(
+                    pil_img,
+                    save_workflow=save_workflow,
+                    prompt=prompt,
+                    extra_pnginfo=extra_pnginfo,
                 )
             )
 
-        # Write previews to ComfyUI's temp directory before uploading.
-        preview_images: list[dict] = []
+        # Resolve a safe output location.  folder_paths.get_save_image_path
+        # strips any path traversal / absolute path out of filename_prefix and
+        # guarantees the resolved folder stays inside ComfyUI's temp directory,
+        # so a hostile filename_prefix (e.g. in a shared workflow) cannot escape
+        # it to write elsewhere on disk.
         temp_dir = folder_paths.get_temp_directory()
-        for fname, png_bytes in files:
-            temp_path = os.path.join(temp_dir, fname)
-            with open(temp_path, "wb") as fh:
+        full_output_folder, base_name, counter, subfolder, _ = (
+            folder_paths.get_save_image_path(filename_prefix, temp_dir)
+        )
+        os.makedirs(full_output_folder, exist_ok=True)
+
+        # Write previews to the (contained) temp directory before uploading.
+        files: list[tuple[str, bytes]] = []
+        preview_images: list[dict] = []
+        for offset, png_bytes in enumerate(encoded):
+            fname = f"{base_name}_{counter + offset:05d}.png"
+            with open(os.path.join(full_output_folder, fname), "wb") as fh:
                 fh.write(png_bytes)
-            preview_images.append({"filename": fname, "subfolder": "", "type": "temp"})
+            files.append((fname, png_bytes))
+            preview_images.append(
+                {"filename": fname, "subfolder": subfolder, "type": "temp"}
+            )
 
         new_ids, all_ids = self._upload(client, files, project_id=project_id)
 
