@@ -141,6 +141,26 @@ After installation, restart ComfyUI and configure your PixlStash URL and API tok
 > rather than risk using someone else's. Run a separate single-user ComfyUI
 > instance for each PixlStash user.
 
+## Development
+
+Run the test suite (stdlib `unittest`, no running ComfyUI required):
+
+```bash
+python -m unittest discover -s tests
+```
+
+The tests stub ComfyUI's runtime modules, so only `requests` needs to be
+installed (`pip install -r requirements.txt`). They cover the security-sensitive
+paths: the multi-user guard, the proxy SSRF/auth checks, loader id extraction,
+and Picture Saver path containment.
+
+Lint and format with [ruff](https://docs.astral.sh/ruff/):
+
+```bash
+ruff check .
+ruff format .
+```
+
 ## License
 
 Open Source MIT License. See [LICENSE](LICENSE).
