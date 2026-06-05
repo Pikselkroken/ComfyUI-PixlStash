@@ -70,6 +70,14 @@ You can filter by project, character and set by providing those inputs.
 
 **Note:** Requires PixlStash v1.4 (for now only available as development releases)
 
+### Face Likeness Gate
+
+Keeps only the generations that actually match a reference character. Wire a batch of generated images plus a **Character Loader** into the gate, set a likeness `threshold`, and it splits the batch into two streams — `accepted` (faces at or above the threshold) and `rejected` (off‑model renders or frames with no detectable face) — along with `accepted_count` / `rejected_count`. Route `accepted` into an upscale / save branch and send `rejected` to a "scrapheap" preview, so you never waste compute polishing a bad match.
+
+Face likeness is scored server‑side, so the node imports each frame, waits for the face‑extraction worker to embed it (polling the same way the Picture Saver does), reads its likeness to the character, then filters. By default the scratch imports it creates are deleted afterwards (`cleanup`), keeping your vault clean — pictures that already existed in the vault are never deleted. The reference character is passed through so an accepted branch can be saved back tagged to the same character without re‑wiring.
+
+**Note:** Requires PixlStash v1.4+ and a running face‑extraction worker. The Saver/Gate need a token with **write** scope (they import and clean up scratch pictures).
+
 ### Semantic Search
 
 Search using a text string and the node will use PixlStash's semantic search feature to extract pictures based on similarity to the search.
@@ -99,6 +107,20 @@ Extend a loaded vault image beyond its original frame.
 [![Outpainting a vault image in ComfyUI](screenshots/ScreenshotOutpaint.jpg)](examples/PixlStash-Outpaint.json)
 
 → [PixlStash-Outpaint.json](examples/PixlStash-Outpaint.json)
+
+### Face Likeness Gate
+
+Filter a batch of generations down to only the frames that match a reference character, previewing the accepted and rejected streams side by side.
+
+[![Face Likeness Gate splitting a batch into accepted and rejected by character match](screenshots/FaceLikenessGate.jpg)](examples/PixlStash-FaceLikenessGate.json)
+
+→ [PixlStash-FaceLikenessGate.json](examples/PixlStash-FaceLikenessGate.json)
+
+Or run it end to end: generate with a character LoRA, gate by face likeness, then upscale the accepted frames and save the accepted and rejected streams back to separate sets.
+
+[![Generate with a character LoRA, gate by face likeness, then upscale and save the matches](screenshots/FaceLikenessGateUpscale.jpg)](examples/PixlStash-FaceLikenessGate-Upscale.json)
+
+→ [PixlStash-FaceLikenessGate-Upscale.json](examples/PixlStash-FaceLikenessGate-Upscale.json)
 
 ### Upscale
 

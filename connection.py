@@ -252,3 +252,8 @@ class PixlStashClient:
         self, path: str, *, is_write: bool = False, **kwargs
     ) -> requests.Response:
         return self._request("PATCH", path, is_write=is_write, **kwargs)
+
+    def delete(
+        self, path: str, *, is_write: bool = False, **kwargs
+    ) -> requests.Response:
+        return self._request("DELETE", path, is_write=is_write, **kwargs)
