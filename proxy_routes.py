@@ -4,7 +4,11 @@ The browser cannot reach a PixlStash instance directly in all cases
 (CORS restrictions, self-signed TLS certificates, private network
 addresses).  These thin aiohttp routes act as authenticated proxies:
 
-* ``url`` and ``verify_ssl`` travel as query parameters (not sensitive).
+* The target server URL and SSL setting are resolved server-side from
+  ComfyUI's persisted settings (the same ``comfy.settings.json`` the nodes
+  read), NOT from the request, so these routes cannot be pointed at an
+  arbitrary host (SSRF).  Any ``url`` / ``verify_ssl`` query params sent by
+  older clients are ignored.
 * The bearer token travels in the ``Authorization: Bearer <token>``
   header and is never echoed back or logged.
 
@@ -24,7 +28,7 @@ import logging
 
 from aiohttp import web
 
-from .connection import PixlStashClient
+from .connection import PixlStashClient, read_credentials
 
 log = logging.getLogger(__name__)
 
@@ -35,23 +39,34 @@ log = logging.getLogger(__name__)
 
 
 def _build_client(request: web.Request) -> PixlStashClient:
-    """Extract connection params from *request* and return a client.
+    """Build a client for the *configured* PixlStash server.
 
-    Raises ``web.HTTPBadRequest`` on missing / malformed parameters.
+    The target URL and SSL setting come from ComfyUI's persisted settings,
+    never from the request, so these proxy routes cannot be aimed at an
+    attacker-chosen host (SSRF).  The caller must still present the API token
+    in the Authorization header.
+
+    Raises ``web.HTTPBadRequest`` on a missing token or unconfigured server.
     """
-    url = request.rel_url.query.get("url", "").strip()
-    if not url:
-        raise web.HTTPBadRequest(reason="Missing 'url' query parameter.")
-
-    verify_ssl_str = request.rel_url.query.get("verify_ssl", "true").lower()
-    verify_ssl = verify_ssl_str not in ("false", "0", "no")
-
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         raise web.HTTPBadRequest(
             reason="Missing or invalid Authorization header (expected 'Bearer <token>')."
         )
     token = auth[len("Bearer ") :]
+
+    # Resolve URL + verify_ssl from ComfyUI Settings and ignore any
+    # client-supplied values, so the proxy can only ever reach the user's own
+    # configured instance.
+    url, _settings_token, verify_ssl = read_credentials()
+    if not url:
+        raise web.HTTPBadRequest(
+            reason="PixlStash Server URL is not configured in ComfyUI Settings › PixlStash."
+        )
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise web.HTTPBadRequest(
+            reason="Configured PixlStash Server URL must start with http:// or https://."
+        )
 
     return PixlStashClient(base_url=url, api_token=token, verify_ssl=verify_ssl)
 
