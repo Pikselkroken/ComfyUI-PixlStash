@@ -135,6 +135,12 @@ After installation, restart ComfyUI and configure your PixlStash URL and API tok
 | API Token | Token with the required read or write scope |
 | Verify SSL | Whether to validate the server certificate |
 
+> **Multi-user is not supported.** PixlStash doesn't work with ComfyUI's
+> `--multi-user` mode. ComfyUI doesn't tell a node which user submitted the
+> running prompt, so the nodes can't pick that user's token and refuse to run
+> rather than risk using someone else's. Run a separate single-user ComfyUI
+> instance for each PixlStash user.
+
 ## License
 
 Open Source MIT License. See [LICENSE](LICENSE).

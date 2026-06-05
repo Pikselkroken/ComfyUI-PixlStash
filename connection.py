@@ -21,6 +21,12 @@ _SETTING_URL = "PixlStash.ServerURL"
 _SETTING_TOKEN = "PixlStash.APIToken"
 _SETTING_SSL = "PixlStash.VerifySSL"
 
+# Shown when a node or the proxy refuses to run under ComfyUI multi-user mode.
+MULTI_USER_MESSAGE = (
+    "PixlStash doesn't support ComfyUI multi-user mode (--multi-user). "
+    "Run a separate single-user instance for each user."
+)
+
 
 def make_client(url: str, token: str, verify_ssl: bool = True) -> "PixlStashClient":
     """Build a PixlStashClient from individual credential arguments."""
@@ -76,6 +82,20 @@ def _comfy_settings() -> dict:
     return {}
 
 
+def multi_user_active() -> bool:
+    """True if ComfyUI was started with --multi-user.
+
+    A node can't tell which user submitted the running prompt, so it can't
+    pick that user's stored token and must refuse rather than risk using
+    someone else's.
+    """
+    try:
+        from comfy.cli_args import args  # noqa: PLC0415, only inside ComfyUI
+    except Exception:
+        return False
+    return bool(getattr(args, "multi_user", False))
+
+
 def read_credentials(
     url: str = "",
     token: str = "",
@@ -89,7 +109,13 @@ def read_credentials(
     Credentials are configured in ComfyUI Settings -> PixlStash, which ComfyUI
     persists server-side, so the token never travels through the prompt or the
     saved workflow JSON.
+
+    Raises ``RuntimeError`` under ComfyUI multi-user mode, which PixlStash
+    can't support safely (a node has no way to know which user is running it).
     """
+    if multi_user_active():
+        raise RuntimeError(MULTI_USER_MESSAGE)
+
     url = (url or "").strip()
     token = (token or "").strip()
 

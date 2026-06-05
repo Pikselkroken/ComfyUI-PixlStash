@@ -28,7 +28,12 @@ import logging
 
 from aiohttp import web
 
-from .connection import PixlStashClient, read_credentials
+from .connection import (
+    MULTI_USER_MESSAGE,
+    PixlStashClient,
+    multi_user_active,
+    read_credentials,
+)
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +53,9 @@ def _build_client(request: web.Request) -> PixlStashClient:
 
     Raises ``web.HTTPBadRequest`` on a missing token or unconfigured server.
     """
+    if multi_user_active():
+        raise web.HTTPBadRequest(reason=MULTI_USER_MESSAGE)
+
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         raise web.HTTPBadRequest(
