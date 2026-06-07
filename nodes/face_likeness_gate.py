@@ -348,13 +348,13 @@ class PixlStashFaceLikenessGate:
 
         Maps ``picture_id -> (character_likeness, eligible)``.
 
-        Readiness is inferred from the likeness endpoint itself.  Before the
-        face-extraction worker has run, a picture has no face rows and the
-        endpoint returns ``{character_likeness: 0.0, eligible: True}``.  Once
-        extraction finishes it returns either ``eligible: False`` (a sentinel
-        "no face" record) or a real score, so a picture is considered ready
-        when it is no longer in the not-yet-extracted state.  Any picture
-        still unresolved when ``face_timeout`` elapses is treated as a
+        Readiness comes from the explicit ``ready`` flag on the likeness
+        endpoint.  While ``ready`` is ``False`` the face-extraction worker has
+        not finished, so the score is provisional and the picture is polled
+        again.  Once ``ready`` is ``True`` the ``character_likeness`` value is
+        final and is recorded as-is, even when it is ``0.0`` or null (a
+        genuinely low score is no longer mistaken for "still extracting").  Any
+        picture still not ready when ``face_timeout`` elapses is treated as a
         non-match (0.0, not eligible).
         """
         scores: dict[int, tuple[float, bool]] = {}
@@ -364,10 +364,11 @@ class PixlStashFaceLikenessGate:
 
         while pending and time.time() < deadline:
             for pid in list(pending):
-                likeness, eligible = self._read_likeness(client, pid, character_id)
-                # "Not extracted yet" looks like eligible+zero; keep waiting.
-                if eligible and (likeness is None or likeness <= 0.0):
+                likeness, eligible, ready = self._read_likeness(client, pid, character_id)
+                # Poll again only while extraction is still pending.
+                if not ready:
                     continue
+                # Ready: the score is final, accept 0.0/null as-is.
                 scores[pid] = (likeness or 0.0, eligible)
                 pending.discard(pid)
                 if progress is not None:
@@ -392,13 +393,22 @@ class PixlStashFaceLikenessGate:
         client,
         picture_id: int,
         character_id: str,
-    ) -> tuple[float | None, bool]:
-        """Return (character_likeness, eligible) for one picture."""
+    ) -> tuple[float | None, bool, bool]:
+        """Return (character_likeness, eligible, ready) for one picture.
+
+        ``ready`` defaults to ``True`` when the key is absent so an older
+        backend that does not send it stops polling instead of hanging until
+        ``face_timeout`` (under-poll rather than spin forever).
+        """
         data = client.get(
             f"/api/v1/pictures/{picture_id}/character_likeness",
             params={"reference_character_id": character_id},
         ).json()
-        return data.get("character_likeness"), bool(data.get("eligible"))
+        return (
+            data.get("character_likeness"),
+            bool(data.get("eligible")),
+            bool(data.get("ready", True)),
+        )
 
     def _cleanup(self, client, picture_ids: set[int]) -> None:
         """Soft-delete the scratch pictures this node created."""
