@@ -11,9 +11,11 @@ Face likeness is computed server-side, so the node:
 1. Uploads every image to PixlStash via the async import endpoint
    (one file per request, polling each task to completion — the same
    mechanism the Picture Saver uses).
-2. Waits for the face-extraction worker to finish embedding each freshly
-   imported picture, then reads its likeness to the reference character
-   from ``GET /pictures/{id}/character_likeness``.
+2. Waits for the face-extraction worker to finish embedding the freshly
+   imported pictures, then reads their likeness to the reference character
+   from ``POST /pictures/character_likeness/batch`` (one request per poll
+   cycle for all pending ids; falls back to the per-id
+   ``GET /pictures/{id}/character_likeness`` on an older backend).
 3. Splits the original input frames into accepted / rejected batches.
 4. Optionally deletes the scratch imports it created so the vault is not
    polluted (duplicates that already existed are never deleted).
@@ -38,6 +40,11 @@ from ..connection import make_client, read_credentials
 log = logging.getLogger(__name__)
 
 _POLL_INTERVAL = 0.5  # seconds between status / readiness polls
+
+# Maximum picture ids per batched likeness request.  The common case (tens of
+# pictures) is a single request; larger sets are split into chunks of this size
+# so one poll cycle never sends an unbounded request body.
+_LIKENESS_BATCH_CAP = 500
 
 # Substrings that identify the face-extraction-worker error returned by
 # the import endpoint when the worker is not running.
@@ -346,9 +353,13 @@ class PixlStashFaceLikenessGate:
         character_id: str,
         face_timeout: int,
     ) -> dict[int, tuple[float, bool]]:
-        """Poll each picture until its face embedding is ready, return scores.
+        """Poll the still-pending pictures until each face embedding is ready.
 
         Maps ``picture_id -> (character_likeness, eligible)``.
+
+        Each poll cycle reads every still-pending picture in a single batched
+        request (``_read_likeness_batch``) instead of one GET per picture, so a
+        cycle is one request regardless of how many frames are in flight.
 
         Readiness comes from the explicit ``ready`` flag on the likeness
         endpoint.  While ``ready`` is ``False`` the face-extraction worker has
@@ -358,17 +369,40 @@ class PixlStashFaceLikenessGate:
         genuinely low score is no longer mistaken for "still extracting").  Any
         picture still not ready when ``face_timeout`` elapses is treated as a
         non-match (0.0, not eligible).
+
+        An older backend without the batch endpoint (HTTP 404/405) makes the
+        first batched call fail; the cycle then falls back to the per-id
+        ``_read_likeness`` GET path for the rest of the run.
         """
         scores: dict[int, tuple[float, bool]] = {}
         pending = set(picture_ids)
         progress = self._make_progress(len(pending)) if pending else None
         deadline = time.time() + max(face_timeout, _POLL_INTERVAL)
+        # Flipped to True the first time the batch endpoint is missing, after
+        # which every cycle uses the per-id path for backward compatibility.
+        use_per_id = False
 
         while pending and time.time() < deadline:
-            for pid in list(pending):
-                likeness, eligible, ready = self._read_likeness(
-                    client, pid, character_id
-                )
+            if use_per_id:
+                results = {
+                    pid: self._read_likeness(client, pid, character_id)
+                    for pid in list(pending)
+                }
+            else:
+                try:
+                    results = self._read_likeness_batch(
+                        client, list(pending), character_id
+                    )
+                except RuntimeError as exc:
+                    msg = str(exc).lower()
+                    if "not found" in msg or "http 405" in msg:
+                        # Batch endpoint absent on this backend — degrade to
+                        # the per-id path for the remainder of the run.
+                        use_per_id = True
+                        continue
+                    raise
+
+            for pid, (likeness, eligible, ready) in results.items():
                 # Poll again only while extraction is still pending.
                 if not ready:
                     continue
@@ -413,6 +447,46 @@ class PixlStashFaceLikenessGate:
             bool(data.get("eligible")),
             bool(data.get("ready", True)),
         )
+
+    @staticmethod
+    def _read_likeness_batch(
+        client,
+        picture_ids: list[int],
+        character_id: str,
+    ) -> dict[int, tuple[float | None, bool, bool]]:
+        """Read likeness for many pictures in one (or a few) POST request(s).
+
+        POSTs ``{"reference_character_id": character_id, "picture_ids": [...]}``
+        to ``/pictures/character_likeness/batch`` and returns
+        ``{picture_id: (character_likeness, eligible, ready)}`` parsed from the
+        ``results`` array.  Per-id semantics match ``_read_likeness``: ``ready``
+        defaults to ``True`` when absent so a result is never polled forever.
+
+        ``picture_ids`` is split into chunks of ``_LIKENESS_BATCH_CAP`` so a
+        single cycle never sends an unbounded body; the common case (tens of
+        pictures) is one request.  Raises ``RuntimeError`` (incl. HTTP 404/405)
+        straight through so the caller can fall back to the per-id path.
+        """
+        results: dict[int, tuple[float | None, bool, bool]] = {}
+        for start in range(0, len(picture_ids), _LIKENESS_BATCH_CAP):
+            chunk = picture_ids[start : start + _LIKENESS_BATCH_CAP]
+            data = client.post(
+                "/api/v1/pictures/character_likeness/batch",
+                json={
+                    "reference_character_id": character_id,
+                    "picture_ids": chunk,
+                },
+            ).json()
+            for item in data.get("results", []):
+                pid = item.get("picture_id")
+                if pid is None:
+                    continue
+                results[int(pid)] = (
+                    item.get("character_likeness"),
+                    bool(item.get("eligible")),
+                    bool(item.get("ready", True)),
+                )
+        return results
 
     def _cleanup(self, client, picture_ids: set[int]) -> None:
         """Soft-delete the scratch pictures this node created."""
