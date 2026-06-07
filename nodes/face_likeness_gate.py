@@ -180,7 +180,9 @@ class PixlStashFaceLikenessGate:
 
         frame_count = int(image.shape[0])
         if frame_count == 0:
-            raise RuntimeError("PixlStash Face Likeness Gate: the input image batch is empty.")
+            raise RuntimeError(
+                "PixlStash Face Likeness Gate: the input image batch is empty."
+            )
 
         progress = self._make_progress(frame_count)
 
@@ -364,7 +366,9 @@ class PixlStashFaceLikenessGate:
 
         while pending and time.time() < deadline:
             for pid in list(pending):
-                likeness, eligible, ready = self._read_likeness(client, pid, character_id)
+                likeness, eligible, ready = self._read_likeness(
+                    client, pid, character_id
+                )
                 # Poll again only while extraction is still pending.
                 if not ready:
                     continue
@@ -417,7 +421,9 @@ class PixlStashFaceLikenessGate:
             try:
                 client.delete(f"/api/v1/pictures/{pid}", is_write=True)
             except RuntimeError as exc:
-                log.warning("[PixlStash] Could not delete scratch picture %s — %s", pid, exc)
+                log.warning(
+                    "[PixlStash] Could not delete scratch picture %s — %s", pid, exc
+                )
                 failed.append(pid)
         if failed:
             log.warning(
