@@ -76,7 +76,7 @@ Keeps only the generations that actually match a reference character. Wire a bat
 
 Face likeness is scored server‑side, so the node imports each frame, waits for the face‑extraction worker to embed it (polling the same way the Picture Saver does), reads its likeness to the character, then filters. By default the scratch imports it creates are deleted afterwards (`cleanup`), keeping your vault clean — pictures that already existed in the vault are never deleted. The reference character is passed through so an accepted branch can be saved back tagged to the same character without re‑wiring.
 
-**Note:** Requires PixlStash v1.4+ and a running face‑extraction worker. The Saver/Gate need a token with **write** scope (they import and clean up scratch pictures).
+**Note:** Requires PixlStash v1.5.2+ and a running face‑extraction worker. (v1.5.2 added the `ready` flag the gate uses to tell a genuinely low score apart from a not‑yet‑extracted picture; on older servers the gate falls back to ending the poll early.) The Saver/Gate need a token with **write** scope (they import and clean up scratch pictures).
 
 ### Semantic Search
 
