@@ -40,7 +40,7 @@ const NODE_MIN_VERSION = {
     "PixlStashPictureSaver":    "1.2.0",
     "PixlStashSemanticSearch":  "1.2.0",
     "PixlStashLikenessSearch":  "1.4.0",
-    "PixlStashFaceLikenessGate": "1.4.0",
+    "PixlStashFaceLikenessGate": "1.5.2",
 };
 
 // Cache: serverUrl → { state: "checking"|"resolved"|"error", version: string|null }
