@@ -13,7 +13,7 @@ from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
 )
 
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
 
 # ComfyUI Settings keys (must match the IDs registered in web/js/combo_widgets.js).
