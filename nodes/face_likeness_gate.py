@@ -6,19 +6,13 @@ are passed to the ``accepted`` output; the rest go to ``rejected``.  This
 lets a workflow funnel only on-model renders into an upscale / save branch
 while diverting the misses.
 
-Face likeness is computed server-side, so the node:
-
-1. Uploads every image to PixlStash via the async import endpoint
-   (one file per request, polling each task to completion — the same
-   mechanism the Picture Saver uses).
-2. Waits for the face-extraction worker to finish embedding the freshly
-   imported pictures, then reads their likeness to the reference character
-   from ``POST /pictures/character_likeness/batch`` (one request per poll
-   cycle for all pending ids; falls back to the per-id
-   ``GET /pictures/{id}/character_likeness`` on an older backend).
-3. Splits the original input frames into accepted / rejected batches.
-4. Optionally deletes the scratch imports it created so the vault is not
-   polluted (duplicates that already existed are never deleted).
+Face likeness is computed server-side by a single stateless endpoint
+(``POST /pictures/score_character_likeness``): the node uploads the frames in
+batches, the server detects faces in-memory on the GPU and scores each frame
+against the reference character's reference faces, and returns one score per
+frame.  Nothing is imported or persisted — no scratch pictures, no tagging /
+captioning / embedding, and no vault-wide likeness work — so scoring is fast
+and leaves the vault untouched (there is nothing to clean up).
 
 Credentials are resolved server-side from ComfyUI Settings › PixlStash and
 never injected into the prompt.
@@ -28,7 +22,6 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 
 import folder_paths
 import numpy as np
@@ -39,16 +32,13 @@ from ..connection import make_client, read_credentials
 
 log = logging.getLogger(__name__)
 
-_POLL_INTERVAL = 0.5  # seconds between status / readiness polls
+# Frames uploaded per scoring request.  Detection is batched on the GPU, so a
+# few requests cover a typical gate batch while keeping each request's body (and
+# wall time) comfortably under the HTTP client's fixed timeout.
+_SCORE_BATCH_SIZE = 16
 
-# Maximum picture ids per batched likeness request.  The common case (tens of
-# pictures) is a single request; larger sets are split into chunks of this size
-# so one poll cycle never sends an unbounded request body.
-_LIKENESS_BATCH_CAP = 500
-
-# Substrings that identify the face-extraction-worker error returned by
-# the import endpoint when the worker is not running.
-_FACE_WORKER_HINTS = ("face extraction", "face worker", "worker not running")
+# Endpoint added in PixlStash 1.6.0.  Shown when an older backend 404s the call.
+_MIN_SERVER_HINT = "1.6.0"
 
 
 class PixlStashFaceLikenessGate:
@@ -110,43 +100,6 @@ class PixlStashFaceLikenessGate:
                     },
                 ),
             },
-            "optional": {
-                "cleanup": (
-                    "BOOLEAN",
-                    {
-                        "default": True,
-                        "tooltip": (
-                            "Delete the scratch pictures this node imports for "
-                            "scoring once filtering is done, keeping the vault "
-                            "clean. Pictures that already existed in the vault "
-                            "(duplicates) are never deleted."
-                        ),
-                    },
-                ),
-                "face_timeout": (
-                    "INT",
-                    {
-                        "default": 120,
-                        "min": 5,
-                        "max": 3600,
-                        "tooltip": (
-                            "Maximum seconds to wait for the face-extraction "
-                            "worker to embed the imported frames. Frames still "
-                            "unscored when this elapses are rejected."
-                        ),
-                    },
-                ),
-                "pixlstash_project": (
-                    "PIXLSTASH_PROJECT",
-                    {
-                        "forceInput": True,
-                        "tooltip": (
-                            "Optional project to import the scratch pictures "
-                            "into (useful when cleanup is off)."
-                        ),
-                    },
-                ),
-            },
         }
 
     # ------------------------------------------------------------------
@@ -158,9 +111,6 @@ class PixlStashFaceLikenessGate:
         image: torch.Tensor,
         pixlstash_character: str,
         threshold: float,
-        cleanup: bool = True,
-        face_timeout: int = 120,
-        pixlstash_project: str = "",
         url: str = "",
         token: str = "",
         verify_ssl: bool = True,
@@ -191,33 +141,16 @@ class PixlStashFaceLikenessGate:
                 "PixlStash Face Likeness Gate: the input image batch is empty."
             )
 
-        progress = self._make_progress(frame_count)
+        # Score every frame in batched, stateless requests. Maps the global
+        # frame index -> (likeness, eligible). Frames the server could not score
+        # default to a non-match (the safe default for a quality gate).
+        scores = self._score_frames(client, image, character_id)
 
-        # 1. Import every frame, remembering which picture id each maps to
-        #    and whether we created it (new) or it already existed (dup).
-        frame_pictures: list[int | None] = []
-        new_ids: set[int] = set()
-        project_id = pixlstash_project.strip()
-        for idx in range(frame_count):
-            pid, is_new = self._import_frame(client, image[idx], idx, project_id)
-            frame_pictures.append(pid)
-            if pid is not None and is_new:
-                new_ids.add(pid)
-            if progress is not None:
-                progress.update(1)
-
-        # 2. Wait for face embeddings and read each picture's likeness.
-        unique_ids = {pid for pid in frame_pictures if pid is not None}
-        scores = self._score_pictures(client, unique_ids, character_id, face_timeout)
-
-        # 3. Split the original frames by threshold.  A frame whose import
-        #    failed (no picture id) or that could not be scored in time is
-        #    rejected — the safe default for a quality gate.
         accepted_idx: list[int] = []
         rejected_idx: list[int] = []
-        for idx, pid in enumerate(frame_pictures):
-            likeness, eligible = scores.get(pid, (0.0, False))
-            if pid is not None and eligible and likeness >= threshold:
+        for idx in range(frame_count):
+            likeness, eligible = scores.get(idx, (None, False))
+            if eligible and likeness is not None and likeness >= threshold:
                 accepted_idx.append(idx)
             else:
                 rejected_idx.append(idx)
@@ -233,10 +166,6 @@ class PixlStashFaceLikenessGate:
             threshold,
             character_id,
         )
-
-        # 4. Remove the scratch imports we created (never duplicates).
-        if cleanup and new_ids:
-            self._cleanup(client, new_ids)
 
         ui_images = self._write_previews(accepted, prefix="accepted")
 
@@ -288,234 +217,81 @@ class PixlStashFaceLikenessGate:
                 "reference faces to the character in PixlStash first."
             )
 
-    def _import_frame(
+    def _score_frames(
         self,
         client,
-        frame: torch.Tensor,
-        idx: int,
-        project_id: str,
-    ) -> tuple[int | None, bool]:
-        """Import one frame and return (picture_id, is_new).
-
-        Returns ``(None, False)`` when the import produced no picture id
-        (e.g. the file was skipped).  ``is_new`` is True only for pictures
-        this call actually created (status "success"), so cleanup never
-        touches pre-existing duplicates.
-        """
-        png_bytes = self._frame_to_png_bytes(frame)
-        form_data = {"project_id": project_id} if project_id else None
-        try:
-            response = client.post(
-                "/api/v1/pictures/import",
-                is_write=True,
-                files=[("file", (f"gate_{idx:05d}.png", png_bytes, "image/png"))],
-                data=form_data,
-            )
-        except RuntimeError as exc:
-            if any(hint in str(exc).lower() for hint in _FACE_WORKER_HINTS):
-                raise RuntimeError(
-                    "PixlStash Face Likeness Gate: the face-extraction worker is "
-                    "not running. Start it in PixlStash before filtering."
-                ) from exc
-            raise
-
-        task_id = response.json()["task_id"]
-
-        deadline = time.time() + 300
-        while True:
-            status_data = client.get(
-                "/api/v1/pictures/import/status", params={"task_id": task_id}
-            ).json()
-            status = status_data.get("status")
-            if status == "completed":
-                for result in status_data.get("results", []):
-                    pid = result.get("picture_id")
-                    if pid is None:
-                        continue
-                    return int(pid), result.get("status") == "success"
-                return None, False
-            if status == "failed":
-                raise RuntimeError(
-                    f"PixlStash Face Likeness Gate: import failed — "
-                    f"{status_data.get('error', 'unknown error')}"
-                )
-            if time.time() > deadline:
-                raise RuntimeError(
-                    "PixlStash Face Likeness Gate: import timed out waiting for the "
-                    f"server (task_id={task_id})."
-                )
-            time.sleep(_POLL_INTERVAL)
-
-    def _score_pictures(
-        self,
-        client,
-        picture_ids: set[int],
+        image: torch.Tensor,
         character_id: str,
-        face_timeout: int,
-    ) -> dict[int, tuple[float, bool]]:
-        """Poll the still-pending pictures until each face embedding is ready.
+    ) -> dict[int, tuple[float | None, bool]]:
+        """Score every frame against the reference character in batched requests.
 
-        Maps ``picture_id -> (character_likeness, eligible)``.
-
-        Each poll cycle reads every still-pending picture in a single batched
-        request (``_read_likeness_batch``) instead of one GET per picture, so a
-        cycle is one request regardless of how many frames are in flight.
-
-        Readiness comes from the explicit ``ready`` flag on the likeness
-        endpoint.  While ``ready`` is ``False`` the face-extraction worker has
-        not finished, so the score is provisional and the picture is polled
-        again.  Once ``ready`` is ``True`` the ``character_likeness`` value is
-        final and is recorded as-is, even when it is ``0.0`` or null (a
-        genuinely low score is no longer mistaken for "still extracting").  Any
-        picture still not ready when ``face_timeout`` elapses is treated as a
-        non-match (0.0, not eligible).
-
-        An older backend without the batch endpoint (HTTP 404/405) makes the
-        first batched call fail; the cycle then falls back to the per-id
-        ``_read_likeness`` GET path for the rest of the run.
+        Uploads the frames in chunks of ``_SCORE_BATCH_SIZE`` to the stateless
+        ``/pictures/score_character_likeness`` endpoint and returns a map of
+        ``frame_index -> (character_likeness, eligible)``.  Results are keyed by
+        the per-request ``index`` the server echoes back (offset by the chunk
+        start), so the mapping is robust to result ordering.
         """
-        scores: dict[int, tuple[float, bool]] = {}
-        pending = set(picture_ids)
-        progress = self._make_progress(len(pending)) if pending else None
-        deadline = time.time() + max(face_timeout, _POLL_INTERVAL)
-        # Flipped to True the first time the batch endpoint is missing, after
-        # which every cycle uses the per-id path for backward compatibility.
-        use_per_id = False
+        frame_count = int(image.shape[0])
+        scores: dict[int, tuple[float | None, bool]] = {}
+        progress = self._make_progress(frame_count)
 
-        while pending and time.time() < deadline:
-            if use_per_id:
-                results = {
-                    pid: self._read_likeness(client, pid, character_id)
-                    for pid in list(pending)
-                }
-            else:
-                try:
-                    results = self._read_likeness_batch(
-                        client, list(pending), character_id
-                    )
-                except RuntimeError as exc:
-                    msg = str(exc).lower()
-                    if "not found" in msg or "http 405" in msg:
-                        # Batch endpoint absent on this backend — degrade to
-                        # the per-id path for the remainder of the run.
-                        use_per_id = True
-                        continue
-                    raise
+        for start in range(0, frame_count, _SCORE_BATCH_SIZE):
+            end = min(start + _SCORE_BATCH_SIZE, frame_count)
+            files = [
+                (
+                    "files",
+                    (
+                        f"gate_{idx:05d}.jpg",
+                        self._frame_to_jpeg_bytes(image[idx]),
+                        "image/jpeg",
+                    ),
+                )
+                for idx in range(start, end)
+            ]
+            try:
+                response = client.post(
+                    "/api/v1/pictures/score_character_likeness",
+                    files=files,
+                    data={"reference_character_id": character_id},
+                )
+            except RuntimeError as exc:
+                if "not found" in str(exc).lower():
+                    raise RuntimeError(
+                        "PixlStash Face Likeness Gate: this PixlStash server is too "
+                        f"old — the scoring endpoint needs PixlStash {_MIN_SERVER_HINT} "
+                        "or newer. Update PixlStash."
+                    ) from exc
+                raise
 
-            for pid, (likeness, eligible, ready) in results.items():
-                # Poll again only while extraction is still pending.
-                if not ready:
+            for item in response.json().get("results", []):
+                rel_index = item.get("index")
+                if rel_index is None:
                     continue
-                # Ready: the score is final, accept 0.0/null as-is.
-                scores[pid] = (likeness or 0.0, eligible)
-                pending.discard(pid)
-                if progress is not None:
-                    progress.update(1)
-            if pending:
-                time.sleep(_POLL_INTERVAL)
+                frame_idx = start + int(rel_index)
+                scores[frame_idx] = (
+                    item.get("character_likeness"),
+                    bool(item.get("eligible")),
+                )
 
-        if pending:
-            log.warning(
-                "[PixlStash] Face Likeness Gate: %d picture(s) not scored within "
-                "%ds — rejecting them: %s",
-                len(pending),
-                face_timeout,
-                sorted(pending),
-            )
-            for pid in pending:
-                scores[pid] = (0.0, False)
+            if progress is not None:
+                progress.update(end - start)
+
         return scores
 
     @staticmethod
-    def _read_likeness(
-        client,
-        picture_id: int,
-        character_id: str,
-    ) -> tuple[float | None, bool, bool]:
-        """Return (character_likeness, eligible, ready) for one picture.
+    def _frame_to_jpeg_bytes(frame: torch.Tensor) -> bytes:
+        """Encode a single [H,W,3] float32 tensor in [0,1] to JPEG bytes.
 
-        ``ready`` defaults to ``True`` when the key is absent so an older
-        backend that does not send it stops polling instead of hanging until
-        ``face_timeout`` (under-poll rather than spin forever).
+        JPEG (quality 95) keeps the upload small and fast — these frames are
+        only scored, never stored, and the ArcFace embedding shift at q95 is far
+        below any sensible likeness threshold.
         """
-        data = client.get(
-            f"/api/v1/pictures/{picture_id}/character_likeness",
-            params={"reference_character_id": character_id},
-        ).json()
-        return (
-            data.get("character_likeness"),
-            bool(data.get("eligible")),
-            bool(data.get("ready", True)),
-        )
-
-    @staticmethod
-    def _read_likeness_batch(
-        client,
-        picture_ids: list[int],
-        character_id: str,
-    ) -> dict[int, tuple[float | None, bool, bool]]:
-        """Read likeness for many pictures in one (or a few) POST request(s).
-
-        POSTs ``{"reference_character_id": character_id, "picture_ids": [...]}``
-        to ``/pictures/character_likeness/batch`` and returns
-        ``{picture_id: (character_likeness, eligible, ready)}`` parsed from the
-        ``results`` array.  Per-id semantics match ``_read_likeness``: ``ready``
-        defaults to ``True`` when absent so a result is never polled forever.
-
-        ``picture_ids`` is split into chunks of ``_LIKENESS_BATCH_CAP`` so a
-        single cycle never sends an unbounded body; the common case (tens of
-        pictures) is one request.  Raises ``RuntimeError`` (incl. HTTP 404/405)
-        straight through so the caller can fall back to the per-id path.
-        """
-        results: dict[int, tuple[float | None, bool, bool]] = {}
-        for start in range(0, len(picture_ids), _LIKENESS_BATCH_CAP):
-            chunk = picture_ids[start : start + _LIKENESS_BATCH_CAP]
-            data = client.post(
-                "/api/v1/pictures/character_likeness/batch",
-                json={
-                    "reference_character_id": character_id,
-                    "picture_ids": chunk,
-                },
-            ).json()
-            for item in data.get("results", []):
-                pid = item.get("picture_id")
-                if pid is None:
-                    continue
-                results[int(pid)] = (
-                    item.get("character_likeness"),
-                    bool(item.get("eligible")),
-                    bool(item.get("ready", True)),
-                )
-        return results
-
-    def _cleanup(self, client, picture_ids: set[int]) -> None:
-        """Soft-delete the scratch pictures this node created."""
-        failed: list[int] = []
-        for pid in picture_ids:
-            try:
-                client.delete(f"/api/v1/pictures/{pid}", is_write=True)
-            except RuntimeError as exc:
-                log.warning(
-                    "[PixlStash] Could not delete scratch picture %s — %s", pid, exc
-                )
-                failed.append(pid)
-        if failed:
-            log.warning(
-                "[PixlStash] Face Likeness Gate: %d scratch picture(s) left in the "
-                "vault: %s",
-                len(failed),
-                sorted(failed),
-            )
-
-    @staticmethod
-    def _frame_to_png_bytes(frame: torch.Tensor) -> bytes:
-        """Encode a single [H,W,3] float32 tensor in [0,1] to PNG bytes."""
         import io  # noqa: PLC0415
 
         arr = (frame.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
         pil_img = Image.fromarray(arr, mode="RGB")
         buf = io.BytesIO()
-        pil_img.save(buf, format="PNG", compress_level=4)
+        pil_img.save(buf, format="JPEG", quality=95)
         return buf.getvalue()
 
     @staticmethod
