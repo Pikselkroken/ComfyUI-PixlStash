@@ -146,6 +146,36 @@ async def proxy_pictures(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/pictures")
 
 
+async def proxy_thumbnail(request: web.Request) -> web.Response:
+    """Proxy a picture thumbnail (binary WebP) from PixlStash.
+
+    The browser cannot fetch thumbnails directly when PixlStash uses a
+    self-signed certificate or a private address, so the picker streams them
+    through this route, which reuses the same authenticated, verify-aware
+    client as the JSON routes.
+    """
+    try:
+        client = _build_client(request)
+    except web.HTTPBadRequest as exc:
+        return _err(exc.reason, status=400)
+
+    raw_id = request.rel_url.query.get("picture_id", "")
+    if not raw_id.isdigit():
+        return _err("picture_id query param must be a positive integer.", status=400)
+
+    path = f"/api/v1/pictures/thumbnails/{int(raw_id)}.webp"
+    try:
+        resp = await asyncio.to_thread(client.get, path)
+    except RuntimeError as exc:
+        log.warning("[PixlStash proxy] %s: %s", path, exc)
+        return _err(str(exc))
+
+    return web.Response(
+        body=resp.content,
+        content_type=resp.headers.get("Content-Type", "image/webp"),
+    )
+
+
 async def proxy_version(request: web.Request) -> web.Response:
     try:
         client = _build_client(request)
@@ -196,6 +226,7 @@ def register_routes() -> None:
         r.get("/pixlstash/characters")(proxy_characters)
         r.get("/pixlstash/sort_mechanisms")(proxy_sort_mechanisms)
         r.get("/pixlstash/pictures")(proxy_pictures)
+        r.get("/pixlstash/thumbnail")(proxy_thumbnail)
         r.get("/pixlstash/version")(proxy_version)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:

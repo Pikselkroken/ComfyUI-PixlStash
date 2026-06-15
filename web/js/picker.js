@@ -37,14 +37,22 @@ async function proxyFetch(path, credentials, extraParams = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Thumbnail helper  (binary WebP — fetched directly from PixlStash)
+// Thumbnail helper  (binary WebP — streamed through the ComfyUI proxy)
 // ---------------------------------------------------------------------------
+//
+// Goes through /pixlstash/thumbnail rather than fetching PixlStash directly:
+// the browser cannot reach a self-signed / private PixlStash instance, but the
+// server-side proxy (which honours the VerifySSL setting) can.
 
 async function fetchThumbnailUrl(pictureId, credentials) {
-    const resp = await fetch(
-        `${credentials.url}/api/v1/pictures/thumbnails/${pictureId}.webp`,
-        { headers: { "Authorization": `Bearer ${credentials.token}` } },
-    );
+    const params = new URLSearchParams({
+        url:        credentials.url,
+        verify_ssl: credentials.verifySsl ? "true" : "false",
+        picture_id: String(pictureId),
+    });
+    const resp = await fetch(`/pixlstash/thumbnail?${params}`, {
+        headers: { "Authorization": `Bearer ${credentials.token}` },
+    });
     if (!resp.ok) return null;
     return URL.createObjectURL(await resp.blob());
 }
