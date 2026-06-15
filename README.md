@@ -134,9 +134,15 @@ Or run it end to end: generate with a character LoRA, gate by face likeness, the
 
 ### Picture Likeness Gate
 
-Generate wide, keep only the frames that match a reference picture set, and preview the accepted and rejected streams side by side — no vault writes required.
+Generate and keep only the pictures that match a reference picture set, and preview the accepted and rejected streams side by side. No vault writes required.
 
 → [PixlStash-PictureLikenessGate.json](examples/PixlStash-PictureLikenessGate.json)
+
+Or run it end to end: generate a batch, gate it against a reference picture set, then upscale the accepted frames and save the accepted and rejected streams back to separate sets.
+
+[![Generate a batch, gate against a reference picture set, then upscale and save the matches](screenshots/ScreenshotPictureLikenessGate.jpg)](examples/PixlStash-PictureLikenessGateUpscale.json)
+
+→ [PixlStash-PictureLikenessGateUpscale.json](examples/PixlStash-PictureLikenessGateUpscale.json)
 
 ### Upscale
 
