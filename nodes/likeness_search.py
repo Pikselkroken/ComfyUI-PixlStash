@@ -205,9 +205,7 @@ class PixlStashLikenessSearch:
 
         # Decide whether to use random sampling from the pool.
         use_random = select_count < pool_size
-        params: dict[str, object] = {"threshold": threshold}
-        if search_mode == "picture_likeness":
-            params["combine"] = combine
+        params: dict[str, object] = {"threshold": threshold, "combine": combine}
         if use_random:
             params["random"] = "true"
             params["pool_m"] = pool_size

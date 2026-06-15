@@ -29,6 +29,7 @@ import torch
 from PIL import Image
 
 from ..connection import make_client, read_credentials
+from .likeness_search import COMBINE_MODES
 
 log = logging.getLogger(__name__)
 
@@ -100,6 +101,21 @@ class PixlStashFaceLikenessGate:
                     },
                 ),
             },
+            "optional": {
+                "combine": (
+                    COMBINE_MODES,
+                    {
+                        "default": "mean",
+                        "tooltip": (
+                            "How to combine a frame's similarity across the "
+                            "character's reference faces. mean: average; max: "
+                            "best matching reference; min: must match every "
+                            "reference; harmonic_mean / geometric_mean: balance "
+                            "between extremes."
+                        ),
+                    },
+                ),
+            },
         }
 
     # ------------------------------------------------------------------
@@ -111,6 +127,7 @@ class PixlStashFaceLikenessGate:
         image: torch.Tensor,
         pixlstash_character: str,
         threshold: float,
+        combine: str = "mean",
         url: str = "",
         token: str = "",
         verify_ssl: bool = True,
@@ -144,7 +161,7 @@ class PixlStashFaceLikenessGate:
         # Score every frame in batched, stateless requests. Maps the global
         # frame index -> (likeness, eligible). Frames the server could not score
         # default to a non-match (the safe default for a quality gate).
-        scores = self._score_frames(client, image, character_id)
+        scores = self._score_frames(client, image, character_id, combine)
 
         accepted_idx: list[int] = []
         rejected_idx: list[int] = []
@@ -222,6 +239,7 @@ class PixlStashFaceLikenessGate:
         client,
         image: torch.Tensor,
         character_id: str,
+        combine: str = "mean",
     ) -> dict[int, tuple[float | None, bool]]:
         """Score every frame against the reference character in batched requests.
 
@@ -252,7 +270,10 @@ class PixlStashFaceLikenessGate:
                 response = client.post(
                     "/api/v1/pictures/score_character_likeness",
                     files=files,
-                    data={"reference_character_id": character_id},
+                    data={
+                        "reference_character_id": character_id,
+                        "combine": combine,
+                    },
                 )
             except RuntimeError as exc:
                 if "not found" in str(exc).lower():
