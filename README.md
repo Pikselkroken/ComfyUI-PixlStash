@@ -74,9 +74,19 @@ You can filter by project, character and set by providing those inputs.
 
 Keeps only the generations that actually match a reference character. Wire a batch of generated images plus a **Character Loader** into the gate, set a likeness `threshold`, and it splits the batch into two streams — `accepted` (faces at or above the threshold) and `rejected` (off‑model renders or frames with no detectable face) — along with `accepted_count` / `rejected_count`. Route `accepted` into an upscale / save branch and send `rejected` to a "scrapheap" preview, so you never waste compute polishing a bad match.
 
-Face likeness is scored server‑side, so the node imports each frame, waits for the face‑extraction worker to embed it (polling the same way the Picture Saver does), reads its likeness to the character, then filters. By default the scratch imports it creates are deleted afterwards (`cleanup`), keeping your vault clean — pictures that already existed in the vault are never deleted. The reference character is passed through so an accepted branch can be saved back tagged to the same character without re‑wiring.
+Face likeness is scored server‑side by a single stateless endpoint: the node uploads the frames in batches, the server detects and embeds each face in‑memory on the GPU and scores it against the character's reference faces, and returns one score per frame. Nothing is imported or persisted, so scoring is fast and leaves the vault untouched — there's nothing to clean up. The reference character is passed through so an accepted branch can be saved back tagged to the same character without re‑wiring.
 
-**Note:** Requires PixlStash v1.5.2+ and a running face‑extraction worker. (v1.5.2 added the `ready` flag the gate uses to tell a genuinely low score apart from a not‑yet‑extracted picture; on older servers the gate falls back to ending the poll early.) The Saver/Gate need a token with **write** scope (they import and clean up scratch pictures).
+**Note:** Requires PixlStash v1.6.0+ (which added the stateless `score_character_likeness` endpoint the gate uses) and a running face‑extraction worker. A read-scope token is sufficient.
+
+### Picture Likeness Gate
+
+Splits a batch of generations into `accepted` and `rejected` outputs by judging each frame's whole-image likeness against a reference **picture set**. Wire a batch of generated images plus a **Set Loader** into the gate, pick a `combine` mode and a `threshold`, and route `accepted` into an upscale / save branch while `rejected` goes nowhere or to a "rejects" saver — so you never waste compute polishing an off-target render. Also outputs `accepted_count` / `rejected_count`, and passes the reference set through so an accepted branch can be saved straight back into the same set.
+
+Each frame is scored against every member of the set. The `combine` mode decides how those per-member scores become one verdict — the default `min` means **must match all** (a `[monkey, banana, bicycle]` reference set keeps only frames that resemble all three), while `max` matches any one and the means fall in between.
+
+Scoring is read-only and synchronous: each frame is sent as the query image to PixlStash's image-likeness search with the set as the corpus, so the server embeds it on the fly and ranks it against the set's members. **Nothing is uploaded to your vault, nothing is persisted, and no write scope is needed** — there's no import step and no embedding-readiness wait. (Cost is one request per frame; the reference set must have ≤ 500 members.)
+
+**Note:** Requires PixlStash v1.4 (for now only available as development releases). A read-scope token is sufficient.
 
 ### Semantic Search
 
@@ -121,6 +131,18 @@ Or run it end to end: generate with a character LoRA, gate by face likeness, the
 [![Generate with a character LoRA, gate by face likeness, then upscale and save the matches](screenshots/FaceLikenessGateUpscale.jpg)](examples/PixlStash-FaceLikenessGate-Upscale.json)
 
 → [PixlStash-FaceLikenessGate-Upscale.json](examples/PixlStash-FaceLikenessGate-Upscale.json)
+
+### Picture Likeness Gate
+
+Generate and keep only the pictures that match a reference picture set, and preview the accepted and rejected streams side by side. No vault writes required.
+
+→ [PixlStash-PictureLikenessGate.json](examples/PixlStash-PictureLikenessGate.json)
+
+Or run it end to end: generate a batch, gate it against a reference picture set, then upscale the accepted frames and save the accepted and rejected streams back to separate sets.
+
+[![Generate a batch, gate against a reference picture set, then upscale and save the matches](screenshots/ScreenshotPictureLikenessGate.jpg)](examples/PixlStash-PictureLikenessGateUpscale.json)
+
+→ [PixlStash-PictureLikenessGateUpscale.json](examples/PixlStash-PictureLikenessGateUpscale.json)
 
 ### Upscale
 
