@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 
 from aiohttp import web
 
@@ -36,6 +37,11 @@ from .connection import (
 )
 
 log = logging.getLogger(__name__)
+
+# A model / icon is addressed by its full-file SHA-256, lowercase hex.  Anything
+# else is refused before it can be interpolated into an upstream path — the same
+# guard ``proxy_thumbnail`` applies with ``picture_id.isdigit()``.
+_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +182,51 @@ async def proxy_thumbnail(request: web.Request) -> web.Response:
     )
 
 
+async def proxy_adapters(request: web.Request) -> web.Response:
+    """Proxy the model shelf's adapter list.
+
+    Filters ride through ``_proxy_get``'s query forwarding rather than being
+    enumerated here, so this route needs no changes when the caller starts
+    sending a different set.  The picker currently sends ``file_kind``,
+    ``kind``, ``base_model`` and one of ``character_id`` / ``set_id``; it
+    searches client-side over the one response rather than sending ``q``.
+    """
+    return await _proxy_get(request, "/api/v1/adapters")
+
+
+async def proxy_model_icon(request: web.Request) -> web.Response:
+    """Proxy a model-shelf icon (binary) from PixlStash.
+
+    Same reason as ``proxy_thumbnail``: the browser can't reach a self-signed
+    or private PixlStash directly.
+    """
+    icon_sha256 = request.rel_url.query.get("icon_sha256", "")
+    # Validated before a client is even built: the value is interpolated into
+    # the upstream path, so a non-digest is a malformed request, not a lookup.
+    if not _SHA256_RE.match(icon_sha256):
+        return _err(
+            "icon_sha256 query param must be a 64-character lowercase hex digest.",
+            status=400,
+        )
+
+    try:
+        client = _build_client(request)
+    except web.HTTPBadRequest as exc:
+        return _err(exc.reason, status=400)
+
+    path = f"/api/v1/model-icons/{icon_sha256}"
+    try:
+        resp = await asyncio.to_thread(client.get, path)
+    except RuntimeError as exc:
+        log.warning("[PixlStash proxy] %s: %s", path, exc)
+        return _err(str(exc))
+
+    return web.Response(
+        body=resp.content,
+        content_type=resp.headers.get("Content-Type", "image/webp"),
+    )
+
+
 async def proxy_version(request: web.Request) -> web.Response:
     try:
         client = _build_client(request)
@@ -192,9 +243,7 @@ async def proxy_version(request: web.Request) -> web.Response:
         except Exception:
             version = text
         # Sanity-check: must look like a version number, not HTML or an error page.
-        import re as _re
-
-        if not _re.match(r"^\d+\.\d+", str(version or "")):
+        if not re.match(r"^\d+\.\d+", str(version or "")):
             return _err(
                 f"Server did not return a valid version string (got: {str(version)[:80]})",
                 status=502,
@@ -227,6 +276,8 @@ def register_routes() -> None:
         r.get("/pixlstash/sort_mechanisms")(proxy_sort_mechanisms)
         r.get("/pixlstash/pictures")(proxy_pictures)
         r.get("/pixlstash/thumbnail")(proxy_thumbnail)
+        r.get("/pixlstash/adapters")(proxy_adapters)
+        r.get("/pixlstash/model_icon")(proxy_model_icon)
         r.get("/pixlstash/version")(proxy_version)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:

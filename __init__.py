@@ -25,6 +25,8 @@ from .nodes.likeness_search import PixlStashLikenessSearch
 from .nodes.face_likeness_gate import PixlStashFaceLikenessGate
 from .nodes.picture_likeness_gate import PixlStashPictureLikenessGate
 from .nodes.semantic_search import PixlStashSemanticSearch
+from .nodes.adapter_loader import PixlStashAdapterLoader
+from .nodes.adapter_applier import PixlStashApplyAdapter
 from .proxy_routes import register_routes
 
 register_routes()
@@ -39,6 +41,8 @@ NODE_CLASS_MAPPINGS = {
     "PixlStashFaceLikenessGate": PixlStashFaceLikenessGate,
     "PixlStashPictureLikenessGate": PixlStashPictureLikenessGate,
     "PixlStashSemanticSearch": PixlStashSemanticSearch,
+    "PixlStashAdapterLoader": PixlStashAdapterLoader,
+    "PixlStashApplyAdapter": PixlStashApplyAdapter,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -51,6 +55,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixlStashFaceLikenessGate": "PixlStash Face Likeness Gate",
     "PixlStashPictureLikenessGate": "PixlStash Picture Likeness Gate",
     "PixlStashSemanticSearch": "PixlStash Semantic Search",
+    "PixlStashAdapterLoader": "PixlStash Adapter Loader",
+    "PixlStashApplyAdapter": "PixlStash Apply Adapter",
 }
 
 WEB_DIRECTORY = "web/js"

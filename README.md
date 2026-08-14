@@ -98,6 +98,30 @@ You can filter by project, character and set by providing those inputs.
 
 **Note:** Requires PixlStash v1.4 (for now only available as development releases)
 
+### Adapter Loader
+
+Picks a LoRA (or LoKr, LoHa, OFT, DoRA) off the PixlStash **model shelf** and outputs its file path.
+
+Click **Browse adapters…** to open a thumbnail grid of the adapters on your shelf, showing each one's icon, name and base model. Narrow the grid with the `adapter_kind` and `base_model` dropdowns, with the in-modal search box, or by wiring a Set Loader or Character Loader so you see only the adapters attached to that character or set. If both a set and a character are wired, the grid follows the character — the server accepts one or the other, never both.
+
+`adapter_kind` and `base_model` filter the Browse grid only. They do not affect what is loaded, so changing one does not disturb a selection you already made.
+
+Outputs `lora_path` (wire it into **Apply Adapter**, or into any other pack's LoRA node that takes a path) and `trigger_words` from the shelf record.
+
+**Where the file comes from.** The shelf records the paths of the machine *PixlStash* runs on. A copy is used in place only if all of this holds on the machine ComfyUI is running on: the shelf last saw that copy as `present`, the path stays inside the folder it was registered under, it ends in `.safetensors`, it is on disk here, and its size is exactly the size the shelf recorded. Anything else — including a shelf record that carries no size at all — is treated as unverifiable and fetched instead. That is deliberately strict: the alternative is loading whatever unrelated file happens to sit at the same path on a ComfyUI host that isn't the PixlStash host, which is silently wrong output rather than an error.
+
+Fetched adapters go into `<your first loras directory>/pixlstash/<sha256>.safetensors`, are verified against the SHA-256 before anything is written under that name, and are re-used from there afterwards. They also show up in ComfyUI's stock LoRA dropdown as 64-character hex names, and nothing evicts them.
+
+**Note:** Requires PixlStash v1.10 (the release that introduces the model shelf). Fetching, as opposed to using a file in place, needs the server route that serves adapter bytes, and **that route is not implemented in any PixlStash release yet**. In practice that means this node is usable today when ComfyUI and PixlStash share a filesystem, and reports that the file could not be fetched otherwise. The Browse grid marks entries PixlStash itself has no copy of, but it cannot tell whether *your* ComfyUI can see a copy the server can — so on a split-host setup an unmarked entry can still fail at queue time.
+
+**Token scope:** the shelf routes are `OWNER_ONLY` and pinned to a library, which is stricter than the routes the other nodes use. A resource-scoped share token that works fine with the Picture Loader will get a 403 here — use an owner token. The node says so in as many words when you queue it; the Browse modal shows the server's generic "no access" message.
+
+### Apply Adapter
+
+Applies an adapter file to `MODEL` (and optionally `CLIP`), with separate model and CLIP strengths. Chain several for several adapters, as with ComfyUI's built-in LoRA loader. `lora_path` is a wired string input — any node that outputs a file path will do, not just the Adapter Loader.
+
+`clip` is optional so model-only adapters work without a CLIP wire. ComfyUI can't vary a node's outputs per graph, so the CLIP *output* still exists in that case and carries nothing — leave it unconnected when you leave the input unconnected.
+
 ## Workflow examples
 
 Ready-to-load workflow JSON files live in the [`examples/`](examples/) directory. Click any screenshot to open its workflow.
@@ -195,8 +219,10 @@ python -m unittest discover -s tests
 
 The tests stub ComfyUI's runtime modules, so only `requests` needs to be
 installed (`pip install -r requirements.txt`). They cover the security-sensitive
-paths: the multi-user guard, the proxy SSRF/auth checks, loader id extraction,
-and Picture Saver path containment.
+paths: the multi-user guard, the proxy SSRF/auth checks (including the shelf
+routes' digest guard and query forwarding), loader id extraction, Picture Saver
+path containment, and the Adapter Loader's path containment and download
+digest verification.
 
 Lint and format with [ruff](https://docs.astral.sh/ruff/):
 

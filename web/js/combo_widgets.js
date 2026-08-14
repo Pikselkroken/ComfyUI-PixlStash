@@ -17,6 +17,7 @@
 
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
+import { openAdapterPicker } from "./adapter_picker.js";
 
 // ---------------------------------------------------------------------------
 // Setting IDs
@@ -42,6 +43,8 @@ const NODE_MIN_VERSION = {
     "PixlStashLikenessSearch":  "1.4.0",
     "PixlStashFaceLikenessGate": "1.6.0",
     "PixlStashPictureLikenessGate": "1.4.0",
+    // The model shelf (GET /adapters, GET /model-icons) first ships in 1.10.0.
+    "PixlStashAdapterLoader":    "1.10.0",
 };
 
 // Cache: serverUrl → { state: "checking"|"resolved"|"error", version: string|null }
@@ -274,6 +277,26 @@ const LOADING_LABEL = "(loading…)";
 
 const fmt = (id, name) => `${name ?? id} #${id}`;
 
+/**
+ * A real adapter algorithm (`lora`, `lokr`, …) or "" for no filter.
+ *
+ * Matched by shape rather than against a copy of the Python "— Any —"
+ * sentinel: a duplicated unicode literal in two languages is a drift bug
+ * waiting to happen, and if it ever drifted the sentinel would be forwarded
+ * upstream as a filter value and the grid would come back empty with nothing
+ * to explain it.
+ */
+function adapterKindFilter(value) {
+    const v = String(value ?? "").trim();
+    return /^[a-z]+$/.test(v) ? v : "";
+}
+
+/** False for the placeholder / sentinel / error strings a dynamic combo shows. */
+function isRealComboValue(value) {
+    const v = String(value ?? "").trim();
+    return !!v && v !== NONE_LABEL && v !== LOADING_LABEL && !v.startsWith("⚠");
+}
+
 // ---------------------------------------------------------------------------
 // Fetch functions for each picker type — return arrays of formatted strings
 // ---------------------------------------------------------------------------
@@ -300,6 +323,27 @@ async function fetchCharacterOptions(projectId) {
     return [NONE_LABEL, ...data.map(c => fmt(c.id, c.name))];
 }
 
+/**
+ * Distinct base models across the shelf's adapters.
+ *
+ * These are raw strings, not `"<name> #<id>"` — the server matches
+ * `base_model` exactly, so what is shown is what is sent.
+ *
+ * ponytail: `GET /adapters` is unpaginated and the shelf has no facet
+ * endpoint, so deriving this list costs one whole-shelf fetch (records,
+ * locations and attachments included) the first time a node draws. It is
+ * cached for the session. If the shelf grows past a few thousand rows, that
+ * wants a `GET /adapters/facets` on the server rather than a fix here.
+ */
+async function fetchBaseModelOptions() {
+    const data = await proxyFetch("/pixlstash/adapters", getSettingsCredentials(), {
+        file_kind: "adapter",
+    });
+    const names = [...new Set((data?.adapters ?? []).map(a => a.base_model).filter(Boolean))];
+    names.sort((a, b) => a.localeCompare(b));
+    return [NONE_LABEL, ...names];
+}
+
 // ---------------------------------------------------------------------------
 // Cache + dynamic options binding
 // ---------------------------------------------------------------------------
@@ -321,9 +365,10 @@ function _kickOffFetch(kind, projectId, node, widget) {
     _optsCache.set(key, entry);
 
     const fetcher =
-        kind === "projects"   ? fetchProjectOptions()
-      : kind === "sets"       ? fetchSetOptions(projectId)
-      : /* characters */        fetchCharacterOptions(projectId);
+        kind === "projects"    ? fetchProjectOptions()
+      : kind === "sets"        ? fetchSetOptions(projectId)
+      : kind === "base_models" ? fetchBaseModelOptions()
+      : /* characters */         fetchCharacterOptions(projectId);
 
     fetcher
         .then(items => {
@@ -343,6 +388,20 @@ function _invalidateKind(kind) {
     for (const k of [..._optsCache.keys()]) {
         if (k.startsWith(`${kind}|`)) _optsCache.delete(k);
     }
+}
+
+/**
+ * Drop every cached dropdown, and the cached server version with it.
+ *
+ * Called when the connection settings change. Without this, a failed fetch is
+ * cached for the life of the page: drop a node before configuring a token and
+ * every dropdown stays stuck on "⚠ Configure URL and API Token…" even after
+ * you configure one, which reads as the node being broken.
+ */
+function _invalidateAll() {
+    _optsCache.clear();
+    _versionCache.clear();
+    app.graph?.setDirtyCanvas?.(true, true);
 }
 
 /**
@@ -419,12 +478,15 @@ app.registerExtension({
     // 1. Register ComfyUI settings
     // ------------------------------------------------------------------
     async setup() {
+        // Every one of these invalidates the cached dropdowns and version:
+        // they all change which server answers, or whether it answers at all.
         app.ui.settings.addSetting({
             id:           S_URL,
             name:         "PixlStash: Server URL",
             type:         "text",
             defaultValue: "http://localhost:8000",
             tooltip:      "Base URL of your PixlStash instance.",
+            onChange:     _invalidateAll,
         });
         app.ui.settings.addSetting({
             id:           S_TOKEN,
@@ -432,6 +494,7 @@ app.registerExtension({
             type:         "text",
             defaultValue: "",
             tooltip:      "Bearer token — stored here, never in workflow JSON.",
+            onChange:     _invalidateAll,
         });
         app.ui.settings.addSetting({
             id:           S_SSL,
@@ -439,6 +502,7 @@ app.registerExtension({
             type:         "boolean",
             defaultValue: true,
             tooltip:      "Disable to accept self-signed certificates.",
+            onChange:     _invalidateAll,
         });
         // Credentials (URL / token / Verify SSL) live only in these ComfyUI
         // settings.  ComfyUI persists them server-side, so the PixlStash nodes
@@ -562,6 +626,86 @@ app.registerExtension({
                     },
                     { serialize: false },
                 );
+            };
+        }
+
+        // ============================================================
+        // PixlStash Adapter Loader — dynamic base-model list + Browse grid
+        // ============================================================
+        if (nodeData.name === "PixlStashAdapterLoader") {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+
+                const shaWidget   = this.widgets?.find(w => w.name === "adapter_sha256");
+                const kindWidget  = this.widgets?.find(w => w.name === "adapter_kind");
+                const baseWidget  = this.widgets?.find(w => w.name === "base_model");
+                if (!shaWidget || !kindWidget || !baseWidget) return;
+
+                bindDynamicValues(this, baseWidget, "base_models", () => null);
+
+                // Hide the raw hash — it is written by the Browse modal.
+                shaWidget.hidden = true;
+                shaWidget.computeSize = () => [0, -4];
+
+                // The hash is the only thing serialised, so the button label is
+                // the whole of the node's visible state. Show the picked name
+                // after a pick, and the hash prefix after a workflow reload.
+                let browseBtn;
+                const setLabel = (text) => {
+                    if (!browseBtn) return;
+                    const label = text ? `Adapter: ${text}` : "Browse adapters…";
+                    // `name` for the canvas widget, `label` for the newer
+                    // frontend — whichever this ComfyUI renders.
+                    browseBtn.name  = label;
+                    browseBtn.label = label;
+                    this.setDirtyCanvas?.(true, true);
+                };
+                const labelFromHash = () => {
+                    const v = String(shaWidget.value ?? "").trim();
+                    setLabel(v ? `${v.slice(0, 10)}…` : "");
+                };
+
+                // adapter_kind / base_model are deliberately NOT chained to
+                // clear adapter_sha256. They only narrow the Browse grid — the
+                // node ignores them — so a selection that no longer matches
+                // them still resolves correctly, and wiping it because someone
+                // flipped a dropdown to see what was there would destroy real
+                // state with no undo.
+
+                const prevConfigure = this.onConfigure;
+                this.onConfigure = function (data) {
+                    prevConfigure?.call(this, data);
+                    labelFromHash();
+                };
+
+                browseBtn = this.addWidget(
+                    "button",
+                    "Browse adapters…",
+                    null,
+                    () => {
+                        const creds = getSettingsCredentials();
+                        if (!creds.url || !creds.token) {
+                            alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
+                            return;
+                        }
+                        const filters = {
+                            kind:        adapterKindFilter(kindWidget.value),
+                            baseModel:   isRealComboValue(baseWidget.value) ? baseWidget.value : "",
+                            // Character wins over set: GET /adapters 400s if
+                            // given both. Mirrored in nodes/adapter_loader.py.
+                            characterId: getWiredValue(this, "pixlstash_character"),
+                            setId:       getWiredValue(this, "pixlstash_set"),
+                        };
+                        openAdapterPicker(shaWidget, creds, filters, (record) => {
+                            setLabel(record.display_name || record.filename
+                                     || String(record.sha256 ?? "").slice(0, 10));
+                        }).catch(err => alert(`PixlStash adapter picker error: ${err.message}`));
+                    },
+                    { serialize: false },
+                );
+
+                labelFromHash();
             };
         }
 

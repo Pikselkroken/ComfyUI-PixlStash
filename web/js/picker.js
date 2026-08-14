@@ -16,6 +16,8 @@
  * Inline node previews are updated after confirm.
  */
 
+import { el, mkBtn, mkRow, selStyle } from "./modal_dom.js";
+
 // ---------------------------------------------------------------------------
 // Proxy fetch helper  (JSON endpoints only — goes through ComfyUI proxy)
 // ---------------------------------------------------------------------------
@@ -448,36 +450,4 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     });
 }
 
-// ---------------------------------------------------------------------------
-// Tiny DOM helpers (local)
-// ---------------------------------------------------------------------------
-
-function el(tag, props = {}) {
-    const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(props)) {
-        if (k === "style") node.style.cssText = v;
-        else               node[k] = v;
-    }
-    return node;
-}
-
-function mkBtn(label, bg = "#3a3a3a") {
-    return el("button", {
-        textContent: label,
-        style: `
-            padding:5px 14px; cursor:pointer; background:${bg};
-            border:1px solid #555; border-radius:4px;
-            color:#ddd; font-size:.85em; flex-shrink:0;
-        `,
-    });
-}
-
-function mkRow(...children) {
-    const d = el("div", { style: "display:flex; align-items:center; gap:10px; flex-shrink:0;" });
-    d.append(...children);
-    return d;
-}
-
-function selStyle() {
-    return "background:#2d2d2d; color:#ddd; border:1px solid #555; border-radius:4px; padding:4px 8px; font-size:.85em;";
-}
+// DOM helpers live in ./modal_dom.js — shared with adapter_picker.js.
