@@ -8,6 +8,8 @@ cannot find) is a node that loads and then fails in the UI, not an import
 error anyone would notice.
 """
 
+import ast
+import pathlib
 import unittest
 
 import _bootstrap as boot
@@ -17,6 +19,20 @@ adapter_applier = boot.load("nodes.adapter_applier")
 
 LOADER = adapter_loader.PixlStashAdapterLoader
 APPLIER = adapter_applier.PixlStashApplyAdapter
+
+
+def _display_names():
+    """``NODE_DISPLAY_NAME_MAPPINGS`` out of ``__init__.py`` without importing it."""
+    source = pathlib.Path(__file__).resolve().parent.parent / "__init__.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    for node in tree.body:
+        targets = getattr(node, "targets", [])
+        if any(
+            isinstance(t, ast.Name) and t.id == "NODE_DISPLAY_NAME_MAPPINGS"
+            for t in targets
+        ):
+            return ast.literal_eval(node.value)
+    raise AssertionError("__init__.py declares no NODE_DISPLAY_NAME_MAPPINGS")
 
 
 class SharedContractTests(unittest.TestCase):
@@ -30,6 +46,38 @@ class SharedContractTests(unittest.TestCase):
         for cls in (LOADER, APPLIER):
             with self.subTest(node=cls.__name__):
                 self.assertEqual(len(cls.RETURN_TYPES), len(cls.RETURN_NAMES))
+
+    def test_every_output_has_a_tooltip(self):
+        # ComfyUI pairs OUTPUT_TOOLTIPS with the outputs BY INDEX, so a tuple
+        # one short does not raise — it silently moves every tooltip after the
+        # gap onto the wrong socket, which is worse than having none.
+        for cls in (LOADER, APPLIER):
+            with self.subTest(node=cls.__name__):
+                self.assertEqual(len(cls.OUTPUT_TOOLTIPS), len(cls.RETURN_NAMES))
+                for tooltip in cls.OUTPUT_TOOLTIPS:
+                    self.assertTrue(tooltip.strip())
+
+    def test_both_nodes_describe_themselves(self):
+        # The node tooltip, shown on hover in the node browser. Its job is to
+        # answer "what is this and do I want it" before the node is placed.
+        for cls in (LOADER, APPLIER):
+            with self.subTest(node=cls.__name__):
+                self.assertGreater(len(cls.DESCRIPTION), 80)
+                # LoRA, not "adapter": it is the word someone searching for
+                # this node actually types.
+                self.assertIn("LoRA", cls.DESCRIPTION)
+
+    def test_the_display_names_say_lora(self):
+        # Findability, checked here rather than left to the eye: these nodes
+        # are named for the shelf's word ("adapter") and searched for by the
+        # ecosystem's ("lora").
+        # Read statically rather than imported: `__init__` pulls in every node
+        # in the pack, and the picture ones want a real numpy. The mapping is a
+        # literal, so parsing it is not a weaker check than importing it.
+        names = _display_names()
+        for key in ("PixlStashAdapterLoader", "PixlStashApplyAdapter"):
+            with self.subTest(node=key):
+                self.assertIn("(LoRA)", names[key])
 
 
 class LoaderContractTests(unittest.TestCase):

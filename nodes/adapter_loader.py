@@ -374,6 +374,29 @@ class PixlStashAdapterLoader:
     RETURN_NAMES = ("lora_path", "trigger_words", "lora_name")
     FUNCTION = "resolve"
 
+    DESCRIPTION = (
+        "Picks a LoRA off the PixlStash model shelf by browsing a grid of them, "
+        "rather than by finding its filename in a dropdown of hundreds.\n\n"
+        "Click “Browse adapters…” on the node. Wire a Character Loader or Set "
+        "Loader in to see only that person's or that set's adapters. LoKr, "
+        "LoHa, OFT and DoRA are on the shelf too and work the same way.\n\n"
+        "The two path outputs are for two different kinds of loader — hover "
+        "each one to see which. If the file is only on the PixlStash machine "
+        "it is fetched once and cached, verified against its SHA-256 first."
+    )
+    # The whole reason the user asked for a tooltip: two STRING outputs that
+    # look interchangeable and are not. Each one names the loader it drives.
+    OUTPUT_TOOLTIPS = (
+        "Absolute path to the adapter file. Wire into PixlStash Apply Adapter "
+        "(LoRA), or any node that takes a full path.",
+        "The trigger words recorded on the shelf, comma-separated. Empty when "
+        "the shelf has none for this adapter.",
+        "The adapter's name relative to a ComfyUI loras folder — what the "
+        "BUILT-IN LoraLoader and most other packs want. Right-click that node "
+        "and convert its lora_name widget to an input, then wire this in. "
+        "Empty if the file is not under any of ComfyUI's loras folders.",
+    )
+
     @classmethod
     def INPUT_TYPES(cls):
         return {

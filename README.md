@@ -98,7 +98,7 @@ You can filter by project, character and set by providing those inputs.
 
 **Note:** Requires PixlStash v1.4 (for now only available as development releases)
 
-### Adapter Loader
+### Adapter (LoRA) Loader
 
 Picks a LoRA (or LoKr, LoHa, OFT, DoRA) off the PixlStash **model shelf** and says where it is, in both forms a LoRA loader might want.
 
@@ -110,7 +110,7 @@ Three outputs, because LoRA loaders disagree about how a file is named:
 
 | Output | Wire it into |
 | --- | --- |
-| `lora_path` | **Apply Adapter**, or any pack whose LoRA node takes an absolute path |
+| `lora_path` | **Apply Adapter (LoRA)**, or any pack whose LoRA node takes an absolute path |
 | `lora_name` | ComfyUI's built-in **LoraLoader** and everything shaped like it — convert its `lora_name` widget to an input first (right-click the node) |
 | `trigger_words` | a prompt, a text concat, wherever you want them |
 
@@ -124,9 +124,9 @@ Fetched adapters go into `<your first loras directory>/pixlstash/<sha256>.safete
 
 **Token scope:** the shelf routes are `OWNER_ONLY` and pinned to a library, which is stricter than the routes the other nodes use. A resource-scoped share token that works fine with the Picture Loader will get a 403 here — use an owner token. The node says so in as many words when you queue it; the Browse modal shows the server's generic "no access" message.
 
-### Apply Adapter
+### Apply Adapter (LoRA)
 
-Applies an adapter file to `MODEL` (and optionally `CLIP`), with separate model and CLIP strengths. Chain several for several adapters, as with ComfyUI's built-in LoRA loader. `lora_path` is a wired string input — any node that outputs a file path will do, not just the Adapter Loader.
+Applies an adapter file to `MODEL` (and optionally `CLIP`), with separate model and CLIP strengths. Chain several for several adapters, as with ComfyUI's built-in LoRA loader. `lora_path` is a wired string input — any node that outputs a file path will do, not just the Adapter (LoRA) Loader.
 
 `clip` is optional so model-only adapters work without a CLIP wire. ComfyUI can't vary a node's outputs per graph, so the CLIP *output* still exists in that case and carries nothing — leave it unconnected when you leave the input unconnected.
 
@@ -229,7 +229,7 @@ The tests stub ComfyUI's runtime modules, so only `requests` needs to be
 installed (`pip install -r requirements.txt`). They cover the security-sensitive
 paths: the multi-user guard, the proxy SSRF/auth checks (including the shelf
 routes' digest guard and query forwarding), loader id extraction, Picture Saver
-path containment, and the Adapter Loader's path containment and download
+path containment, and the Adapter (LoRA) Loader's path containment and download
 digest verification.
 
 Lint and format with [ruff](https://docs.astral.sh/ruff/):

@@ -32,6 +32,24 @@ class PixlStashApplyAdapter:
     RETURN_NAMES = ("model", "clip")
     FUNCTION = "apply_adapter"
 
+    DESCRIPTION = (
+        "Applies a LoRA to a model, taking the file as an absolute PATH rather "
+        "than a name off a dropdown — which is what lets a PixlStash Adapter "
+        "(LoRA) Loader drive it.\n\n"
+        "Chain several for several adapters, exactly as with the built-in LoRA "
+        "loader. Leave clip unwired for a model-only adapter, and leave the "
+        "CLIP output unwired too when you do. LoKr, LoHa, OFT and DoRA load "
+        "here as well.\n\n"
+        "Already using the built-in LoraLoader? You do not need this node — "
+        "wire the loader's lora_name output into it instead."
+    )
+    OUTPUT_TOOLTIPS = (
+        "The model with the adapter applied. Chain into another Apply Adapter "
+        "for a second one.",
+        "The CLIP with the adapter applied — carries nothing if you left the "
+        "clip input unwired, so leave this unwired too in that case.",
+    )
+
     def __init__(self) -> None:
         # (path, state_dict) of the last file loaded. A LoRA is hundreds of
         # megabytes and the graph re-runs on every generate; re-reading it each
@@ -53,7 +71,10 @@ class PixlStashApplyAdapter:
                     "STRING",
                     {
                         "forceInput": True,
-                        "tooltip": "Wire from a PixlStash Adapter Loader.",
+                        "tooltip": (
+                            "Wire the lora_path output of a PixlStash Adapter "
+                            "(LoRA) Loader in here."
+                        ),
                     },
                 ),
                 "strength_model": (

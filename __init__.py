@@ -55,8 +55,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixlStashFaceLikenessGate": "PixlStash Face Likeness Gate",
     "PixlStashPictureLikenessGate": "PixlStash Picture Likeness Gate",
     "PixlStashSemanticSearch": "PixlStash Semantic Search",
-    "PixlStashAdapterLoader": "PixlStash Adapter Loader",
-    "PixlStashApplyAdapter": "PixlStash Apply Adapter",
+    # "(LoRA)" is not a narrowing — these nodes take LoKr, LoHa, OFT and DoRA
+    # too — it is what makes them findable. Nearly every adapter anyone has is
+    # a LoRA, and that is the word people type into the node search; "adapter"
+    # is the shelf's word, not the ecosystem's.
+    "PixlStashAdapterLoader": "PixlStash Adapter (LoRA) Loader",
+    "PixlStashApplyAdapter": "PixlStash Apply Adapter (LoRA)",
 }
 
 WEB_DIRECTORY = "web/js"
