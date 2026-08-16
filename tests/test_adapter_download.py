@@ -176,7 +176,7 @@ class DownloadTests(unittest.TestCase):
             )
         self.assertEqual(leftovers(), [])
 
-    def test_a_404_names_the_missing_route(self):
+    def test_a_404_names_the_version_that_added_the_route(self):
         class _Failing:
             def get(self, path, **kwargs):
                 raise RuntimeError("PixlStash: not found — /api/v1/adapters/x/file")
@@ -185,13 +185,34 @@ class DownloadTests(unittest.TestCase):
             adapter_loader._cached_download(_Failing(), SHA)
         message = str(ctx.exception)
         self.assertIn("no usable copy", message)
-        self.assertIn("not in a released PixlStash yet", message)
+        self.assertIn("1.10", message)
         self.assertEqual(leftovers(), [])
 
-    def test_other_failures_are_not_blamed_on_the_missing_route(self):
+    def test_no_readable_copy_is_reported_in_the_server_s_own_words(self):
+        # 409, not 404: the route exists and the shelf knows the hash, it just
+        # can't reach a copy. Blaming the server's version here would be wrong,
+        # so the hint must stay off and the server's detail must come through.
+        detail = (
+            "PixlStash: HTTP 409 from https://vault.example/api/v1/adapters/x/file. "
+            'Response: {"detail":"This adapter is on the shelf but no copy of it '
+            'is readable on this machine right now."}'
+        )
+
+        class _Failing:
+            def get(self, path, **kwargs):
+                raise RuntimeError(detail)
+
+        with self.assertRaises(RuntimeError) as ctx:
+            adapter_loader._cached_download(_Failing(), SHA)
+        message = str(ctx.exception)
+        self.assertIn("no copy of it is readable", message)
+        self.assertNotIn("1.10", message)
+        self.assertEqual(leftovers(), [])
+
+    def test_other_failures_are_not_blamed_on_the_server_s_version(self):
         # A bad token, an SSL failure or a timeout says nothing about whether
-        # the server has the file or serves that route; claiming otherwise
-        # sends the user looking in the wrong place.
+        # the server serves that route; claiming otherwise sends the user
+        # looking in the wrong place.
         for detail in (
             "PixlStash: invalid or expired API token.",
             "PixlStash: SSL certificate verification failed.",
@@ -207,7 +228,7 @@ class DownloadTests(unittest.TestCase):
                     adapter_loader._cached_download(_Failing(), SHA)
                 message = str(ctx.exception)
                 self.assertIn(detail, message)
-                self.assertNotIn("released PixlStash yet", message)
+                self.assertNotIn("1.10", message)
         self.assertEqual(leftovers(), [])
 
     def test_a_cache_hit_makes_no_request(self):

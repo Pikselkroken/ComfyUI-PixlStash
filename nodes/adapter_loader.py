@@ -270,14 +270,16 @@ def _cached_download(client, sha256: str) -> str:
         _discard(part)
         if not isinstance(exc, RuntimeError):
             raise
-        # Only a 404 is evidence about the route or the file; a 401, an SSL
-        # failure or a timeout says nothing about either, and telling the user
-        # "the server has no copy" when their token expired sends them looking
-        # in the wrong place.
+        # Only a 404 is evidence about the route; a 401, an SSL failure or a
+        # timeout says nothing about it, and telling the user "your server is
+        # too old" when their token expired sends them looking in the wrong
+        # place. The hash is known to be a real adapter by now — the record
+        # fetch above already 404'd otherwise — and a server that has the route
+        # but no readable copy answers 409, whose own detail text comes through
+        # verbatim. So a 404 *here* means the route isn't there at all.
         hint = (
-            " The server has no reachable copy of the file, or does not serve "
-            "adapter bytes at all — that route is not in a released PixlStash "
-            "yet."
+            " That route serves adapter bytes and first ships in PixlStash "
+            "1.10; this server is older than that."
             if "not found" in str(exc).lower()
             else ""
         )
