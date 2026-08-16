@@ -1,4 +1,4 @@
-"""The two model-shelf proxy routes.
+"""The model-shelf proxy routes.
 
 ``/pixlstash/model_icon`` interpolates ``icon_sha256`` into an upstream path,
 so the same concern applies as to ``proxy_thumbnail``'s ``picture_id.isdigit()``
@@ -119,6 +119,65 @@ class ModelIconGuardTests(unittest.TestCase):
         self.assertEqual(client.calls, [(f"/api/v1/model-icons/{GOOD}", {})])
         self.assertEqual(resp.kwargs["body"], b"PNGDATA")
         self.assertEqual(resp.kwargs["content_type"], "image/png")
+
+
+class EntityThumbnailGuardTests(unittest.TestCase):
+    """``/pixlstash/entity_thumbnail`` picks its upstream path from a table.
+
+    Two caller-supplied values reach that decision: ``entity_type`` selects the
+    template and ``entity_id`` is interpolated into it. The type is a lookup
+    rather than a substitution, so the only thing that can carry a path is the
+    id, and ``isdigit`` is what stops it — the same guard ``proxy_thumbnail``
+    applies to ``picture_id``.
+    """
+
+    def _call(self, client=None, **params):
+        client = client or _FakeClient(
+            _Response(content=b"PNG", headers={"Content-Type": "image/png"})
+        )
+        with mock.patch.object(proxy, "_build_client", lambda request: client):
+            resp = asyncio.run(proxy.proxy_entity_thumbnail(_Request(**params)))
+        return client, resp
+
+    def test_rejects_an_unknown_entity_type(self):
+        for bad in ("", "picture", "character/../..", "CHARACTER"):
+            with self.subTest(bad=bad):
+                _, resp = self._call(entity_type=bad, entity_id="1")
+                self.assertEqual(resp.kwargs.get("status"), 400)
+                self.assertIn("entity_type", body_of(resp))
+
+    def test_rejects_a_non_numeric_id(self):
+        for bad in ("", "1/../../etc/passwd", "-1", "1.0", "1e3", "abc", "1 "):
+            with self.subTest(bad=bad):
+                _, resp = self._call(entity_type="character", entity_id=bad)
+                self.assertEqual(resp.kwargs.get("status"), 400, f"accepted {bad!r}")
+                self.assertIn("entity_id", body_of(resp))
+
+    def test_a_character_reaches_the_character_thumbnail(self):
+        client, resp = self._call(entity_type="character", entity_id="18")
+        self.assertEqual(client.calls, [("/api/v1/characters/18/thumbnail", {})])
+        self.assertEqual(resp.kwargs["body"], b"PNG")
+        self.assertEqual(resp.kwargs["content_type"], "image/png")
+
+    def test_a_set_reaches_the_picture_set_thumbnail(self):
+        # A different upstream noun entirely — `set` is the record's word and
+        # `picture_sets` is the API's, and getting that mapping wrong would 404
+        # every set-attached model into the initials mark.
+        client, _ = self._call(entity_type="set", entity_id="7")
+        self.assertEqual(client.calls, [("/api/v1/picture_sets/7/thumbnail", {})])
+
+    def test_an_entity_without_a_picture_is_an_error_not_a_crash(self):
+        # A character with no reference face 404s. The picker reads that as
+        # "draw the initials", so it has to come back as a response.
+        class _Missing:
+            def get(self, path, **kwargs):
+                raise RuntimeError(
+                    "PixlStash: not found — /api/v1/characters/9/thumbnail"
+                )
+
+        _, resp = self._call(client=_Missing(), entity_type="character", entity_id="9")
+        self.assertEqual(resp.kwargs.get("status"), 502)
+        self.assertIn("not found", body_of(resp))
 
 
 class AdapterListProxyTests(unittest.TestCase):

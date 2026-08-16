@@ -36,9 +36,14 @@ class LoaderContractTests(unittest.TestCase):
     def setUp(self):
         self.spec = LOADER.INPUT_TYPES()
 
-    def test_emits_a_path_and_trigger_words(self):
-        self.assertEqual(LOADER.RETURN_TYPES, ("STRING", "STRING"))
-        self.assertEqual(LOADER.RETURN_NAMES, ("lora_path", "trigger_words"))
+    def test_emits_a_path_a_name_and_trigger_words(self):
+        # lora_name is LAST. A saved graph stores its links by output index, so
+        # slotting it in beside lora_path would move every existing
+        # trigger_words wire onto the wrong socket on load.
+        self.assertEqual(LOADER.RETURN_TYPES, ("STRING", "STRING", "STRING"))
+        self.assertEqual(
+            LOADER.RETURN_NAMES, ("lora_path", "trigger_words", "lora_name")
+        )
 
     def test_the_widgets_the_js_drives_by_name_exist(self):
         # combo_widgets.js looks these up with widgets.find(w => w.name === …)

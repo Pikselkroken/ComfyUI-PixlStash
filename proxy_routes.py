@@ -227,6 +227,50 @@ async def proxy_model_icon(request: web.Request) -> web.Response:
     )
 
 
+async def proxy_entity_thumbnail(request: web.Request) -> web.Response:
+    """Proxy the thumbnail of the character / set a model is attached to.
+
+    Most adapters carry no icon of their own — on a real shelf almost none do —
+    so the picker borrows the face of whoever the model is attached to, which is
+    what PixlStash's own shelf draws (``ModelMark``'s fallback chain).  A LoRA of
+    a person is far better identified by that person's face than by two letters.
+
+    Two entity types, because ``attachments[].entity_type`` has two values.  The
+    type picks the upstream path from a fixed table rather than being
+    interpolated into one, so an unknown value is a 400 here and never a request.
+    """
+    upstream = {
+        "character": "/api/v1/characters/{}/thumbnail",
+        "set": "/api/v1/picture_sets/{}/thumbnail",
+    }.get(request.rel_url.query.get("entity_type", ""))
+    if upstream is None:
+        return _err("entity_type query param must be 'character' or 'set'.", status=400)
+
+    raw_id = request.rel_url.query.get("entity_id", "")
+    if not raw_id.isdigit():
+        return _err("entity_id query param must be a positive integer.", status=400)
+
+    try:
+        client = _build_client(request)
+    except web.HTTPBadRequest as exc:
+        return _err(exc.reason, status=400)
+
+    path = upstream.format(int(raw_id))
+    try:
+        resp = await asyncio.to_thread(client.get, path)
+    except RuntimeError as exc:
+        # An entity with no picture 404s, which is ordinary rather than broken —
+        # the caller falls back to the generated mark. Logged at debug so a
+        # cast of faceless characters doesn't fill the console on every grid.
+        log.debug("[PixlStash proxy] %s: %s", path, exc)
+        return _err(str(exc))
+
+    return web.Response(
+        body=resp.content,
+        content_type=resp.headers.get("Content-Type", "image/webp"),
+    )
+
+
 async def proxy_version(request: web.Request) -> web.Response:
     try:
         client = _build_client(request)
@@ -278,6 +322,7 @@ def register_routes() -> None:
         r.get("/pixlstash/thumbnail")(proxy_thumbnail)
         r.get("/pixlstash/adapters")(proxy_adapters)
         r.get("/pixlstash/model_icon")(proxy_model_icon)
+        r.get("/pixlstash/entity_thumbnail")(proxy_entity_thumbnail)
         r.get("/pixlstash/version")(proxy_version)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:

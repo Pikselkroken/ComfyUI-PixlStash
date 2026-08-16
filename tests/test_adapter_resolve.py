@@ -84,7 +84,7 @@ class ResolveTests(unittest.TestCase):
             raise AssertionError("downloaded a file that was already usable here")
 
         with mock.patch.object(adapter_loader, "_cached_download", explode):
-            path, triggers = self._resolve(client)
+            path, triggers, _ = self._resolve(client)
 
         self.assertEqual(path, os.path.normpath(LOCAL))
         self.assertEqual(triggers, "a knight, plate armour")
@@ -97,7 +97,7 @@ class ResolveTests(unittest.TestCase):
         with mock.patch.object(
             adapter_loader, "_cached_download", lambda c, s: "/cache/x.safetensors"
         ):
-            path, _ = self._resolve(client)
+            path, _, _ = self._resolve(client)
         self.assertEqual(path, "/cache/x.safetensors")
 
     def test_downloads_when_the_shelf_lists_no_present_copy(self):
@@ -105,13 +105,13 @@ class ResolveTests(unittest.TestCase):
         with mock.patch.object(
             adapter_loader, "_cached_download", lambda c, s: "/cache/x.safetensors"
         ):
-            path, _ = self._resolve(client)
+            path, _, _ = self._resolve(client)
         self.assertEqual(path, "/cache/x.safetensors")
 
     def test_trigger_words_survive_a_null(self):
         client = _Client(payload=record(trigger_words=None))
         with mock.patch.object(adapter_loader, "_cached_download", lambda c, s: "x"):
-            _, triggers = self._resolve(client)
+            _, triggers, _ = self._resolve(client)
         self.assertEqual(triggers, "")
 
     def test_uppercase_and_padded_digests_are_normalised(self):

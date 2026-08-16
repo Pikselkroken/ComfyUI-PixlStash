@@ -302,6 +302,53 @@ def _cached_download(client, sha256: str) -> str:
     return final
 
 
+def _lora_name(path: str) -> str:
+    """``path`` as a name ComfyUI's own loaders accept, or ``""``.
+
+    The absolute path is what this package's Apply Adapter node wants, but every
+    *other* LoRA loader — the built-in ``LoraLoader`` and every pack that copies
+    its signature — takes ``lora_name``: a path **relative to a configured loras
+    root**, which is what ``folder_paths.get_full_path("loras", name)`` joins
+    back.  Emitting only an absolute path left this node unable to drive any of
+    them, which is most of why anyone has a LoRA loader at all.
+
+    Wire it into a ``lora_name`` widget converted to an input.  ``get_full_path``
+    resolves with a live ``isfile`` check rather than off the cached filename
+    list, so a file this node has just downloaded works immediately even though
+    it is not yet in the dropdown.
+
+    ``""`` when the file is under no loras root: ComfyUI simply cannot address
+    it by name then, and an invented name would fail inside the loader with a
+    worse message than the one the caller gets from an empty string.  Not a
+    case that arises when PixlStash catalogues the same directories ComfyUI
+    loads from, which is the ordinary setup.
+    """
+    try:
+        import folder_paths  # noqa: PLC0415 — only available inside ComfyUI
+    except ImportError:
+        return ""
+
+    resolved = os.path.realpath(path)
+    for root in folder_paths.get_folder_paths("loras") or []:
+        # realpath on both sides: the loras root is very often a symlink to
+        # another disk, and a lexical comparison would then miss every file
+        # under it and report "no name" for a whole library.
+        root = os.path.realpath(root)
+        if resolved == root or not resolved.startswith(root + os.sep):
+            continue
+        # Forward slashes: `get_full_path` re-joins with os.sep, and a name is
+        # also a string a user may read off the wire and paste back.
+        return os.path.relpath(resolved, root).replace(os.sep, "/")
+    log.warning(
+        "[PixlStash] %s is under no ComfyUI loras directory, so there is no "
+        "name for it — lora_name is empty and only lora_path is usable. Add "
+        "that directory to ComfyUI's loras paths if you need the built-in "
+        "loaders to take it.",
+        path,
+    )
+    return ""
+
+
 def _trigger_words(record: dict) -> str:
     """``trigger_words`` as a STRING, whatever shape the server sent it in."""
     value = record.get("trigger_words")
@@ -311,11 +358,20 @@ def _trigger_words(record: dict) -> str:
 
 
 class PixlStashAdapterLoader:
-    """Picks one adapter off the PixlStash model shelf and emits its path."""
+    """Picks one adapter off the PixlStash model shelf and says where it is.
+
+    Two ways of saying it, because the loaders disagree: ``lora_path`` is
+    absolute and drives this package's Apply Adapter node, ``lora_name`` is
+    relative to a ComfyUI loras root and drives the built-in ``LoraLoader`` and
+    everything shaped like it (convert its ``lora_name`` widget to an input).
+    """
 
     CATEGORY = "PixlStash"
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("lora_path", "trigger_words")
+    # `lora_name` is appended rather than slotted in beside `lora_path`: output
+    # order is what a saved graph stores its links by, so inserting would move
+    # every existing `trigger_words` wire onto the wrong socket.
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("lora_path", "trigger_words", "lora_name")
     FUNCTION = "resolve"
 
     @classmethod
@@ -409,7 +465,7 @@ class PixlStashAdapterLoader:
 
         path = _local_path(record) or _cached_download(client, sha256)
         log.info("[PixlStash] Adapter %s resolved to %s", sha256[:12], path)
-        return (path, _trigger_words(record))
+        return (path, _trigger_words(record), _lora_name(path))
 
     @staticmethod
     def _fetch_record(client, sha256: str) -> dict:

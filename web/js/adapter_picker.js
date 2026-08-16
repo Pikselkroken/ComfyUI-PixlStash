@@ -50,17 +50,51 @@ async function proxyFetch(path, credentials, extraParams = {}) {
     return resp.json();
 }
 
-async function fetchIconUrl(iconSha256, credentials) {
+async function fetchBlobUrl(path, credentials, extraParams) {
     const params = new URLSearchParams({
         url:        credentials.url,
         verify_ssl: credentials.verifySsl ? "true" : "false",
-        icon_sha256: iconSha256,
+        ...extraParams,
     });
-    const resp = await fetch(`/pixlstash/model_icon?${params}`, {
+    const resp = await fetch(`${path}?${params}`, {
         headers: { "Authorization": `Bearer ${credentials.token}` },
     });
     if (!resp.ok) return null;
     return URL.createObjectURL(await resp.blob());
+}
+
+/**
+ * The face for one card, in the order PixlStash's own shelf resolves it.
+ *
+ * 1. The model's OWN icon — somebody chose that picture for this file.
+ * 2. The face of whoever it is attached to. Almost no adapter carries an icon
+ *    (none of the 51 on the shelf this was tested against), while attachments
+ *    are common, so this is the step that actually draws a picture. A LoRA of
+ *    a person is far better identified by that person's face than by `SA`.
+ * 3. `null`, and the caller leaves the generated initials mark alone. A
+ *    character with no reference face 404s exactly like one that does not
+ *    exist, and an empty square would read as broken rather than as unset.
+ *
+ * The FIRST attachment wins, matching the ring upstream: a model attached to
+ * four characters has one square to draw in, and picking the first is what the
+ * shelf does. Sequential rather than raced, so a model with its own icon costs
+ * exactly one request.
+ */
+async function fetchFaceUrl(record, credentials) {
+    if (record.icon_sha256) {
+        const url = await fetchBlobUrl("/pixlstash/model_icon", credentials, {
+            icon_sha256: record.icon_sha256,
+        });
+        if (url) return url;
+    }
+    const attachment = (record.attachments || [])[0];
+    if (attachment && attachment.entity_id != null) {
+        return fetchBlobUrl("/pixlstash/entity_thumbnail", credentials, {
+            entity_type: attachment.entity_type === "character" ? "character" : "set",
+            entity_id:   String(attachment.entity_id),
+        });
+    }
+    return null;
 }
 
 /**
@@ -244,22 +278,22 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
             // plainly that the route this needs isn't in a released server
             // yet, rather than leaving the user to discover it at queue time.
             item.appendChild(el("div", {
-                textContent: "no copy on disk — download not yet supported",
-                title:       "PixlStash has no reachable copy of this file. "
-                           + "Fetching it needs a server release that serves "
-                           + "adapter bytes, which does not exist yet.",
+                textContent: "no copy on disk",
+                title:       "PixlStash has no reachable copy of this file, so "
+                           + "it cannot serve it either — reconnect the drive "
+                           + "or rescan the folder it lives in.",
                 style:       "font-size:.68em; color:#d0a24c; line-height:1.2;",
             }));
         }
 
-        if (record.icon_sha256) {
+        if (record.icon_sha256 || (record.attachments || []).length) {
             // The grid may be rebuilt (or the modal closed) while this is in
             // flight. An icon that lands on a card no longer in itemElements
             // would never be revoked by close()/resetGrid(), so revoke it here
             // instead — that is the leak, and typing in the search box is the
             // way to hit it.
             const generation = gridGeneration;
-            fetchIconUrl(record.icon_sha256, credentials)
+            fetchFaceUrl(record, credentials)
                 .then(url => {
                     if (!url) return;
                     if (generation !== gridGeneration || !item.isConnected) {

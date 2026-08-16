@@ -100,13 +100,21 @@ You can filter by project, character and set by providing those inputs.
 
 ### Adapter Loader
 
-Picks a LoRA (or LoKr, LoHa, OFT, DoRA) off the PixlStash **model shelf** and outputs its file path.
+Picks a LoRA (or LoKr, LoHa, OFT, DoRA) off the PixlStash **model shelf** and says where it is, in both forms a LoRA loader might want.
 
-Click **Browse adapters…** to open a thumbnail grid of the adapters on your shelf, showing each one's icon, name and base model. Narrow the grid with the `adapter_kind` and `base_model` dropdowns, with the in-modal search box, or by wiring a Set Loader or Character Loader so you see only the adapters attached to that character or set. If both a set and a character are wired, the grid follows the character — the server accepts one or the other, never both.
+Click **Browse adapters…** to open a thumbnail grid of the adapters on your shelf, showing each one's picture, name and base model. The picture is the adapter's own icon if it has one; almost none do, so for an adapter attached to a character or a set it falls back to that character's or set's thumbnail — a LoRA of a person is easier to spot by their face than by two letters. An adapter that is attached to nothing and carries no icon draws a generated mark instead. Narrow the grid with the `adapter_kind` and `base_model` dropdowns, with the in-modal search box, or by wiring a Set Loader or Character Loader so you see only the adapters attached to that character or set. If both a set and a character are wired, the grid follows the character — the server accepts one or the other, never both.
 
 `adapter_kind` and `base_model` filter the Browse grid only. They do not affect what is loaded, so changing one does not disturb a selection you already made.
 
-Outputs `lora_path` (wire it into **Apply Adapter**, or into any other pack's LoRA node that takes a path) and `trigger_words` from the shelf record.
+Three outputs, because LoRA loaders disagree about how a file is named:
+
+| Output | Wire it into |
+| --- | --- |
+| `lora_path` | **Apply Adapter**, or any pack whose LoRA node takes an absolute path |
+| `lora_name` | ComfyUI's built-in **LoraLoader** and everything shaped like it — convert its `lora_name` widget to an input first (right-click the node) |
+| `trigger_words` | a prompt, a text concat, wherever you want them |
+
+`lora_name` is the file's path relative to whichever of ComfyUI's configured loras directories contains it, which is exactly what those loaders expect. It resolves through a live filesystem check rather than the cached dropdown list, so an adapter this node has just fetched works immediately without a restart. It is empty when the file lives under no loras directory at all — ComfyUI cannot address it by name in that case, and the node says so in the log; add that directory to ComfyUI's loras paths if you need the built-in loaders to reach it.
 
 **Where the file comes from.** The shelf records the paths of the machine *PixlStash* runs on. A copy is used in place only if all of this holds on the machine ComfyUI is running on: the shelf last saw that copy as `present`, the path stays inside the folder it was registered under, it ends in `.safetensors`, it is on disk here, and its size is exactly the size the shelf recorded. Anything else — including a shelf record that carries no size at all — is treated as unverifiable and fetched instead. That is deliberately strict: the alternative is loading whatever unrelated file happens to sit at the same path on a ComfyUI host that isn't the PixlStash host, which is silently wrong output rather than an error.
 
