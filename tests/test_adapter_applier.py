@@ -157,7 +157,7 @@ class CacheTests(unittest.TestCase):
         def observing_load(path, safe_load=False, **kwargs):
             # What the node is holding at the moment it starts reading the new
             # file: both resident here would double peak memory on a switch.
-            seen["cached"] = node._cached
+            seen["cached"] = node._applier._cached
             return original(path, safe_load=safe_load, **kwargs)
 
         utils.load_torch_file = observing_load

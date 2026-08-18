@@ -20,9 +20,7 @@ filename.
 
 import os
 import shutil
-import sys
 import tempfile
-import types
 import unittest
 
 import _bootstrap as boot
@@ -293,7 +291,7 @@ class ShaValidationTests(unittest.TestCase):
 
     def _resolve(self, value):
         node = adapter_loader.PixlStashAdapterLoader()
-        return node.resolve("— Any —", "— None —", value)
+        return node._resolve(value)
 
     def test_empty_selection_names_the_browse_button(self):
         with self.assertRaises(RuntimeError) as ctx:
@@ -306,79 +304,6 @@ class ShaValidationTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError) as ctx:
                     self._resolve(bad)
                 self.assertIn("hex digest", str(ctx.exception))
-
-
-class LoraNameTests(unittest.TestCase):
-    """``_lora_name`` is what lets a stock ``LoraLoader`` take this node's output.
-
-    It is the inverse of ``folder_paths.get_full_path("loras", name)``, so the
-    thing it has to get right is which root a file is under and what remains
-    once that root is removed.
-    """
-
-    def setUp(self):
-        self.root = os.path.join(TMP, "comfy_loras")
-        self.other = os.path.join(TMP, "comfy_loras_2")
-        os.makedirs(os.path.join(self.root, "nested"), exist_ok=True)
-        os.makedirs(self.other, exist_ok=True)
-        self._install([self.other, self.root])
-
-    def _install(self, roots):
-        module = types.ModuleType("folder_paths")
-        module.get_folder_paths = lambda kind: roots if kind == "loras" else []
-        self.addCleanup(sys.modules.pop, "folder_paths", None)
-        sys.modules["folder_paths"] = module
-
-    def test_a_file_in_a_loras_root_is_named_by_its_basename(self):
-        path = os.path.join(self.root, "knight.safetensors")
-        self.assertEqual(adapter_loader._lora_name(path), "knight.safetensors")
-
-    def test_a_nested_file_keeps_its_subdirectory(self):
-        # This is the download cache's own shape: <root>/pixlstash/<sha>.safetensors.
-        path = os.path.join(self.root, "nested", "knight.safetensors")
-        self.assertEqual(adapter_loader._lora_name(path), "nested/knight.safetensors")
-
-    def test_the_second_root_is_searched_too(self):
-        # ComfyUI configures several loras directories (Lora and LyCORIS, out of
-        # the box on StabilityMatrix); stopping at the first would name only half
-        # a library.
-        path = os.path.join(self.other, "lycoris.safetensors")
-        self.assertEqual(adapter_loader._lora_name(path), "lycoris.safetensors")
-
-    def test_a_file_under_no_root_has_no_name(self):
-        self.assertEqual(adapter_loader._lora_name(os.path.join(OUTSIDE, "x.st")), "")
-
-    def test_the_root_itself_is_not_a_name(self):
-        # relpath would answer "." here, which get_full_path would then join
-        # into the directory itself and hand a loader a folder to torch.load.
-        self.assertEqual(adapter_loader._lora_name(self.root), "")
-
-    def test_a_symlinked_loras_root_still_names_its_files(self):
-        # The realistic setup this exists for: the models directory is a symlink
-        # to a second disk, so ComfyUI's configured root and the path the shelf
-        # reports are the same file by different names. A lexical compare would
-        # report "under no root" for an entire library.
-        link = os.path.join(TMP, "linked_loras")
-        if not os.path.islink(link):
-            os.symlink(self.root, link)
-        self._install([link])
-        path = os.path.join(self.root, "knight.safetensors")
-        self.assertEqual(adapter_loader._lora_name(path), "knight.safetensors")
-
-    def test_a_sibling_directory_sharing_a_prefix_is_not_inside(self):
-        # `comfy_loras_2` starts with `comfy_loras`; a startswith without the
-        # separator would name a file there against the wrong root.
-        path = os.path.join(self.other, "lycoris.safetensors")
-        self._install([self.root])
-        self.assertEqual(adapter_loader._lora_name(path), "")
-
-    def test_no_comfyui_means_no_name_rather_than_an_importerror(self):
-        # The node's own tests, and anything else that imports this module
-        # outside ComfyUI.
-        sys.modules.pop("folder_paths", None)
-        self.assertEqual(
-            adapter_loader._lora_name(os.path.join(self.root, "k.safetensors")), ""
-        )
 
 
 if __name__ == "__main__":

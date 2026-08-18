@@ -84,14 +84,26 @@ class LoaderContractTests(unittest.TestCase):
     def setUp(self):
         self.spec = LOADER.INPUT_TYPES()
 
-    def test_emits_a_path_a_name_and_trigger_words(self):
-        # lora_name is LAST. A saved graph stores its links by output index, so
-        # slotting it in beside lora_path would move every existing
-        # trigger_words wire onto the wrong socket on load.
-        self.assertEqual(LOADER.RETURN_TYPES, ("STRING", "STRING", "STRING"))
-        self.assertEqual(
-            LOADER.RETURN_NAMES, ("lora_path", "trigger_words", "lora_name")
-        )
+    def test_is_shaped_like_the_built_in_lora_loader(self):
+        # The whole point of the node's second design: MODEL/CLIP in the same
+        # order and the same types as ComfyUI's LoraLoader, so it drops into a
+        # graph where one already sits. A STRING output here would be the old
+        # design back again, and the old design could not be wired to anything.
+        self.assertEqual(LOADER.RETURN_TYPES[:2], ("MODEL", "CLIP"))
+        self.assertEqual(LOADER.RETURN_NAMES[:2], ("model", "clip"))
+        self.assertIn("model", self.spec["required"])
+        self.assertEqual(self.spec["required"]["model"][0], "MODEL")
+        self.assertEqual(self.spec["optional"]["clip"][0], "CLIP")
+
+    def test_carries_both_strengths_with_the_built_in_s_range(self):
+        for name in ("strength_model", "strength_clip"):
+            with self.subTest(widget=name):
+                kind, opts = self.spec["optional"][name]
+                self.assertEqual(kind, "FLOAT")
+                self.assertEqual(opts["default"], 1.0)
+                # Same range as the built-in, negatives included: subtracting a
+                # LoRA is a real technique, and clamping at 0 would forbid it.
+                self.assertEqual((opts["min"], opts["max"]), (-100.0, 100.0))
 
     def test_the_widgets_the_js_drives_by_name_exist(self):
         # combo_widgets.js looks these up with widgets.find(w => w.name === …)

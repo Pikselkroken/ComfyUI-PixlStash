@@ -75,7 +75,12 @@ class ResolveTests(unittest.TestCase):
             adapter_loader, "read_credentials", lambda: (url, token, True)
         ):
             with mock.patch.object(adapter_loader, "make_client", lambda *a: client):
-                return node.resolve("— Any —", "— None —", sha)
+                # `_resolve`, not `load_lora`: everything these tests are
+                # about (digest validation, credentials, the local-vs-download
+                # decision, the 403 message) happens before a MODEL is touched,
+                # and going through the apply would need a torch stub to say
+                # nothing extra.
+                return node._resolve(sha)
 
     def test_uses_a_usable_local_copy_and_never_downloads(self):
         client = _Client(payload=record())
@@ -84,7 +89,8 @@ class ResolveTests(unittest.TestCase):
             raise AssertionError("downloaded a file that was already usable here")
 
         with mock.patch.object(adapter_loader, "_cached_download", explode):
-            path, triggers, _ = self._resolve(client)
+            shelf_row, path = self._resolve(client)
+            triggers = adapter_loader._trigger_words(shelf_row)
 
         self.assertEqual(path, os.path.normpath(LOCAL))
         self.assertEqual(triggers, "a knight, plate armour")
@@ -97,7 +103,7 @@ class ResolveTests(unittest.TestCase):
         with mock.patch.object(
             adapter_loader, "_cached_download", lambda c, s: "/cache/x.safetensors"
         ):
-            path, _, _ = self._resolve(client)
+            _, path = self._resolve(client)
         self.assertEqual(path, "/cache/x.safetensors")
 
     def test_downloads_when_the_shelf_lists_no_present_copy(self):
@@ -105,13 +111,14 @@ class ResolveTests(unittest.TestCase):
         with mock.patch.object(
             adapter_loader, "_cached_download", lambda c, s: "/cache/x.safetensors"
         ):
-            path, _, _ = self._resolve(client)
+            _, path = self._resolve(client)
         self.assertEqual(path, "/cache/x.safetensors")
 
     def test_trigger_words_survive_a_null(self):
         client = _Client(payload=record(trigger_words=None))
         with mock.patch.object(adapter_loader, "_cached_download", lambda c, s: "x"):
-            _, triggers, _ = self._resolve(client)
+            shelf_row, _ = self._resolve(client)
+            triggers = adapter_loader._trigger_words(shelf_row)
         self.assertEqual(triggers, "")
 
     def test_uppercase_and_padded_digests_are_normalised(self):
@@ -156,3 +163,122 @@ class ResolveTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoadLoraTests(unittest.TestCase):
+    """What ``load_lora`` does with what ``_resolve`` hands it.
+
+    The resolve half is covered above and the patching half is ComfyUI's; what
+    is left — and what actually broke when the node stopped emitting strings —
+    is the wiring between them, plus the order the two run in.
+    """
+
+    class _Applier:
+        def __init__(self):
+            self.calls = []
+
+        def apply(self, model, clip, path, strength_model, strength_clip):
+            self.calls.append((model, clip, path, strength_model, strength_clip))
+            return (f"{model}+lora", f"{clip}+lora" if clip else clip)
+
+    def _node(self, shelf_row=None, path="/loras/x.safetensors"):
+        node = adapter_loader.PixlStashAdapterLoader()
+        node._applier = self._Applier()
+        node._resolve = lambda sha: (shelf_row or record(), path)
+        return node
+
+    def test_applies_the_resolved_file_and_passes_both_strengths_through(self):
+        node = self._node(path="/loras/knight.safetensors")
+        model, clip, _ = node.load_lora(
+            "MODEL",
+            "— Any —",
+            "— None —",
+            SHA,
+            clip="CLIP",
+            strength_model=0.8,
+            strength_clip=0.4,
+        )
+        self.assertEqual(
+            node._applier.calls,
+            [("MODEL", "CLIP", "/loras/knight.safetensors", 0.8, 0.4)],
+        )
+        self.assertEqual((model, clip), ("MODEL+lora", "CLIP+lora"))
+
+    def test_a_model_only_graph_carries_no_clip(self):
+        # clip stays None all the way through rather than being invented, which
+        # is what lets a model-only adapter work with no CLIP wire.
+        node = self._node()
+        _, clip, _ = node.load_lora("MODEL", "— Any —", "— None —", SHA)
+        self.assertIsNone(clip)
+        self.assertIsNone(node._applier.calls[0][1])
+
+    def test_the_strengths_default_to_one_like_the_built_in(self):
+        node = self._node()
+        node.load_lora("MODEL", "— Any —", "— None —", SHA)
+        self.assertEqual(node._applier.calls[0][3:], (1.0, 1.0))
+
+    def test_trigger_words_come_out_even_at_zero_strength(self):
+        # The built-in returns early on zero strengths and never reads the file.
+        # Here the shelf lookup is also what produces trigger_words, so an early
+        # return would blank them for anyone who parks a slider at 0.
+        node = self._node(shelf_row=record(trigger_words="a knight, plate armour"))
+        _, _, triggers = node.load_lora(
+            "MODEL", "— Any —", "— None —", SHA, strength_model=0.0, strength_clip=0.0
+        )
+        self.assertEqual(triggers, "a knight, plate armour")
+
+    def test_a_resolve_failure_is_not_swallowed(self):
+        node = adapter_loader.PixlStashAdapterLoader()
+        node._applier = self._Applier()
+
+        def boom(sha):
+            raise RuntimeError("PixlStash Adapter Loader: no adapter selected.")
+
+        node._resolve = boom
+        with self.assertRaises(RuntimeError):
+            node.load_lora("MODEL", "— Any —", "— None —", SHA)
+        self.assertEqual(node._applier.calls, [], "patched a model anyway")
+
+
+class TriggerWordTests(unittest.TestCase):
+    """The shelf stores a JSON array in a field it declares as a string.
+
+    Every adapter carrying triggers on a real shelf holds `'["Clementine"]'`,
+    so passing the value straight through puts brackets and quotes into the
+    prompt. Pinned here because the shape comes off the wire and nothing local
+    would notice it changing.
+    """
+
+    def _words(self, value):
+        return adapter_loader._trigger_words({"trigger_words": value})
+
+    def test_a_json_array_is_unwrapped(self):
+        self.assertEqual(self._words('["Clementine"]'), "Clementine")
+        self.assertEqual(
+            self._words('["a knight", "plate armour"]'), "a knight, plate armour"
+        )
+
+    def test_a_real_list_still_works(self):
+        self.assertEqual(
+            self._words(["a knight", "plate armour"]), "a knight, plate armour"
+        )
+
+    def test_plain_text_is_left_alone(self):
+        self.assertEqual(
+            self._words("a knight, plate armour"), "a knight, plate armour"
+        )
+
+    def test_a_bare_word_is_not_parsed_as_json(self):
+        # `1girl` is a real and very common trigger. json.loads would turn a
+        # numeric one into a number, which is why only `[`-leading values are
+        # even attempted.
+        self.assertEqual(self._words("1girl"), "1girl")
+
+    def test_malformed_json_falls_back_to_the_raw_text(self):
+        # Better a visible odd string than an exception at queue time.
+        self.assertEqual(self._words('["unclosed'), '["unclosed')
+
+    def test_empty_and_null_are_empty(self):
+        for value in (None, "", "   ", [], "[]", '["", "  "]'):
+            with self.subTest(value=value):
+                self.assertEqual(self._words(value), "")
