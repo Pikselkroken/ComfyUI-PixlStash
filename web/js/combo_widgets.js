@@ -476,6 +476,24 @@ function resetDownstreamFilters(node) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Take the frontend's image-preview widget back off a node.
+ *
+ * `node.imgs` is only half a switch. The first time the frontend draws a node
+ * that has images it inserts a `$$canvas-image-preview` widget to hold them,
+ * and it drops that widget again only on the animated-preview path — so
+ * clearing `imgs` alone leaves the strip's empty space on the node for good.
+ * Matched by name because the widget is the frontend's, not ours; a frontend
+ * that never inserted one simply has nothing to find here.
+ */
+function dropImagePreviewWidget(node) {
+    const i = node.widgets?.findIndex(w => w.name === "$$canvas-image-preview") ?? -1;
+    if (i > -1) {
+        node.widgets[i].onRemove?.();
+        node.widgets.splice(i, 1);
+    }
+}
+
+/**
  * Hide a hash/id widget and drive it from the shelf Browse modal.
  *
  * The widget's value is the whole of a shelf loader's serialised state, so the
@@ -522,20 +540,35 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         prevResize?.call(this, size);
         render();
     };
+    // Seeded now, in the order the buttons are added, so the faces a node ends
+    // up with are drawn in widget order however the fetches land — re-setting
+    // an existing key does not move it. A widget with no face holds no slot
+    // open: a CLIP loader whose second encoder has a picture and whose first
+    // has none draws that one picture, not a picture beside a blank square.
+    const faces = (node._pixlstashShelfFaces ??= new Map());
+    faces.set(valueWidget.name, null);
+
+    // The blobs belong to the node, so they go when it does. Without this,
+    // loading another workflow over this one leaks one per shelf loader.
+    const prevRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        prevRemoved?.call(this);
+        for (const url of faces.values()) if (url) URL.revokeObjectURL(url);
+        faces.clear();
+    };
+
     /**
      * Draw the picked file's face on the node, the way the Picture Loader
      * draws its previews.
      *
      * Kept per widget rather than written straight onto `node.imgs`: the CLIP
-     * loader carries two of these buttons, and each of its two encoders is
-     * entitled to its own square. The key is set even while empty so the
-     * squares stay in widget order however the fetches land.
+     * loader carries two of these buttons, and a face picked for one of them
+     * must not be revoked or overwritten by the other.
      *
      * `null` clears this widget's square — the face belongs to the value, and
      * a picture of the file a node used to hold is worse than none.
      */
     const showFace = (record) => {
-        const faces = (node._pixlstashShelfFaces ??= new Map());
         const previous = faces.get(valueWidget.name);
         if (previous) URL.revokeObjectURL(previous);
         faces.set(valueWidget.name, null);
@@ -545,7 +578,11 @@ function addShelfBrowseButton(node, valueWidget, opts) {
             node.imgs = urls.length
                 ? urls.map(url => Object.assign(new Image(), { src: url }))
                 : null;
-            node.setSizeForImage?.();
+            // No `setSizeForImage()`: it is a deprecated no-op on the current
+            // frontend and warns on every call. The preview widget the
+            // frontend inserts is what gives the picture its room, and taking
+            // that widget away is what gives the room back.
+            if (!urls.length) dropImagePreviewWidget(node);
             node.setDirtyCanvas?.(true, true);
         };
 
