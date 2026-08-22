@@ -434,16 +434,6 @@
           "input_ue_unconnectable": {},
           "version": "7.8"
         },
-        "proxyWidgetErrorQuarantine": [
-          {
-            "originalEntry": [
-              "69",
-              "control_after_generate"
-            ],
-            "reason": "missingSubgraphInput",
-            "attemptedAtVersion": 1
-          }
-        ],
         "previewExposures": [
           {
             "name": "$$canvas-image-preview",

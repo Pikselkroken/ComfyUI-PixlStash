@@ -1,6 +1,6 @@
 # PixlStash example workflows
 
-Drop these `.json` files onto the ComfyUI canvas (or use **Workflow → Open**). They use only PixlStash nodes plus core ComfyUI nodes (`LoadImage`, `PreviewImage`, samplers), so they load on any install once the PixlStash extension is present. The exceptions are `PixlStash-Flux2-Models.json` and `PixlStash-FaceLikenessGateUpscaleModels.json`, which wrap half their graph in a **subgraph** and so need a ComfyUI new enough to have them — they were saved on frontend 1.47.11 (ComfyUI 0.30).
+Drop these `.json` files onto the ComfyUI canvas (or use **Workflow → Open**). They use only PixlStash nodes plus core ComfyUI nodes (`LoadImage`, `PreviewImage`, samplers), so they load on any install once the PixlStash extension is present. The pipeline examples — every one with a sampler or an upscale in it — wrap that half in a **subgraph**, so those need a ComfyUI new enough to have subgraphs; the loader and search examples are plain graphs and load anywhere.
 
 Before running, set your vault **URL** and **API Token** under **Settings → PixlStash**. The dropdowns on the loader nodes populate live from your vault, so pick your own project / set / character after loading — the saved selections are placeholders.
 

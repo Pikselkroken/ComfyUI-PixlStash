@@ -112,50 +112,6 @@
       ]
     },
     {
-      "id": 76,
-      "type": "PrimitiveStringMultiline",
-      "pos": [
-        -595.2728233007933,
-        504.6887335674283
-      ],
-      "size": [
-        400,
-        200
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "title": "Prompt",
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.9.1",
-        "Node name for S&R": "PrimitiveStringMultiline",
-        "enableTabs": false,
-        "tabWidth": 65,
-        "tabXOffset": 10,
-        "hasSecondTab": false,
-        "secondTabText": "Send Back",
-        "secondTabOffset": 80,
-        "secondTabWidth": 65,
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.7",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "Two obnoxious looking children. One boy and girl. They are dressed up in their sunday best with their hair done up. The boy is wearing a little sailor outfit and the girl is in a dress with her hair in pigtails.\n\nThey are in a messy and outdated photography studio playing around with expensive equipment. The studio has wood panel and looks like it is from the 70s."
-      ]
-    },
-    {
       "id": 94,
       "type": "PixlStashCLIPLoader",
       "pos": [
@@ -341,7 +297,7 @@
         },
         {
           "label": "clip",
-          "name": "",
+          "name": "clip",
           "type": "*",
           "link": 176
         }
@@ -374,16 +330,6 @@
           "version": "7.7",
           "input_ue_unconnectable": {}
         },
-        "proxyWidgetErrorQuarantine": [
-          {
-            "originalEntry": [
-              "73",
-              "control_after_generate"
-            ],
-            "reason": "missingSubgraphInput",
-            "attemptedAtVersion": 1
-          }
-        ],
         "previewExposures": []
       },
       "widgets_values": [
@@ -593,7 +539,7 @@
           },
           {
             "id": "ebab41f5-8fc7-4a5e-8bd2-6a3791b6c1eb",
-            "name": "",
+            "name": "clip",
             "type": "*",
             "linkIds": [
               174
