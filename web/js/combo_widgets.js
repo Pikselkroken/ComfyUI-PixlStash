@@ -17,7 +17,7 @@
 
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
-import { openAdapterPicker, shelfNameFor } from "./adapter_picker.js";
+import { fetchFaceUrl, nameOf, openAdapterPicker, shelfRecordFor } from "./adapter_picker.js";
 import { fitLabel } from "./modal_dom.js";
 
 // ---------------------------------------------------------------------------
@@ -479,10 +479,10 @@ function resetDownstreamFilters(node) {
  * Hide a hash/id widget and drive it from the shelf Browse modal.
  *
  * The widget's value is the whole of a shelf loader's serialised state, so the
- * button's label is the whole of its visible state: the picked file's name
- * after a pick, and the raw value's first characters after a workflow reload
- * (nothing has been fetched at that point, and blocking the canvas on a lookup
- * to render a label is not worth it).
+ * button's label and the node's picture are the whole of its visible state:
+ * the picked file's name and face after a pick, and the raw value's first
+ * characters after a workflow reload until the lookup that turns a hash back
+ * into a record comes back (the canvas is not blocked on it).
  *
  * @param {Object}   node        the LiteGraph node
  * @param {Object}   valueWidget the hidden widget the modal writes
@@ -522,19 +522,77 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         prevResize?.call(this, size);
         render();
     };
+    /**
+     * Draw the picked file's face on the node, the way the Picture Loader
+     * draws its previews.
+     *
+     * Kept per widget rather than written straight onto `node.imgs`: the CLIP
+     * loader carries two of these buttons, and each of its two encoders is
+     * entitled to its own square. The key is set even while empty so the
+     * squares stay in widget order however the fetches land.
+     *
+     * `null` clears this widget's square — the face belongs to the value, and
+     * a picture of the file a node used to hold is worse than none.
+     */
+    const showFace = (record) => {
+        const faces = (node._pixlstashShelfFaces ??= new Map());
+        const previous = faces.get(valueWidget.name);
+        if (previous) URL.revokeObjectURL(previous);
+        faces.set(valueWidget.name, null);
+
+        const paint = () => {
+            const urls = [...faces.values()].filter(Boolean);
+            node.imgs = urls.length
+                ? urls.map(url => Object.assign(new Image(), { src: url }))
+                : null;
+            node.setSizeForImage?.();
+            node.setDirtyCanvas?.(true, true);
+        };
+
+        const creds = getSettingsCredentials();
+        if (!record || !creds.url || !creds.token) {
+            paint();
+            return;
+        }
+        const v = String(valueWidget.value ?? "").trim();
+        fetchFaceUrl(record, creds).then(url => {
+            if (!url) return;
+            // Something else was picked while this was in flight, or the modal
+            // painted a newer face already: this one is nobody's now, and only
+            // what is in the map is ever revoked.
+            if (String(valueWidget.value ?? "").trim() !== v
+                || faces.get(valueWidget.name)) {
+                URL.revokeObjectURL(url);
+                return;
+            }
+            faces.set(valueWidget.name, url);
+            paint();
+        }).catch(() => {});
+        paint();
+    };
+
     // A hash is what the workflow stores and it is not a name anyone knows, so
     // it is drawn only until the lookup below comes back — and left in place if
     // it never does (no credentials, server down, file forgotten off the shelf).
+    // That same lookup is where the node's picture comes from: a reloaded
+    // workflow has a digest and nothing else to draw with.
     const labelFromValue = () => {
         const v = String(valueWidget.value ?? "").trim();
         setLabel(v ? (v.length > 12 ? `${v.slice(0, 10)}…` : `#${v}`) : "");
-        if (!v) return;
+        if (!v) {
+            showFace(null);
+            return;
+        }
         const creds = getSettingsCredentials();
         if (!creds.url || !creds.token) return;
-        shelfNameFor(v, creds, fileKind).then(name => {
+        shelfRecordFor(v, creds, fileKind).then(record => {
             // The user may have picked something else while this was in
-            // flight; labelling with the old file's name would be a lie.
-            if (name && String(valueWidget.value ?? "").trim() === v) setLabel(name);
+            // flight; labelling with the old file's name would be a lie, and
+            // drawing its face doubly so.
+            if (String(valueWidget.value ?? "").trim() !== v) return;
+            const name = nameOf(record);
+            if (name) setLabel(name);
+            showFace(record);
         });
     };
 
@@ -555,8 +613,9 @@ function addShelfBrowseButton(node, valueWidget, opts) {
                 return;
             }
             openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record) => {
-                setLabel(record.display_name || record.filename
+                setLabel(nameOf(record)
                          || String(record.sha256 ?? record.id ?? "").slice(0, 10));
+                showFace(record);
             }).catch(err => alert(`PixlStash picker error: ${err.message}`));
         },
         { serialize: false },

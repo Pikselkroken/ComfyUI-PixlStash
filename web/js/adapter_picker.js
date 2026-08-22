@@ -102,8 +102,11 @@ async function fetchBlobUrl(path, credentials, extraParams) {
  * four characters has one square to draw in, and picking the first is what the
  * shelf does. Sequential rather than raced, so a model with its own icon costs
  * exactly one request.
+ *
+ * Exported because the node draws the same face as the card does: the Browse
+ * button hands the picked record straight back to `combo_widgets.js`.
  */
-async function fetchFaceUrl(record, credentials) {
+export async function fetchFaceUrl(record, credentials) {
     if (record.icon_sha256) {
         const url = await fetchBlobUrl("/pixlstash/model_icon", credentials, {
             icon_sha256: record.icon_sha256,
@@ -180,21 +183,23 @@ function collapseStacks(rows) {
 }
 
 /** What a card (and the Browse button) calls a record. */
-function nameOf(record) {
+export function nameOf(record) {
     return record?.display_name || record?.filename || null;
 }
 
-// value → name, for the button labels. A shelf record's name does not change
-// while a graph is open, and several nodes commonly hold the same file.
-const _nameCache = new Map();
+// value → shelf record, for the button labels and the node's thumbnail. A
+// shelf record does not change while a graph is open, and several nodes
+// commonly hold the same file.
+const _recordCache = new Map();
 
 /**
- * The display name of an already-selected file, or `null`.
+ * The shelf record of an already-selected file, or `null`.
  *
  * A saved workflow carries only the hash (or the checkpoint id), so a reloaded
- * node has nothing to put on its button but that. This is the lookup that
- * turns it back into a name — one small request for a hash-addressed file, and
- * for a checkpoint the list route, since the server has no by-id one.
+ * node has nothing to put on its button but that, and nothing to draw. This is
+ * the lookup that turns it back into a name and a face — one small request for
+ * a hash-addressed file, and for a checkpoint the list route, since the server
+ * has no by-id one.
  *
  * The value is normalised first, the same way the Python loaders normalise it
  * (`shelf_file.resolve` trims and lowercases). A workflow carrying a padded or
@@ -202,36 +207,36 @@ const _nameCache = new Map();
  * would be the one thing that fails — the proxy rejects a non-lowercase digest
  * by design — leaving a working node captioned with a hash.
  *
- * Never throws: a failure here costs a nicer label and nothing else, so an
- * unreachable server or an expired token leaves the hash on the button rather
- * than raising into a canvas redraw. Failures are not cached, so fixing the
- * token and reloading the graph is enough to get names back.
+ * Never throws: a failure here costs a nicer label and a picture and nothing
+ * else, so an unreachable server or an expired token leaves the hash on the
+ * button rather than raising into a canvas redraw. Failures are not cached, so
+ * fixing the token and reloading the graph is enough to get names back.
  */
-export async function shelfNameFor(rawValue, credentials, fileKind) {
+export async function shelfRecordFor(rawValue, credentials, fileKind) {
     const shelf = SHELF_KINDS[fileKind] ?? SHELF_KINDS.adapter;
     const value = String(rawValue ?? "").trim().toLowerCase();
     // Refused here rather than by the proxy: a value that cannot address a row
-    // has no name to find, and asking anyway spends a request to be told so.
+    // has no row to find, and asking anyway spends a request to be told so.
     const usable = shelf.byId ? /^[1-9]\d*$/.test(value) : /^[0-9a-f]{64}$/.test(value);
     if (!usable) return null;
 
     const key = `${fileKind}:${value}`;
-    if (_nameCache.has(key)) return _nameCache.get(key);
+    if (_recordCache.has(key)) return _recordCache.get(key);
 
-    let name = null;
+    let record = null;
     try {
         if (shelf.byId) {
             const data = await proxyFetch(shelf.path, credentials, {});
             const rows = data?.[shelf.listKey];
-            name = nameOf((Array.isArray(rows) ? rows : []).find(r => String(r?.id) === value));
+            record = (Array.isArray(rows) ? rows : []).find(r => String(r?.id) === value) ?? null;
         } else {
-            name = nameOf(await proxyFetch("/pixlstash/adapter", credentials, { sha256: value }));
+            record = await proxyFetch("/pixlstash/adapter", credentials, { sha256: value });
         }
     } catch {
         return null;
     }
-    if (name) _nameCache.set(key, name);
-    return name;
+    if (record) _recordCache.set(key, record);
+    return record;
 }
 
 /** Fields the in-modal search box matches against. */
