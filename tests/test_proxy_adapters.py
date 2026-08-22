@@ -127,8 +127,8 @@ class EntityThumbnailGuardTests(unittest.TestCase):
     Two caller-supplied values reach that decision: ``entity_type`` selects the
     template and ``entity_id`` is interpolated into it. The type is a lookup
     rather than a substitution, so the only thing that can carry a path is the
-    id, and ``isdigit`` is what stops it — the same guard ``proxy_thumbnail``
-    applies to ``picture_id``.
+    id, and ``_positive_id`` is what stops it — the same guard
+    ``proxy_thumbnail`` applies to ``picture_id``.
     """
 
     def _call(self, client=None, **params):
@@ -152,6 +152,23 @@ class EntityThumbnailGuardTests(unittest.TestCase):
                 _, resp = self._call(entity_type="character", entity_id=bad)
                 self.assertEqual(resp.kwargs.get("status"), 400, f"accepted {bad!r}")
                 self.assertIn("entity_id", body_of(resp))
+
+    def test_rejects_an_id_no_row_can_have(self):
+        # The message says "positive integer" and now the guard agrees: `0` and
+        # a zero-padded id are digits, so `isdigit` alone forwarded them and
+        # spent an upstream request being told there is no such row.
+        for bad in ("0", "00", "007", "０"):
+            with self.subTest(bad=bad):
+                client, resp = self._call(entity_type="character", entity_id=bad)
+                self.assertEqual(resp.kwargs.get("status"), 400, f"accepted {bad!r}")
+                self.assertEqual(client.calls, [], f"asked upstream about {bad!r}")
+
+    def test_a_padded_id_is_not_quietly_renumbered(self):
+        # `int("007")` is 7 — the old guard would have fetched character 7 for
+        # a caller who asked for "007". Refusing beats guessing which they meant.
+        client, resp = self._call(entity_type="character", entity_id="007")
+        self.assertEqual(resp.kwargs.get("status"), 400)
+        self.assertEqual(client.calls, [])
 
     def test_a_character_reaches_the_character_thumbnail(self):
         client, resp = self._call(entity_type="character", entity_id="18")

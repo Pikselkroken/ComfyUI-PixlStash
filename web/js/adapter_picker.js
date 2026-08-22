@@ -196,13 +196,25 @@ const _nameCache = new Map();
  * turns it back into a name — one small request for a hash-addressed file, and
  * for a checkpoint the list route, since the server has no by-id one.
  *
+ * The value is normalised first, the same way the Python loaders normalise it
+ * (`shelf_file.resolve` trims and lowercases). A workflow carrying a padded or
+ * upper-case digest loads perfectly well, and without this the *label* lookup
+ * would be the one thing that fails — the proxy rejects a non-lowercase digest
+ * by design — leaving a working node captioned with a hash.
+ *
  * Never throws: a failure here costs a nicer label and nothing else, so an
  * unreachable server or an expired token leaves the hash on the button rather
  * than raising into a canvas redraw. Failures are not cached, so fixing the
  * token and reloading the graph is enough to get names back.
  */
-export async function shelfNameFor(value, credentials, fileKind) {
+export async function shelfNameFor(rawValue, credentials, fileKind) {
     const shelf = SHELF_KINDS[fileKind] ?? SHELF_KINDS.adapter;
+    const value = String(rawValue ?? "").trim().toLowerCase();
+    // Refused here rather than by the proxy: a value that cannot address a row
+    // has no name to find, and asking anyway spends a request to be told so.
+    const usable = shelf.byId ? /^[1-9]\d*$/.test(value) : /^[0-9a-f]{64}$/.test(value);
+    if (!usable) return null;
+
     const key = `${fileKind}:${value}`;
     if (_nameCache.has(key)) return _nameCache.get(key);
 

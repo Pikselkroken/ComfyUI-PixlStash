@@ -40,8 +40,21 @@ log = logging.getLogger(__name__)
 
 # A model / icon is addressed by its full-file SHA-256, lowercase hex.  Anything
 # else is refused before it can be interpolated into an upstream path — the same
-# guard ``proxy_thumbnail`` applies with ``picture_id.isdigit()``.
+# guard ``_positive_id`` is for the routes addressed by row id.
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+
+
+# A row id as it is actually written: no sign, no padding, no separators, and
+# ASCII.  ``isdigit()`` was the guard here and it is true of all of ``"0"``,
+# ``"007"`` and ``"٧"`` — so a route documenting "positive integer" forwarded
+# ids no row can have, and ``int()`` then *renumbered* two of those three into
+# a row that does exist.  Refusing beats guessing which row the caller meant.
+_ID_RE = re.compile(r"[1-9][0-9]*\Z")
+
+
+def _positive_id(raw: str) -> int | None:
+    """``raw`` as a positive row id, or ``None`` if it is not written as one."""
+    return int(raw) if _ID_RE.match(raw) else None
 
 
 # ---------------------------------------------------------------------------
@@ -165,11 +178,11 @@ async def proxy_thumbnail(request: web.Request) -> web.Response:
     except web.HTTPBadRequest as exc:
         return _err(exc.reason, status=400)
 
-    raw_id = request.rel_url.query.get("picture_id", "")
-    if not raw_id.isdigit():
+    picture_id = _positive_id(request.rel_url.query.get("picture_id", ""))
+    if picture_id is None:
         return _err("picture_id query param must be a positive integer.", status=400)
 
-    path = f"/api/v1/pictures/thumbnails/{int(raw_id)}.webp"
+    path = f"/api/v1/pictures/thumbnails/{picture_id}.webp"
     try:
         resp = await asyncio.to_thread(client.get, path)
     except RuntimeError as exc:
@@ -277,8 +290,8 @@ async def proxy_entity_thumbnail(request: web.Request) -> web.Response:
     if upstream is None:
         return _err("entity_type query param must be 'character' or 'set'.", status=400)
 
-    raw_id = request.rel_url.query.get("entity_id", "")
-    if not raw_id.isdigit():
+    entity_id = _positive_id(request.rel_url.query.get("entity_id", ""))
+    if entity_id is None:
         return _err("entity_id query param must be a positive integer.", status=400)
 
     try:
@@ -286,7 +299,7 @@ async def proxy_entity_thumbnail(request: web.Request) -> web.Response:
     except web.HTTPBadRequest as exc:
         return _err(exc.reason, status=400)
 
-    path = upstream.format(int(raw_id))
+    path = upstream.format(entity_id)
     try:
         resp = await asyncio.to_thread(client.get, path)
     except RuntimeError as exc:

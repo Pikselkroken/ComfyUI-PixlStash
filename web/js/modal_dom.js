@@ -54,14 +54,28 @@ export function selStyle() {
  * character: these are file names, and one full of `W`s would still overflow
  * while one full of `l`s would be cut with room to spare.
  */
-const _measureCtx = document.createElement("canvas").getContext("2d");
+// undefined = not tried yet, null = no context to be had. `getContext` is
+// allowed to return null and does in constrained environments; resolved on
+// first use rather than at import so a missing document cannot break loading
+// the module either. With no context nothing is measurable and every label is
+// drawn whole, which is what this looked like before it cut anything.
+let _measureCtx;
+
+function measureCtx() {
+    if (_measureCtx === undefined) {
+        _measureCtx =
+            globalThis.document?.createElement("canvas")?.getContext?.("2d") ?? null;
+    }
+    return _measureCtx;
+}
 
 export function fitLabel(text, widthPx) {
-    if (widthPx <= 0) return text;
-    _measureCtx.font = `${globalThis.LiteGraph?.NODE_TEXT_SIZE ?? 14}px Arial`;
-    if (_measureCtx.measureText(text).width <= widthPx) return text;
+    const ctx = measureCtx();
+    if (!ctx || widthPx <= 0) return text;
+    ctx.font = `${globalThis.LiteGraph?.NODE_TEXT_SIZE ?? 14}px Arial`;
+    if (ctx.measureText(text).width <= widthPx) return text;
     let cut = text;
-    while (cut.length && _measureCtx.measureText(`${cut}…`).width > widthPx) {
+    while (cut.length && ctx.measureText(`${cut}…`).width > widthPx) {
         cut = cut.slice(0, -1);
     }
     return `${cut.trimEnd()}…`;
