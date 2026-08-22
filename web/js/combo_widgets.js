@@ -540,9 +540,11 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         prevResize?.call(this, size);
         render();
     };
-    // Seeded now, in the order the buttons are added, so a node carrying two of
-    // them (the CLIP loader does) keeps its two squares in widget order however
-    // the two fetches land — re-setting an existing key does not move it.
+    // Seeded now, in the order the buttons are added, so the faces a node ends
+    // up with are drawn in widget order however the fetches land — re-setting
+    // an existing key does not move it. A widget with no face holds no slot
+    // open: a CLIP loader whose second encoder has a picture and whose first
+    // has none draws that one picture, not a picture beside a blank square.
     const faces = (node._pixlstashShelfFaces ??= new Map());
     faces.set(valueWidget.name, null);
 
@@ -560,8 +562,8 @@ function addShelfBrowseButton(node, valueWidget, opts) {
      * draws its previews.
      *
      * Kept per widget rather than written straight onto `node.imgs`: the CLIP
-     * loader carries two of these buttons, and each of its two encoders is
-     * entitled to its own square.
+     * loader carries two of these buttons, and a face picked for one of them
+     * must not be revoked or overwritten by the other.
      *
      * `null` clears this widget's square — the face belongs to the value, and
      * a picture of the file a node used to hold is worse than none.
