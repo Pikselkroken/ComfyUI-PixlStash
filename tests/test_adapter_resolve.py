@@ -15,6 +15,7 @@ from unittest import mock
 
 import _bootstrap as boot
 
+shelf_file = boot.load("nodes.shelf_file")
 adapter_loader = boot.load("nodes.adapter_loader")
 
 TMP = tempfile.mkdtemp(prefix="pixlstash_resolve_test_")
@@ -72,9 +73,9 @@ class ResolveTests(unittest.TestCase):
     def _resolve(self, client, sha=SHA, url="https://vault.example", token="t"):
         node = adapter_loader.PixlStashAdapterLoader()
         with mock.patch.object(
-            adapter_loader, "read_credentials", lambda: (url, token, True)
+            shelf_file, "read_credentials", lambda: (url, token, True)
         ):
-            with mock.patch.object(adapter_loader, "make_client", lambda *a: client):
+            with mock.patch.object(shelf_file, "make_client", lambda *a: client):
                 # `_resolve`, not `load_lora`: everything these tests are
                 # about (digest validation, credentials, the local-vs-download
                 # decision, the 403 message) happens before a MODEL is touched,
@@ -88,7 +89,7 @@ class ResolveTests(unittest.TestCase):
         def explode(*a, **k):
             raise AssertionError("downloaded a file that was already usable here")
 
-        with mock.patch.object(adapter_loader, "_cached_download", explode):
+        with mock.patch.object(shelf_file, "cached_download", explode):
             shelf_row, path = self._resolve(client)
             triggers = adapter_loader._trigger_words(shelf_row)
 
@@ -101,7 +102,7 @@ class ResolveTests(unittest.TestCase):
         # Size mismatch: the path exists here but holds something else.
         client = _Client(payload=record(file_size=999_999))
         with mock.patch.object(
-            adapter_loader, "_cached_download", lambda c, s: "/cache/x.safetensors"
+            shelf_file, "cached_download", lambda c, s, **k: "/cache/x.safetensors"
         ):
             _, path = self._resolve(client)
         self.assertEqual(path, "/cache/x.safetensors")
@@ -109,21 +110,21 @@ class ResolveTests(unittest.TestCase):
     def test_downloads_when_the_shelf_lists_no_present_copy(self):
         client = _Client(payload=record(locations=[]))
         with mock.patch.object(
-            adapter_loader, "_cached_download", lambda c, s: "/cache/x.safetensors"
+            shelf_file, "cached_download", lambda c, s, **k: "/cache/x.safetensors"
         ):
             _, path = self._resolve(client)
         self.assertEqual(path, "/cache/x.safetensors")
 
     def test_trigger_words_survive_a_null(self):
         client = _Client(payload=record(trigger_words=None))
-        with mock.patch.object(adapter_loader, "_cached_download", lambda c, s: "x"):
+        with mock.patch.object(shelf_file, "cached_download", lambda c, s, **k: "x"):
             shelf_row, _ = self._resolve(client)
             triggers = adapter_loader._trigger_words(shelf_row)
         self.assertEqual(triggers, "")
 
     def test_uppercase_and_padded_digests_are_normalised(self):
         client = _Client(payload=record())
-        with mock.patch.object(adapter_loader, "_cached_download", lambda c, s: "x"):
+        with mock.patch.object(shelf_file, "cached_download", lambda c, s, **k: "x"):
             self._resolve(client, sha=f"  {SHA.upper()}  ")
         self.assertEqual(client.paths, [f"/api/v1/adapters/{SHA}"])
 
@@ -151,7 +152,7 @@ class ResolveTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 with self.assertRaises(RuntimeError) as ctx:
                     self._resolve(_Client(payload=payload))
-                self.assertIn("did not return an adapter record", str(ctx.exception))
+                self.assertIn("did not return a record", str(ctx.exception))
 
     def test_missing_credentials_are_refused_before_any_request(self):
         client = _Client(payload=record())

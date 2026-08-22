@@ -3,26 +3,49 @@
  *
  * Exported API
  * ────────────
- * openAdapterPicker(adapterWidget, credentials, filters, onPicked)
+ * openAdapterPicker(valueWidget, credentials, filters, onPicked)
  *
- *   adapterWidget — the hidden `adapter_sha256` widget written on confirm
- *   credentials   — { url, token, verifySsl }
- *   filters       — { kind, baseModel, characterId, setId }
- *   onPicked      — called with the chosen shelf record after confirm
+ *   valueWidget — the hidden widget written on confirm (`adapter_sha256`,
+ *                 `vae_sha256`, `clip_sha256`, `checkpoint_id`)
+ *   credentials — { url, token, verifySsl }
+ *   filters     — { fileKind, kind, baseModel, characterId, setId }
+ *   onPicked    — called with the chosen shelf record after confirm
+ *
+ * One modal for every kind of file on the shelf, because they differ in three
+ * strings and one identity field (see SHELF_KINDS) and in nothing else — the
+ * grid, the stack fold, the icon chain and the search box are the same job
+ * whichever it is drawing.
  *
  * A sibling of picker.js rather than an extension of it: that one is
  * picture-shaped throughout (fields=grid, picture_id, likeness sorting).
  * What is shared is the modal chrome, the object-URL bookkeeping, and the
  * rule that every string off the server goes in via textContent.
  *
- * `GET /adapters` is unpaginated, so this fetches the filtered shelf once and
- * renders it in slices on scroll.  Only the icons of rendered cards are
- * fetched, which is the part that costs a request each.
+ * `GET /adapters` is unpaginated, so this fetches the filtered shelf once,
+ * folds each stack down to its cover (`collapseStacks`) and renders the rest in
+ * slices on scroll.  Only the icons of rendered cards are fetched, which is the
+ * part that costs a request each.
  */
 
 import { el, mkBtn, mkRow, selStyle } from "./modal_dom.js";
 
 const PAGE_SIZE = 48;
+
+/**
+ * What differs between the kinds of file the shelf holds.
+ *
+ * Checkpoints are the odd one: they have their own route, and they are
+ * addressed by `id` rather than by hash because `sha256` is null until the
+ * server's background hasher has read the file — a 24 GB checkpoint is
+ * listable long before that. They also take none of the adapter filters, since
+ * `GET /checkpoints` accepts neither `kind` nor an attachment.
+ */
+const SHELF_KINDS = {
+    adapter:      { path: "/pixlstash/adapters",    listKey: "adapters",    title: "PixlStash Adapters",      noun: "adapter" },
+    vae:          { path: "/pixlstash/adapters",    listKey: "adapters",    title: "PixlStash VAEs",          noun: "VAE" },
+    text_encoder: { path: "/pixlstash/adapters",    listKey: "adapters",    title: "PixlStash Text Encoders", noun: "text encoder" },
+    checkpoint:   { path: "/pixlstash/checkpoints", listKey: "checkpoints", title: "PixlStash Checkpoints",   noun: "checkpoint", byId: true },
+};
 
 // Keystrokes coalesce before the grid is torn down and rebuilt: without this,
 // typing an eight-letter word re-renders eight times and re-requests an icon
@@ -104,10 +127,14 @@ async function fetchFaceUrl(record, credentials) {
  * 400), so a wired character wins and the set is ignored — the same rule the
  * node's docstring records.
  */
-function buildAdapterQuery({ kind, baseModel, characterId, setId } = {}) {
-    const q = { file_kind: "adapter" };
-    if (kind)      q.kind        = kind;
-    if (baseModel) q.base_model  = baseModel;
+function buildAdapterQuery({ fileKind, kind, baseModel, characterId, setId } = {}) {
+    const q = {};
+    if (baseModel) q.base_model = baseModel;
+    // `GET /checkpoints` takes base_model, q, sort and direction and nothing
+    // else — sending it a file_kind or an attachment is a 422, not a filter.
+    if (SHELF_KINDS[fileKind]?.byId) return q;
+    q.file_kind = fileKind || "adapter";
+    if (kind)      q.kind         = kind;
     if (characterId)  q.character_id = characterId;
     else if (setId)   q.set_id      = setId;
     return q;
@@ -118,6 +145,81 @@ function isPresent(record) {
     const locations = record.locations;
     if (!Array.isArray(locations)) return false;
     return locations.some(l => l && l.state === "present");
+}
+
+/**
+ * One card per stack, drawn by its cover — not one per file.
+ *
+ * A trained LoRA lands on the shelf as every epoch it saved, and the shelf
+ * folds those into a *stack* whose cover (``stack_position`` 0) is the file the
+ * owner would actually load.  `GET /adapters` returns the members, not the
+ * fold, so a shelf of 12 runs arrives as 80 rows — 80 cards and 80 icon
+ * requests for 12 things worth picking.  Same rule as the shelf's own
+ * `collapseStacks`: a member with no position sorts LAST, matching the
+ * server's `ORDER BY stack_position IS NULL, stack_position`, so an
+ * unpositioned row is never drawn as the face of a run.
+ *
+ * Members are kept on the cover as `_members` for the count badge only. There
+ * is no expand-the-strip here: this picker exists to choose one file to load,
+ * and the cover is that file by definition.
+ */
+function collapseStacks(rows) {
+    const covers = new Map();   // stack_id → the member with the lowest position
+    const counts = new Map();
+    for (const row of rows) {
+        if (row.stack_id == null) continue;
+        counts.set(row.stack_id, (counts.get(row.stack_id) ?? 0) + 1);
+        const cover = covers.get(row.stack_id);
+        if (!cover || (row.stack_position ?? Infinity) < (cover.stack_position ?? Infinity)) {
+            covers.set(row.stack_id, row);
+        }
+    }
+    return rows
+        .filter(row => row.stack_id == null || covers.get(row.stack_id) === row)
+        .map(row => row.stack_id == null ? row : { ...row, _members: counts.get(row.stack_id) });
+}
+
+/** What a card (and the Browse button) calls a record. */
+function nameOf(record) {
+    return record?.display_name || record?.filename || null;
+}
+
+// value → name, for the button labels. A shelf record's name does not change
+// while a graph is open, and several nodes commonly hold the same file.
+const _nameCache = new Map();
+
+/**
+ * The display name of an already-selected file, or `null`.
+ *
+ * A saved workflow carries only the hash (or the checkpoint id), so a reloaded
+ * node has nothing to put on its button but that. This is the lookup that
+ * turns it back into a name — one small request for a hash-addressed file, and
+ * for a checkpoint the list route, since the server has no by-id one.
+ *
+ * Never throws: a failure here costs a nicer label and nothing else, so an
+ * unreachable server or an expired token leaves the hash on the button rather
+ * than raising into a canvas redraw. Failures are not cached, so fixing the
+ * token and reloading the graph is enough to get names back.
+ */
+export async function shelfNameFor(value, credentials, fileKind) {
+    const shelf = SHELF_KINDS[fileKind] ?? SHELF_KINDS.adapter;
+    const key = `${fileKind}:${value}`;
+    if (_nameCache.has(key)) return _nameCache.get(key);
+
+    let name = null;
+    try {
+        if (shelf.byId) {
+            const data = await proxyFetch(shelf.path, credentials, {});
+            const rows = data?.[shelf.listKey];
+            name = nameOf((Array.isArray(rows) ? rows : []).find(r => String(r?.id) === value));
+        } else {
+            name = nameOf(await proxyFetch("/pixlstash/adapter", credentials, { sha256: value }));
+        }
+    } catch {
+        return null;
+    }
+    if (name) _nameCache.set(key, name);
+    return name;
 }
 
 /** Fields the in-modal search box matches against. */
@@ -134,8 +236,12 @@ function matchesSearch(record, needle) {
 // Main export
 // ---------------------------------------------------------------------------
 
-export async function openAdapterPicker(adapterWidget, credentials, filters, onPicked) {
-    let selectedSha = String(adapterWidget.value ?? "").trim() || null;
+export async function openAdapterPicker(valueWidget, credentials, filters, onPicked) {
+    const shelf = SHELF_KINDS[filters?.fileKind] ?? SHELF_KINDS.adapter;
+    /** The value written into the widget: a hash, or an id for checkpoints. */
+    const idOf = (record) => (shelf.byId ? String(record.id ?? "") : String(record.sha256 ?? ""));
+
+    let selectedValue = String(valueWidget.value ?? "").trim() || null;
     let selectedRecord = null;
 
     const itemElements = [];
@@ -168,7 +274,7 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
         `,
     });
 
-    const titleEl  = el("h2", { textContent: "PixlStash Adapters", style: "margin:0; font-size:1.05em; flex:1;" });
+    const titleEl  = el("h2", { textContent: shelf.title, style: "margin:0; font-size:1.05em; flex:1;" });
     const countEl  = el("span", { style: "font-size:.85em; color:#aaa;" });
     const closeBtn = mkBtn("✕");
     const header   = mkRow(titleEl, countEl, closeBtn);
@@ -179,7 +285,7 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
         style: selStyle() + "flex:1;",
     });
     const filterRow = mkRow(
-        el("span", { textContent: describeFilters(filters), style: "color:#aaa; font-size:.85em; flex-shrink:0;" }),
+        el("span", { textContent: describeFilters(filters, shelf), style: "color:#aaa; font-size:.85em; flex-shrink:0;" }),
         searchInput,
     );
 
@@ -193,7 +299,7 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
         `,
     });
 
-    const confirmBtn = mkBtn("Use this adapter", "#2a7a2a");
+    const confirmBtn = mkBtn(`Use this ${shelf.noun}`, "#2a7a2a");
     const cancelBtn  = mkBtn("Cancel");
     const footer = el("div", { style: "display:flex; justify-content:flex-end; gap:10px; flex-shrink:0;" });
     footer.append(cancelBtn, confirmBtn);
@@ -207,7 +313,7 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
     // -----------------------------------------------------------------------
 
     function highlight(itemEl) {
-        const sel = itemEl._sha === selectedSha;
+        const sel = itemEl._value === selectedValue;
         itemEl.style.outline       = sel ? "3px solid #4caf50" : "none";
         itemEl.style.outlineOffset = sel ? "2px" : "0";
     }
@@ -232,7 +338,7 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
     }
 
     function updateCount() {
-        countEl.textContent = `${records.length} adapter${records.length === 1 ? "" : "s"}`;
+        countEl.textContent = `${records.length} ${shelf.noun}${records.length === 1 ? "" : "s"}`;
     }
 
     function makeCard(record) {
@@ -242,7 +348,7 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
                 padding:6px; display:flex; flex-direction:column; gap:4px;
             `,
         });
-        item._sha       = record.sha256;
+        item._value     = idOf(record);
         item._objectUrl = null;
 
         // Square icon box. padding-top:100% forces height = width.
@@ -262,26 +368,36 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
         item.appendChild(iconBox);
 
         item.appendChild(el("div", {
-            textContent: record.display_name || record.filename || record.sha256.slice(0, 12),
+            textContent: nameOf(record) || idOf(record).slice(0, 12),
             title:       record.filename || "",
             style:       "font-size:.8em; line-height:1.25; overflow-wrap:anywhere;",
         }));
 
-        const meta = [record.base_model || "Base model not set", record.kind].filter(Boolean).join(" · ");
+        const meta = [
+            record.base_model || "Base model not set",
+            record.kind,
+            // Say the run is a run: the other files are on the shelf, they are
+            // just not separate things to pick here.
+            record._members > 1 ? `${record._members} files` : null,
+        ].filter(Boolean).join(" · ");
         item.appendChild(el("div", {
             textContent: meta,
             style:       "font-size:.72em; color:#999; overflow-wrap:anywhere;",
         }));
 
         if (!isPresent(record)) {
-            // Still selectable — the node downloads and caches it — but say
-            // plainly that the route this needs isn't in a released server
-            // yet, rather than leaving the user to discover it at queue time.
+            // Still selectable, but say plainly that this one will not load —
+            // for a hash-addressed file because PixlStash has no copy to serve
+            // either, and for a checkpoint because nothing serves those at all.
             item.appendChild(el("div", {
                 textContent: "no copy on disk",
-                title:       "PixlStash has no reachable copy of this file, so "
-                           + "it cannot serve it either — reconnect the drive "
-                           + "or rescan the folder it lives in.",
+                title:       shelf.byId
+                    ? "PixlStash last saw no readable copy of this checkpoint, "
+                    + "and it does not serve checkpoint bytes in any case — "
+                    + "reconnect the drive or rescan the folder it lives in."
+                    : "PixlStash has no reachable copy of this file, so it "
+                    + "cannot serve it either — reconnect the drive or rescan "
+                    + "the folder it lives in.",
                 style:       "font-size:.68em; color:#d0a24c; line-height:1.2;",
             }));
         }
@@ -310,12 +426,12 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
         }
 
         item.addEventListener("click", () => {
-            selectedSha    = record.sha256;
+            selectedValue  = idOf(record);
             selectedRecord = record;
             for (const other of itemElements) highlight(other);
         });
         item.addEventListener("dblclick", () => {
-            selectedSha    = record.sha256;
+            selectedValue  = idOf(record);
             selectedRecord = record;
             confirmSelection();
         });
@@ -354,7 +470,15 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
         grid.replaceChildren();
         rendered = 0;
         if (!records.length) {
-            showNotice("No adapters match these filters.");
+            // "No VAEs match these filters" over an empty shelf reads as a
+            // broken node. The two cases are worth telling apart: a search that
+            // matched nothing, and a shelf that holds none of this kind at all
+            // — which is nearly always a folder PixlStash was never pointed at.
+            showNotice(all.length
+                ? `No ${shelf.noun}s match this search.`
+                : `Your shelf holds no ${shelf.noun}s. PixlStash only catalogues `
+                  + `the folders registered under Settings › Model folders — add `
+                  + `the folder your ${shelf.noun}s live in, then rescan it.`);
             return;
         }
         renderMore();
@@ -368,7 +492,7 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
     }
 
     function confirmSelection() {
-        const picked = selectedRecord ?? records.find(r => r.sha256 === selectedSha) ?? null;
+        const picked = selectedRecord ?? records.find(r => idOf(r) === selectedValue) ?? null;
         // Nothing new was chosen (the list failed to load, or the pre-seeded
         // value isn't in it) — close without touching the widget or the label,
         // rather than blanking a label whose value is still set.
@@ -376,9 +500,9 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
             close();
             return;
         }
-        adapterWidget.value = picked.sha256;
-        if (typeof adapterWidget.callback === "function") {
-            adapterWidget.callback(adapterWidget.value);
+        valueWidget.value = idOf(picked);
+        if (typeof valueWidget.callback === "function") {
+            valueWidget.callback(valueWidget.value);
         }
         close();
         onPicked?.(picked);
@@ -401,10 +525,12 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
 
     let all = [];
     try {
-        const data = await proxyFetch("/pixlstash/adapters", credentials, buildAdapterQuery(filters));
-        all = Array.isArray(data?.adapters)
-            ? data.adapters.filter(a => a && typeof a.sha256 === "string" && a.sha256)
-            : [];
+        const data = await proxyFetch(shelf.path, credentials, buildAdapterQuery(filters));
+        const rows = data?.[shelf.listKey];
+        // A row with no identity cannot be picked, written or resolved again.
+        // For a checkpoint that is the not-yet-hashed case, which is ordinary —
+        // it has an id, so it is only the hash-addressed kinds that lose rows.
+        all = collapseStacks(Array.isArray(rows) ? rows.filter(r => r && idOf(r)) : []);
     } catch (err) {
         if (!dismissed) showNotice(`⚠ ${err.message}`, "#f88");
         return;
@@ -437,13 +563,13 @@ export async function openAdapterPicker(adapterWidget, credentials, filters, onP
 // Tiny helpers (local)
 // ---------------------------------------------------------------------------
 
-function describeFilters({ kind, baseModel, characterId, setId } = {}) {
+function describeFilters({ kind, baseModel, characterId, setId } = {}, shelf = { noun: "adapter" }) {
     const parts = [];
     if (kind)        parts.push(kind);
     if (baseModel)   parts.push(baseModel);
     if (characterId) parts.push(`character #${characterId}`);
     else if (setId)  parts.push(`set #${setId}`);
-    return parts.length ? `Filtered: ${parts.join(" · ")}` : "All adapters";
+    return parts.length ? `Filtered: ${parts.join(" · ")}` : `All ${shelf.noun}s`;
 }
 
 /** Two letters for the generated mark shown when a record has no icon. */

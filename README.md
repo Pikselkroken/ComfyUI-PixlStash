@@ -104,7 +104,7 @@ Applies a LoRA (or LoKr, LoHa, OFT, DoRA) from the PixlStash **model shelf** to 
 
 It has the same shape as ComfyUI's built-in LoRA loader: `model` and `clip` in, `model` and `clip` out, `strength_model` and `strength_clip`, and you chain them for several adapters. The only difference is where the file comes from — the `lora_name` dropdown is replaced by **Browse adapters…**, and the file is resolved off the shelf (or fetched from it) instead of read out of a local folder. A third output, `trigger_words`, carries whatever the shelf recorded for the adapter; wire it into a text encode.
 
-Click **Browse adapters…** to open a thumbnail grid of the adapters on your shelf, showing each one's picture, name and base model. The picture is the adapter's own icon if it has one; almost none do, so for an adapter attached to a character or a set it falls back to that character's or set's thumbnail — a LoRA of a person is easier to spot by their face than by two letters. An adapter that is attached to nothing and carries no icon draws a generated mark instead. Narrow the grid with the `adapter_kind` and `base_model` dropdowns, with the in-modal search box, or by wiring a Set Loader or Character Loader so you see only the adapters attached to that character or set. If both a set and a character are wired, the grid follows the character — the server accepts one or the other, never both.
+Click **Browse adapters…** to open a thumbnail grid of the adapters on your shelf, showing each one's picture, name and base model. The picture is the adapter's own icon if it has one; almost none do, so for an adapter attached to a character or a set it falls back to that character's or set's thumbnail — a LoRA of a person is easier to spot by their face than by two letters. An adapter that is attached to nothing and carries no icon draws a generated mark instead. A LoRA that was trained in several epochs shows up as one card, not one per file: the grid draws the stack's cover — the file the shelf itself would load — and says how many files the run holds. Narrow the grid with the `adapter_kind` and `base_model` dropdowns, with the in-modal search box, or by wiring a Set Loader or Character Loader so you see only the adapters attached to that character or set. If both a set and a character are wired, the grid follows the character — the server accepts one or the other, never both.
 
 `adapter_kind` and `base_model` filter the Browse grid only. They do not affect what is loaded, so changing one does not disturb a selection you already made.
 
@@ -118,11 +118,27 @@ Fetched adapters go into `<your first loras directory>/pixlstash/<sha256>.safete
 
 **Token scope:** the shelf routes are `OWNER_ONLY` and pinned to a library, which is stricter than the routes the other nodes use. A resource-scoped share token that works fine with the Picture Loader will get a 403 here — use an owner token. The node says so in as many words when you queue it; the Browse modal shows the server's generic "no access" message.
 
-### Apply Adapter (LoRA)
+### Checkpoint Loader
 
-Applies an adapter file to `MODEL` (and optionally `CLIP`), with separate model and CLIP strengths, taking the file as an absolute **path**. You do not need this node to use the PixlStash shelf — the Adapter (LoRA) Loader applies its own adapter. It is here for a path that comes from somewhere else: another pack, a primitive, a path you typed.
+Loads a checkpoint from the model shelf, browsing a grid with the names, base models and icons the shelf records instead of a dropdown of filenames. Same three outputs as the built-in Load Checkpoint — `MODEL`, `CLIP`, `VAE`.
 
-`clip` is optional so model-only adapters work without a CLIP wire. ComfyUI can't vary a node's outputs per graph, so the CLIP *output* still exists in that case and carries nothing — leave it unconnected when you leave the input unconnected.
+**This one cannot fetch the file.** PixlStash serves adapter bytes but not checkpoint bytes, so the copy has to be readable on the machine ComfyUI runs on — the ordinary case when the two share a filesystem, and never the case when they do not. It is also addressed by the shelf's `id` rather than by hash, because a 24 GB checkpoint is listable long before the server has finished hashing it.
+
+A bare diffusion model — a Flux UNET, say — is filed as a checkpoint by PixlStash's parameter-count rule, so it turns up in the grid too. It loads here as a `MODEL` with the `CLIP` and `VAE` outputs empty; wire those from their own loaders.
+
+### VAE Loader
+
+Loads a VAE from the model shelf. Drop-in for the built-in Load VAE, with **Browse VAEs…** in place of the dropdown. Resolved off the shelf, or fetched once and cached under `<your first vae directory>/pixlstash/<sha256>.safetensors`, verified against the digest before anything is written.
+
+TAESD and the other `vae_approx` previews are not here — PixlStash deliberately excludes them from the `vae` kind, so they never appear on the shelf. Use ComfyUI's own Load VAE for those.
+
+### CLIP Loader
+
+Loads a text encoder from the model shelf — one file for SD and SDXL, or two for the models that need a pair (Flux, SD3 and HiDream take clip-l beside a T5 or a Llama). ComfyUI splits that into `CLIPLoader` and `DualCLIPLoader` because each takes its filenames off a dropdown; here both come off the Browse grid, so the second slot is simply optional.
+
+`type` is the model family the encoder is being loaded for. The list is read from ComfyUI's own `CLIPType` at load time rather than copied out of it, so it never lags a release. A workflow saved against a newer ComfyUI still opens: an unknown value falls back to `stable_diffusion` instead of failing validation.
+
+Files are cached under `<your first text_encoders directory>/pixlstash/` on the same terms as the others.
 
 ## Workflow examples
 

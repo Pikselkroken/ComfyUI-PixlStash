@@ -1,4 +1,4 @@
-"""The surface ComfyUI actually consumes on the two adapter nodes.
+"""The surface ComfyUI actually consumes on the adapter node.
 
 None of this is clever, and all of it is load-bearing: ComfyUI reads
 ``INPUT_TYPES``, ``RETURN_TYPES``/``RETURN_NAMES``, ``FUNCTION`` and
@@ -15,10 +15,8 @@ import unittest
 import _bootstrap as boot
 
 adapter_loader = boot.load("nodes.adapter_loader")
-adapter_applier = boot.load("nodes.adapter_applier")
 
 LOADER = adapter_loader.PixlStashAdapterLoader
-APPLIER = adapter_applier.PixlStashApplyAdapter
 
 
 def _display_names():
@@ -35,49 +33,38 @@ def _display_names():
     raise AssertionError("__init__.py declares no NODE_DISPLAY_NAME_MAPPINGS")
 
 
-class SharedContractTests(unittest.TestCase):
-    def test_both_nodes_declare_a_callable_function_and_a_category(self):
-        for cls in (LOADER, APPLIER):
-            with self.subTest(node=cls.__name__):
-                self.assertEqual(cls.CATEGORY, "PixlStash")
-                self.assertTrue(callable(getattr(cls, cls.FUNCTION, None)))
+class NodeContractTests(unittest.TestCase):
+    def test_declares_a_callable_function_and_a_category(self):
+        self.assertEqual(LOADER.CATEGORY, "PixlStash")
+        self.assertTrue(callable(getattr(LOADER, LOADER.FUNCTION, None)))
 
     def test_return_names_line_up_with_return_types(self):
-        for cls in (LOADER, APPLIER):
-            with self.subTest(node=cls.__name__):
-                self.assertEqual(len(cls.RETURN_TYPES), len(cls.RETURN_NAMES))
+        self.assertEqual(len(LOADER.RETURN_TYPES), len(LOADER.RETURN_NAMES))
 
     def test_every_output_has_a_tooltip(self):
         # ComfyUI pairs OUTPUT_TOOLTIPS with the outputs BY INDEX, so a tuple
         # one short does not raise — it silently moves every tooltip after the
         # gap onto the wrong socket, which is worse than having none.
-        for cls in (LOADER, APPLIER):
-            with self.subTest(node=cls.__name__):
-                self.assertEqual(len(cls.OUTPUT_TOOLTIPS), len(cls.RETURN_NAMES))
-                for tooltip in cls.OUTPUT_TOOLTIPS:
-                    self.assertTrue(tooltip.strip())
+        self.assertEqual(len(LOADER.OUTPUT_TOOLTIPS), len(LOADER.RETURN_NAMES))
+        for tooltip in LOADER.OUTPUT_TOOLTIPS:
+            self.assertTrue(tooltip.strip())
 
-    def test_both_nodes_describe_themselves(self):
+    def test_the_node_describes_itself(self):
         # The node tooltip, shown on hover in the node browser. Its job is to
         # answer "what is this and do I want it" before the node is placed.
-        for cls in (LOADER, APPLIER):
-            with self.subTest(node=cls.__name__):
-                self.assertGreater(len(cls.DESCRIPTION), 80)
-                # LoRA, not "adapter": it is the word someone searching for
-                # this node actually types.
-                self.assertIn("LoRA", cls.DESCRIPTION)
+        self.assertGreater(len(LOADER.DESCRIPTION), 80)
+        # LoRA, not "adapter": it is the word someone searching for this node
+        # actually types.
+        self.assertIn("LoRA", LOADER.DESCRIPTION)
 
-    def test_the_display_names_say_lora(self):
-        # Findability, checked here rather than left to the eye: these nodes
-        # are named for the shelf's word ("adapter") and searched for by the
+    def test_the_display_name_says_lora(self):
+        # Findability, checked here rather than left to the eye: the node is
+        # named for the shelf's word ("adapter") and searched for by the
         # ecosystem's ("lora").
         # Read statically rather than imported: `__init__` pulls in every node
         # in the pack, and the picture ones want a real numpy. The mapping is a
         # literal, so parsing it is not a weaker check than importing it.
-        names = _display_names()
-        for key in ("PixlStashAdapterLoader", "PixlStashApplyAdapter"):
-            with self.subTest(node=key):
-                self.assertIn("(LoRA)", names[key])
+        self.assertIn("(LoRA)", _display_names()["PixlStashAdapterLoader"])
 
 
 class LoaderContractTests(unittest.TestCase):
@@ -148,31 +135,6 @@ class LoaderContractTests(unittest.TestCase):
     def test_no_is_changed(self):
         # A NaN here would invalidate every downstream node on every queue.
         self.assertFalse(hasattr(LOADER, "IS_CHANGED"))
-
-
-class ApplierContractTests(unittest.TestCase):
-    def setUp(self):
-        self.spec = APPLIER.INPUT_TYPES()
-
-    def test_returns_model_and_clip(self):
-        self.assertEqual(APPLIER.RETURN_TYPES, ("MODEL", "CLIP"))
-
-    def test_model_and_path_are_required_clip_is_not(self):
-        self.assertIn("model", self.spec["required"])
-        self.assertIn("lora_path", self.spec["required"])
-        self.assertIn("clip", self.spec["optional"])
-
-    def test_lora_path_is_wire_only(self):
-        declared, opts = self.spec["required"]["lora_path"]
-        self.assertEqual(declared, "STRING")
-        self.assertTrue(opts["forceInput"])
-
-    def test_both_strengths_allow_negative_values(self):
-        _, model_opts = self.spec["required"]["strength_model"]
-        _, clip_opts = self.spec["optional"]["strength_clip"]
-        for opts in (model_opts, clip_opts):
-            self.assertLess(opts["min"], 0)
-            self.assertEqual(opts["default"], 1.0)
 
 
 if __name__ == "__main__":

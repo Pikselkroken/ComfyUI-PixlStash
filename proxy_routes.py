@@ -194,6 +194,37 @@ async def proxy_adapters(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/adapters")
 
 
+async def proxy_adapter(request: web.Request) -> web.Response:
+    """Proxy one shelf record by hash.
+
+    What the node's Browse button needs to draw a *name* on a workflow that
+    was saved with only a hash in it. Fetching the whole filtered shelf to find
+    one row would work and would be absurd — this is one small request per
+    node.
+
+    Validated before a client is built, like the icon route: the digest is
+    interpolated into the upstream path, so a non-digest is a malformed
+    request rather than a lookup that happens to miss.
+    """
+    sha256 = request.rel_url.query.get("sha256", "")
+    if not _SHA256_RE.match(sha256):
+        return _err(
+            "sha256 query param must be a 64-character lowercase hex digest.",
+            status=400,
+        )
+    return await _proxy_get(request, f"/api/v1/adapters/{sha256}")
+
+
+async def proxy_checkpoints(request: web.Request) -> web.Response:
+    """Proxy the model shelf's checkpoint list.
+
+    A separate route because checkpoints are a separate one upstream: they are
+    listed by ``id`` (``sha256`` is null until the background hasher gets to
+    the file) and are refused by the hash-addressed adapter routes.
+    """
+    return await _proxy_get(request, "/api/v1/checkpoints")
+
+
 async def proxy_model_icon(request: web.Request) -> web.Response:
     """Proxy a model-shelf icon (binary) from PixlStash.
 
@@ -321,6 +352,8 @@ def register_routes() -> None:
         r.get("/pixlstash/pictures")(proxy_pictures)
         r.get("/pixlstash/thumbnail")(proxy_thumbnail)
         r.get("/pixlstash/adapters")(proxy_adapters)
+        r.get("/pixlstash/adapter")(proxy_adapter)
+        r.get("/pixlstash/checkpoints")(proxy_checkpoints)
         r.get("/pixlstash/model_icon")(proxy_model_icon)
         r.get("/pixlstash/entity_thumbnail")(proxy_entity_thumbnail)
         r.get("/pixlstash/version")(proxy_version)

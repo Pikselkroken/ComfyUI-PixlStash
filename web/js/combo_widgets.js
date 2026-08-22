@@ -17,7 +17,7 @@
 
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
-import { openAdapterPicker } from "./adapter_picker.js";
+import { openAdapterPicker, shelfNameFor } from "./adapter_picker.js";
 
 // ---------------------------------------------------------------------------
 // Setting IDs
@@ -45,6 +45,9 @@ const NODE_MIN_VERSION = {
     "PixlStashPictureLikenessGate": "1.4.0",
     // The model shelf (GET /adapters, GET /model-icons) first ships in 1.10.0.
     "PixlStashAdapterLoader":    "1.10.0",
+    "PixlStashCheckpointLoader": "1.10.0",
+    "PixlStashVAELoader":        "1.10.0",
+    "PixlStashCLIPLoader":       "1.10.0",
 };
 
 // Cache: serverUrl → { state: "checking"|"resolved"|"error", version: string|null }
@@ -471,6 +474,78 @@ function resetDownstreamFilters(node) {
 // Extension
 // ---------------------------------------------------------------------------
 
+/**
+ * Hide a hash/id widget and drive it from the shelf Browse modal.
+ *
+ * The widget's value is the whole of a shelf loader's serialised state, so the
+ * button's label is the whole of its visible state: the picked file's name
+ * after a pick, and the raw value's first characters after a workflow reload
+ * (nothing has been fetched at that point, and blocking the canvas on a lookup
+ * to render a label is not worth it).
+ *
+ * @param {Object}   node        the LiteGraph node
+ * @param {Object}   valueWidget the hidden widget the modal writes
+ * @param {Object}   opts        { fileKind, browse, picked, filters? }
+ */
+function addShelfBrowseButton(node, valueWidget, opts) {
+    const { fileKind, browse, picked, filters = () => ({}) } = opts;
+
+    valueWidget.hidden = true;
+    valueWidget.computeSize = () => [0, -4];
+
+    let browseBtn;
+    const setLabel = (text) => {
+        if (!browseBtn) return;
+        const label = text ? `${picked}: ${text}` : browse;
+        // `name` for the canvas widget, `label` for the newer frontend —
+        // whichever this ComfyUI renders.
+        browseBtn.name  = label;
+        browseBtn.label = label;
+        node.setDirtyCanvas?.(true, true);
+    };
+    // A hash is what the workflow stores and it is not a name anyone knows, so
+    // it is drawn only until the lookup below comes back — and left in place if
+    // it never does (no credentials, server down, file forgotten off the shelf).
+    const labelFromValue = () => {
+        const v = String(valueWidget.value ?? "").trim();
+        setLabel(v ? (v.length > 12 ? `${v.slice(0, 10)}…` : `#${v}`) : "");
+        if (!v) return;
+        const creds = getSettingsCredentials();
+        if (!creds.url || !creds.token) return;
+        shelfNameFor(v, creds, fileKind).then(name => {
+            // The user may have picked something else while this was in
+            // flight; labelling with the old file's name would be a lie.
+            if (name && String(valueWidget.value ?? "").trim() === v) setLabel(name);
+        });
+    };
+
+    const prevConfigure = node.onConfigure;
+    node.onConfigure = function (data) {
+        prevConfigure?.call(this, data);
+        labelFromValue();
+    };
+
+    browseBtn = node.addWidget(
+        "button",
+        browse,
+        null,
+        () => {
+            const creds = getSettingsCredentials();
+            if (!creds.url || !creds.token) {
+                alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
+                return;
+            }
+            openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record) => {
+                setLabel(record.display_name || record.filename
+                         || String(record.sha256 ?? record.id ?? "").slice(0, 10));
+            }).catch(err => alert(`PixlStash picker error: ${err.message}`));
+        },
+        { serialize: false },
+    );
+
+    labelFromValue();
+}
+
 app.registerExtension({
     name: "ComfyUI.PixlStash",
 
@@ -644,68 +719,56 @@ app.registerExtension({
 
                 bindDynamicValues(this, baseWidget, "base_models", () => null);
 
-                // Hide the raw hash — it is written by the Browse modal.
-                shaWidget.hidden = true;
-                shaWidget.computeSize = () => [0, -4];
-
-                // The hash is the only thing serialised, so the button label is
-                // the whole of the node's visible state. Show the picked name
-                // after a pick, and the hash prefix after a workflow reload.
-                let browseBtn;
-                const setLabel = (text) => {
-                    if (!browseBtn) return;
-                    const label = text ? `Adapter: ${text}` : "Browse adapters…";
-                    // `name` for the canvas widget, `label` for the newer
-                    // frontend — whichever this ComfyUI renders.
-                    browseBtn.name  = label;
-                    browseBtn.label = label;
-                    this.setDirtyCanvas?.(true, true);
-                };
-                const labelFromHash = () => {
-                    const v = String(shaWidget.value ?? "").trim();
-                    setLabel(v ? `${v.slice(0, 10)}…` : "");
-                };
-
                 // adapter_kind / base_model are deliberately NOT chained to
                 // clear adapter_sha256. They only narrow the Browse grid — the
                 // node ignores them — so a selection that no longer matches
                 // them still resolves correctly, and wiping it because someone
                 // flipped a dropdown to see what was there would destroy real
                 // state with no undo.
+                addShelfBrowseButton(this, shaWidget, {
+                    fileKind: "adapter",
+                    browse:   "Browse adapters…",
+                    picked:   "Adapter",
+                    filters:  () => ({
+                        kind:        adapterKindFilter(kindWidget.value),
+                        baseModel:   isRealComboValue(baseWidget.value) ? baseWidget.value : "",
+                        // Character wins over set: GET /adapters 400s if given
+                        // both. Mirrored in nodes/adapter_loader.py.
+                        characterId: getWiredValue(this, "pixlstash_character"),
+                        setId:       getWiredValue(this, "pixlstash_set"),
+                    }),
+                });
+            };
+        }
 
-                const prevConfigure = this.onConfigure;
-                this.onConfigure = function (data) {
-                    prevConfigure?.call(this, data);
-                    labelFromHash();
-                };
-
-                browseBtn = this.addWidget(
-                    "button",
-                    "Browse adapters…",
-                    null,
-                    () => {
-                        const creds = getSettingsCredentials();
-                        if (!creds.url || !creds.token) {
-                            alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
-                            return;
-                        }
-                        const filters = {
-                            kind:        adapterKindFilter(kindWidget.value),
-                            baseModel:   isRealComboValue(baseWidget.value) ? baseWidget.value : "",
-                            // Character wins over set: GET /adapters 400s if
-                            // given both. Mirrored in nodes/adapter_loader.py.
-                            characterId: getWiredValue(this, "pixlstash_character"),
-                            setId:       getWiredValue(this, "pixlstash_set"),
-                        };
-                        openAdapterPicker(shaWidget, creds, filters, (record) => {
-                            setLabel(record.display_name || record.filename
-                                     || String(record.sha256 ?? "").slice(0, 10));
-                        }).catch(err => alert(`PixlStash adapter picker error: ${err.message}`));
-                    },
-                    { serialize: false },
-                );
-
-                labelFromHash();
+        // ============================================================
+        // The other shelf loaders — a Browse grid and nothing else
+        // ============================================================
+        // No kind or base-model widget on these: /checkpoints takes neither,
+        // and for a VAE or a text encoder the modal's search box is the whole
+        // of the narrowing anyone needs. The CLIP loader gets two buttons
+        // because it takes two files — one for SD/SDXL, two for Flux and SD3.
+        const SHELF_BROWSERS = {
+            "PixlStashVAELoader": [
+                { widget: "vae_sha256", fileKind: "vae", browse: "Browse VAEs…", picked: "VAE" },
+            ],
+            "PixlStashCLIPLoader": [
+                { widget: "clip_sha256",   fileKind: "text_encoder", browse: "Browse text encoders…",      picked: "Encoder" },
+                { widget: "clip_sha256_2", fileKind: "text_encoder", browse: "Second encoder (optional)…", picked: "Encoder 2" },
+            ],
+            "PixlStashCheckpointLoader": [
+                { widget: "checkpoint_id", fileKind: "checkpoint", browse: "Browse checkpoints…", picked: "Checkpoint" },
+            ],
+        };
+        const browsers = SHELF_BROWSERS[nodeData.name];
+        if (browsers) {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+                for (const spec of browsers) {
+                    const w = this.widgets?.find(x => x.name === spec.widget);
+                    if (w) addShelfBrowseButton(this, w, spec);
+                }
             };
         }
 

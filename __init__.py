@@ -26,7 +26,9 @@ from .nodes.face_likeness_gate import PixlStashFaceLikenessGate
 from .nodes.picture_likeness_gate import PixlStashPictureLikenessGate
 from .nodes.semantic_search import PixlStashSemanticSearch
 from .nodes.adapter_loader import PixlStashAdapterLoader
-from .nodes.adapter_applier import PixlStashApplyAdapter
+from .nodes.checkpoint_loader import PixlStashCheckpointLoader
+from .nodes.clip_loader import PixlStashCLIPLoader
+from .nodes.vae_loader import PixlStashVAELoader
 from .proxy_routes import register_routes
 
 register_routes()
@@ -42,7 +44,9 @@ NODE_CLASS_MAPPINGS = {
     "PixlStashPictureLikenessGate": PixlStashPictureLikenessGate,
     "PixlStashSemanticSearch": PixlStashSemanticSearch,
     "PixlStashAdapterLoader": PixlStashAdapterLoader,
-    "PixlStashApplyAdapter": PixlStashApplyAdapter,
+    "PixlStashCheckpointLoader": PixlStashCheckpointLoader,
+    "PixlStashVAELoader": PixlStashVAELoader,
+    "PixlStashCLIPLoader": PixlStashCLIPLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -55,12 +59,14 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixlStashFaceLikenessGate": "PixlStash Face Likeness Gate",
     "PixlStashPictureLikenessGate": "PixlStash Picture Likeness Gate",
     "PixlStashSemanticSearch": "PixlStash Semantic Search",
-    # "(LoRA)" is not a narrowing — these nodes take LoKr, LoHa, OFT and DoRA
-    # too — it is what makes them findable. Nearly every adapter anyone has is
-    # a LoRA, and that is the word people type into the node search; "adapter"
+    # "(LoRA)" is not a narrowing — the node takes LoKr, LoHa, OFT and DoRA
+    # too — it is what makes it findable. Nearly every adapter anyone has is a
+    # LoRA, and that is the word people type into the node search; "adapter"
     # is the shelf's word, not the ecosystem's.
     "PixlStashAdapterLoader": "PixlStash Adapter (LoRA) Loader",
-    "PixlStashApplyAdapter": "PixlStash Apply Adapter (LoRA)",
+    "PixlStashCheckpointLoader": "PixlStash Checkpoint Loader",
+    "PixlStashVAELoader": "PixlStash VAE Loader",
+    "PixlStashCLIPLoader": "PixlStash CLIP Loader",
 }
 
 WEB_DIRECTORY = "web/js"

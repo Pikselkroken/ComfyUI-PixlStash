@@ -1,11 +1,10 @@
-"""PixlStash Apply Adapter — the guards around ComfyUI's LoRA API.
+"""AdapterApplier — the guards around ComfyUI's LoRA API.
 
-The node is three calls into ``comfy.utils`` / ``comfy.sd``, which don't exist
-outside ComfyUI, so those two are stubbed here.  What is worth pinning is
-everything around them: that an unwired path is refused, that a zero-strength
-graph is a genuine no-op, that CLIP is left alone when nothing was wired, and
-that the state-dict cache keys on the path rather than handing back whichever
-adapter happened to be loaded last.
+It is two calls into ``comfy.utils`` / ``comfy.sd``, which don't exist outside
+ComfyUI, so those two are stubbed here.  What is worth pinning is everything
+around them: that a zero-strength graph is a genuine no-op, that CLIP is left
+alone when nothing was wired, and that the state-dict cache keys on the path
+rather than handing back whichever adapter happened to be loaded last.
 """
 
 import sys
@@ -54,27 +53,20 @@ CALLS = _install_comfy_stubs()
 adapter_applier = boot.load("nodes.adapter_applier")
 
 
+class Applier:
+    """``AdapterApplier.apply`` under the old node's argument order."""
+
+    def __init__(self):
+        self._applier = adapter_applier.AdapterApplier()
+
+    def apply_adapter(self, model, path, strength_model, clip=None, strength_clip=1.0):
+        return self._applier.apply(model, clip, path, strength_model, strength_clip)
+
+
 def new_node():
     for v in CALLS.values():
         v.clear()
-    return adapter_applier.PixlStashApplyAdapter()
-
-
-class EmptyPathTests(unittest.TestCase):
-    def test_an_unwired_path_is_refused(self):
-        with self.assertRaises(RuntimeError) as ctx:
-            new_node().apply_adapter("MODEL", "", 1.0)
-        self.assertIn("lora_path is empty", str(ctx.exception))
-
-    def test_whitespace_only_is_refused(self):
-        with self.assertRaises(RuntimeError):
-            new_node().apply_adapter("MODEL", "   ", 1.0)
-
-    def test_refused_regardless_of_the_strength_sliders(self):
-        # The check sits before the zero-strength short-circuit, so the same
-        # broken graph doesn't pass or fail depending on a slider.
-        with self.assertRaises(RuntimeError):
-            new_node().apply_adapter("MODEL", "", 0.0, clip="CLIP", strength_clip=0.0)
+    return Applier()
 
 
 class ShortCircuitTests(unittest.TestCase):
@@ -117,8 +109,7 @@ class ApplyTests(unittest.TestCase):
 class SafeLoadTests(unittest.TestCase):
     """The weights file is read with pickle disabled, always.
 
-    `lora_path` is a wire — the Adapter Loader hands it a path the *server*
-    chose, and the docstring invites paths from other packs. Without
+    The Adapter Loader hands it a path the *server* chose. Without
     `safe_load=True`, ComfyUI falls back to `torch.load` for anything that is
     not safetensors, which executes pickle opcodes out of that file.
     """

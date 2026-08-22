@@ -1,6 +1,6 @@
-"""What ``_local_path`` will and won't hand to a torch loader.
+"""What ``local_path`` will and won't hand to a torch loader.
 
-``folder_path`` and ``relpath`` arrive over the network, so ``_local_path``
+``folder_path`` and ``relpath`` arrive over the network, so ``local_path``
 refuses anything that leaves the registered folder, is not a ``.safetensors``
 file, was not ``present`` at the last scan, or does not match the recorded size
 — including the case where there is no recorded size to match against. Same
@@ -25,6 +25,7 @@ import unittest
 
 import _bootstrap as boot
 
+shelf_file = boot.load("nodes.shelf_file")
 adapter_loader = boot.load("nodes.adapter_loader")
 
 TMP = tempfile.mkdtemp(prefix="pixlstash_adapter_test_")
@@ -67,41 +68,37 @@ def loc(relpath, state="present", folder=FOLDER):
 
 class LocalPathTests(unittest.TestCase):
     def test_returns_the_join_when_everything_holds(self):
-        path = adapter_loader._local_path(record(loc("good.safetensors")))
+        path = shelf_file.local_path(record(loc("good.safetensors")))
         self.assertEqual(
             path, os.path.normpath(os.path.join(FOLDER, "good.safetensors"))
         )
 
     def test_refuses_relpath_escaping_its_folder(self):
         self.assertIsNone(
-            adapter_loader._local_path(record(loc("../secrets/stolen.safetensors")))
+            shelf_file.local_path(record(loc("../secrets/stolen.safetensors")))
         )
 
     def test_refuses_absolute_relpath(self):
         # os.path.join drops the folder entirely for an absolute second arg —
         # the containment check is what catches it.
         self.assertIsNone(
-            adapter_loader._local_path(
+            shelf_file.local_path(
                 record(loc(os.path.join(OUTSIDE, "stolen.safetensors")))
             )
         )
 
     def test_refuses_non_safetensors_extension(self):
-        self.assertIsNone(adapter_loader._local_path(record(loc("notes.txt"))))
+        self.assertIsNone(shelf_file.local_path(record(loc("notes.txt"))))
 
     def test_ignores_locations_that_are_not_present(self):
         for state in ("missing", "unreachable", "not_downloaded"):
             with self.subTest(state=state):
                 self.assertIsNone(
-                    adapter_loader._local_path(
-                        record(loc("good.safetensors", state=state))
-                    )
+                    shelf_file.local_path(record(loc("good.safetensors", state=state)))
                 )
 
     def test_ignores_a_present_location_whose_file_is_gone(self):
-        self.assertIsNone(
-            adapter_loader._local_path(record(loc("vanished.safetensors")))
-        )
+        self.assertIsNone(shelf_file.local_path(record(loc("vanished.safetensors"))))
 
     def test_ignores_a_directory(self):
         # os.path.getsize succeeds on a directory and returns its block size,
@@ -112,11 +109,11 @@ class LocalPathTests(unittest.TestCase):
         self.addCleanup(os.rmdir, d)
         size = os.path.getsize(d)
         self.assertIsNone(
-            adapter_loader._local_path(record(loc("adir.safetensors"), file_size=size))
+            shelf_file.local_path(record(loc("adir.safetensors"), file_size=size))
         )
 
     def test_skips_a_bad_location_and_takes_the_next_good_one(self):
-        path = adapter_loader._local_path(
+        path = shelf_file.local_path(
             record(
                 loc("../secrets/stolen.safetensors"),
                 loc("good.safetensors"),
@@ -127,7 +124,7 @@ class LocalPathTests(unittest.TestCase):
         )
 
     def test_no_locations(self):
-        self.assertIsNone(adapter_loader._local_path({}))
+        self.assertIsNone(shelf_file.local_path({}))
 
 
 class SizeCheckTests(unittest.TestCase):
@@ -149,53 +146,47 @@ class SizeCheckTests(unittest.TestCase):
 
     def test_accepts_when_the_size_matches(self):
         self.assertIsNotNone(
-            adapter_loader._local_path(
-                record(loc("good.safetensors"), file_size=self.REAL)
-            )
+            shelf_file.local_path(record(loc("good.safetensors"), file_size=self.REAL))
         )
 
     def test_rejects_a_same_named_file_of_a_different_size(self):
         self.assertIsNone(
-            adapter_loader._local_path(
-                record(loc("good.safetensors"), file_size=999_999)
-            )
+            shelf_file.local_path(record(loc("good.safetensors"), file_size=999_999))
         )
 
     def test_refuses_when_the_shelf_records_no_size(self):
         # Unverifiable is exactly the case the guard exists for; trusting the
         # path here would turn it off for every record with a null size.
         self.assertIsNone(
-            adapter_loader._local_path(record(loc("good.safetensors"), file_size=None))
+            shelf_file.local_path(record(loc("good.safetensors"), file_size=None))
         )
         # Absent entirely, not just null.
         self.assertIsNone(
-            adapter_loader._local_path({"locations": [loc("good.safetensors")]})
+            shelf_file.local_path({"locations": [loc("good.safetensors")]})
         )
 
     def test_a_size_that_is_not_an_int_is_still_checked(self):
         # JSON decodes 1.2e9 to a float and some clients stringify; an
         # isinstance(x, int) test would silently skip the check for both.
         self.assertIsNotNone(
-            adapter_loader._local_path(
+            shelf_file.local_path(
                 record(loc("good.safetensors"), file_size=float(self.REAL))
             )
         )
         self.assertIsNotNone(
-            adapter_loader._local_path(
+            shelf_file.local_path(
                 record(loc("good.safetensors"), file_size=str(self.REAL))
             )
         )
         self.assertIsNone(
-            adapter_loader._local_path(
-                record(loc("good.safetensors"), file_size="999999")
-            )
+            shelf_file.local_path(record(loc("good.safetensors"), file_size="999999"))
         )
 
     def test_a_nonsense_size_refuses_rather_than_skipping_the_check(self):
         for bad in (True, "big", [], {}, -1):
             with self.subTest(bad=bad):
                 self.assertIsNone(
-                    adapter_loader._local_path(
+                    shelf_file.local_path(
                         record(loc("good.safetensors"), file_size=bad)
                     )
                 )
@@ -209,7 +200,7 @@ class SizeCheckTests(unittest.TestCase):
             pass
         self.addCleanup(os.remove, empty)
         self.assertIsNone(
-            adapter_loader._local_path(record(loc("empty.safetensors"), file_size=0))
+            shelf_file.local_path(record(loc("empty.safetensors"), file_size=0))
         )
 
 
@@ -234,14 +225,14 @@ class SymlinkTests(unittest.TestCase):
         self.addCleanup(os.remove, self.link)
 
     def test_a_symlink_inside_the_folder_is_usable(self):
-        path = adapter_loader._local_path(record(loc("linked.safetensors")))
+        path = shelf_file.local_path(record(loc("linked.safetensors")))
         self.assertEqual(path, os.path.normpath(self.link))
 
     def test_a_relpath_that_escapes_is_still_refused(self):
         # The lexical check must not have bought symlink support by giving up
         # on the traversal it exists for.
         self.assertIsNone(
-            adapter_loader._local_path(record(loc("../secrets/stolen.safetensors")))
+            shelf_file.local_path(record(loc("../secrets/stolen.safetensors")))
         )
 
 
@@ -252,13 +243,13 @@ class MalformedRecordTests(unittest.TestCase):
         for locations in ({"a": 1}, "somewhere", 7):
             with self.subTest(locations=locations):
                 self.assertIsNone(
-                    adapter_loader._local_path({"locations": locations, "file_size": 1})
+                    shelf_file.local_path({"locations": locations, "file_size": 1})
                 )
 
     def test_a_non_dict_location_is_skipped(self):
         real = os.path.getsize(os.path.join(FOLDER, "good.safetensors"))
         self.assertEqual(
-            adapter_loader._local_path(
+            shelf_file.local_path(
                 {
                     "file_size": real,
                     "locations": ["/oops", None, loc("good.safetensors")],

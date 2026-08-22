@@ -1,6 +1,6 @@
 """The download cache is content-addressed, so it must never cache the wrong bytes.
 
-``_cached_download`` names the file ``<sha256>.safetensors`` and treats the
+``cached_download`` names the file ``<sha256>.safetensors`` and treats the
 file's *existence* as the whole validity check on every later run. That is only
 safe because nothing is put under that name until its digest has been verified.
 These tests pin exactly that: a truncated body, a substituted file, or a
@@ -18,7 +18,17 @@ import unittest
 
 import _bootstrap as boot
 
-adapter_loader = boot.load("nodes.adapter_loader")
+shelf_file = boot.load("nodes.shelf_file")
+
+LABEL = "PixlStash Adapter Loader"
+
+
+def download(client, sha=None):
+    """`cached_download` under the loras folder, which is what the stub serves."""
+    return shelf_file.cached_download(
+        client, sha if sha is not None else SHA, folder_key="loras", label=LABEL
+    )
+
 
 TMP = tempfile.mkdtemp(prefix="pixlstash_download_test_")
 LORAS = os.path.join(TMP, "loras")
@@ -101,7 +111,7 @@ class DownloadTests(unittest.TestCase):
 
     def test_caches_a_body_whose_digest_matches(self):
         stream = _Stream([PAYLOAD[:50], PAYLOAD[50:]])
-        path = adapter_loader._cached_download(_Client(stream), SHA)
+        path = download(_Client(stream))
 
         self.assertEqual(path, final_path())
         with open(path, "rb") as fh:
@@ -117,7 +127,7 @@ class DownloadTests(unittest.TestCase):
         entry is that the bytes were never under that name in the first place.
         """
         stream = _Stream([PAYLOAD[:50], PAYLOAD[50:]], watch=CACHE)
-        adapter_loader._cached_download(_Client(stream), SHA)
+        download(_Client(stream))
 
         self.assertTrue(stream.seen_midstream, "never observed the write in progress")
         for listing in stream.seen_midstream:
@@ -132,7 +142,7 @@ class DownloadTests(unittest.TestCase):
         # A 200 with a short body is the case that would otherwise poison the
         # cache permanently: the name asserts a digest the content doesn't have.
         with self.assertRaises(RuntimeError) as ctx:
-            adapter_loader._cached_download(_Client(_Stream([PAYLOAD[:50]])), SHA)
+            download(_Client(_Stream([PAYLOAD[:50]])), SHA)
 
         self.assertIn("SHA-256", str(ctx.exception))
         self.assertFalse(os.path.exists(final_path()))
@@ -140,14 +150,14 @@ class DownloadTests(unittest.TestCase):
 
     def test_refuses_an_empty_body(self):
         with self.assertRaises(RuntimeError):
-            adapter_loader._cached_download(_Client(_Stream([])), SHA)
+            download(_Client(_Stream([])), SHA)
         self.assertFalse(os.path.exists(final_path()))
         self.assertEqual(leftovers(), [])
 
     def test_refuses_a_substituted_file(self):
         other = b"a completely different adapter"
         with self.assertRaises(RuntimeError) as ctx:
-            adapter_loader._cached_download(_Client(_Stream([other])), SHA)
+            download(_Client(_Stream([other])), SHA)
         self.assertIn("not the", str(ctx.exception))
         self.assertEqual(leftovers(), [])
 
@@ -161,7 +171,7 @@ class DownloadTests(unittest.TestCase):
         """
         stream = _Stream([PAYLOAD[:50]], boom=RuntimeError("PixlStash: 500"))
         with self.assertRaises(RuntimeError):
-            adapter_loader._cached_download(_Client(stream), SHA)
+            download(_Client(stream))
         self.assertTrue(os.path.isdir(CACHE), "never got as far as writing")
         self.assertEqual(leftovers(), [], "left a half-written .part behind")
 
@@ -171,9 +181,7 @@ class DownloadTests(unittest.TestCase):
         # and orphan the partial file.
         boom = ConnectionError("connection reset")
         with self.assertRaises(ConnectionError):
-            adapter_loader._cached_download(
-                _Client(_Stream([PAYLOAD[:50]], boom=boom)), SHA
-            )
+            download(_Client(_Stream([PAYLOAD[:50]], boom=boom)), SHA)
         self.assertEqual(leftovers(), [])
 
     def test_a_404_names_the_version_that_added_the_route(self):
@@ -182,7 +190,7 @@ class DownloadTests(unittest.TestCase):
                 raise RuntimeError("PixlStash: not found — /api/v1/adapters/x/file")
 
         with self.assertRaises(RuntimeError) as ctx:
-            adapter_loader._cached_download(_Failing(), SHA)
+            download(_Failing(), SHA)
         message = str(ctx.exception)
         self.assertIn("no usable copy", message)
         self.assertIn("1.10", message)
@@ -203,7 +211,7 @@ class DownloadTests(unittest.TestCase):
                 raise RuntimeError(detail)
 
         with self.assertRaises(RuntimeError) as ctx:
-            adapter_loader._cached_download(_Failing(), SHA)
+            download(_Failing(), SHA)
         message = str(ctx.exception)
         self.assertIn("no copy of it is readable", message)
         self.assertNotIn("1.10", message)
@@ -225,7 +233,7 @@ class DownloadTests(unittest.TestCase):
                         raise RuntimeError(detail)
 
                 with self.assertRaises(RuntimeError) as ctx:
-                    adapter_loader._cached_download(_Failing(), SHA)
+                    download(_Failing(), SHA)
                 message = str(ctx.exception)
                 self.assertIn(detail, message)
                 self.assertNotIn("1.10", message)
@@ -240,9 +248,7 @@ class DownloadTests(unittest.TestCase):
         with open(final_path(), "wb") as fh:
             fh.write(PAYLOAD)
 
-        self.assertEqual(
-            adapter_loader._cached_download(_Exploding(), SHA), final_path()
-        )
+        self.assertEqual(download(_Exploding(), SHA), final_path())
 
 
 class CacheDirTests(unittest.TestCase):
@@ -252,7 +258,7 @@ class CacheDirTests(unittest.TestCase):
         fp.get_folder_paths = lambda kind: []
         try:
             with self.assertRaises(RuntimeError) as ctx:
-                adapter_loader._cache_dir()
+                shelf_file._cache_dir("loras", LABEL)
             self.assertIn("no 'loras' model directory", str(ctx.exception))
         finally:
             fp.get_folder_paths = original
