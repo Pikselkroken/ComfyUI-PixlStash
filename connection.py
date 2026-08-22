@@ -194,7 +194,18 @@ class PixlStashClient:
                 str(d.get("msg", d)) if isinstance(d, dict) else str(d) for d in detail
             ]
             return "; ".join(m for m in msgs if m)[:500]
-        return str(detail)[:500] if detail else ""
+        # Anything else the server chose to answer with. Emptiness is tested by
+        # *shape*, not truthiness: a detail of `0` or `false` is a thing the
+        # server said, and `if detail` would drop it and report a bare URL.
+        if detail is None or detail == "" or detail == [] or detail == {}:
+            return ""
+        # Re-encoded rather than `str()`: that renders a dict as a Python repr
+        # — single quotes, `True`, `None` — in a dialog whose reader is looking
+        # at an HTTP response and expects to see what the server sent.
+        try:
+            return json.dumps(detail, ensure_ascii=False)[:500]
+        except (TypeError, ValueError):
+            return str(detail)[:500]
 
     def _check(
         self,

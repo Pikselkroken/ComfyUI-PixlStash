@@ -91,6 +91,29 @@ class DetailShapeTests(unittest.TestCase):
         message = check(400, {"error": "no space left"})
         self.assertIn("no space left", message)
 
+    def test_a_structured_detail_is_json_not_a_python_repr(self):
+        # The reader is looking at an HTTP response; `{'code': 5, 'ok': True}`
+        # is not what any server sent.
+        message = check(400, {"detail": {"code": 5, "retryable": True}})
+        self.assertIn('"code": 5', message)
+        self.assertIn("true", message)
+        self.assertNotIn("'code'", message)
+        self.assertNotIn("True", message)
+
+    def test_a_detail_that_is_merely_falsy_is_still_reported(self):
+        # `0` and `false` are things a server said. Testing truthiness dropped
+        # them and left the caller with a bare URL and no reason.
+        for detail, expected in ((0, "0"), (False, "false")):
+            with self.subTest(detail=detail):
+                message = check(404, {"detail": detail})
+                self.assertIn(expected, message)
+
+    def test_an_empty_detail_leaves_only_the_url(self):
+        for detail in (None, "", [], {}):
+            with self.subTest(detail=detail):
+                message = check(404, {"detail": detail})
+                self.assertEqual(message, f"PixlStash: not found — {URL}")
+
 
 class OtherStatusTests(unittest.TestCase):
     """The messages that already worked, pinned so the refactor kept them."""
