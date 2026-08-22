@@ -106,6 +106,10 @@ It has the same shape as ComfyUI's built-in LoRA loader: `model` and `clip` in, 
 
 Click **Browse adapters…** to open a thumbnail grid of the adapters on your shelf, showing each one's picture, name and base model. The picture is the adapter's own icon if it has one; almost none do, so for an adapter attached to a character or a set it falls back to that character's or set's thumbnail — a LoRA of a person is easier to spot by their face than by two letters. An adapter that is attached to nothing and carries no icon draws a generated mark instead. A LoRA that was trained in several epochs shows up as one card, not one per file: the grid draws the stack's cover — the file the shelf itself would load — and says how many files the run holds. Narrow the grid with the `adapter_kind` and `base_model` dropdowns, with the in-modal search box, or by wiring a Set Loader or Character Loader so you see only the adapters attached to that character or set. If both a set and a character are wired, the grid follows the character — the server accepts one or the other, never both.
 
+Once you have picked one, the node wears it: the button reads the adapter's name, and the picture from the grid is drawn on the node itself, so a graph holding four loaders is readable at a glance instead of being four identical buttons. A saved workflow stores only the digest, so the name and the picture are looked up from the shelf when the node loads — an unreachable server or a missing token leaves the start of the digest on the button and no picture, and nothing else breaks. The checkpoint, VAE and text-encoder loaders do the same.
+
+[![Adapter (LoRA) Loader wearing the picked adapter's name and thumbnail](screenshots/PixlStashFaceLikenessGateModels.jpg)](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
+
 `adapter_kind` and `base_model` filter the Browse grid only. They do not affect what is loaded, so changing one does not disturb a selection you already made.
 
 `clip` is optional so model-only adapters work without a CLIP wire. ComfyUI can't vary a node's outputs per graph, so the CLIP *output* still exists in that case and carries nothing — leave it unconnected when you leave the input unconnected.
@@ -174,6 +178,14 @@ Or run it end to end: generate with a character LoRA, gate by face likeness, the
 
 → [PixlStash-FaceLikenessGate-Upscale.json](examples/PixlStash-FaceLikenessGate-Upscale.json)
 
+Or the same pipeline with the models off the shelf: a Checkpoint Loader feeds the Adapter (LoRA) Loader, a CLIP Loader supplies the text encoder, and a Character Loader is wired into the adapter so the Browse grid shows only that character's LoRAs — which is also why the loader node draws their face.
+
+[![The same gate-and-upscale pipeline with checkpoint, adapter and text encoder picked off the model shelf](screenshots/PixlStashFaceLikenessGateModels.jpg)](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
+
+→ [PixlStash-FaceLikenessGateUpscaleModels.json](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
+
+The upscale half sits in an `Image Upscale(Z-image-Turbo)` subgraph, so it needs a ComfyUI new enough to have subgraphs. Z-Image Turbo is a bare diffusion model, so only the Checkpoint Loader's `model` output is wired; the VAE comes from ComfyUI's own Load VAE here.
+
 ### Picture Likeness Gate
 
 Generate and keep only the pictures that match a reference picture set, and preview the accepted and rejected streams side by side. No vault writes required.
@@ -193,6 +205,18 @@ Upscale a vault image and save the result back with metadata intact.
 [![Upscaling a vault image in ComfyUI](screenshots/ScreenshotUpscale.jpg)](examples/PixlStash-Upscale.json)
 
 → [PixlStash-Upscale.json](examples/PixlStash-Upscale.json)
+
+### Generate from the model shelf
+
+Every model in this graph comes off the PixlStash shelf: the checkpoint, the VAE and the text encoder are each picked from a Browse grid rather than a dropdown, and the render goes straight back into a project.
+
+[![Flux.2 Klein 9B generating from shelf-loaded models in ComfyUI](screenshots/PixlStash-Flux2-Models.jpg)](examples/PixlStash-Flux2-Models.json)
+
+→ [PixlStash-Flux2-Models.json](examples/PixlStash-Flux2-Models.json)
+
+The sampler half lives in a `Text to Image (Flux.2 Klein 9B)` subgraph, so the graph reads as what it is about: three shelf loaders in, one image out, saved to a project. It needs a ComfyUI new enough to have subgraphs — this one was saved on frontend 1.47.11 (ComfyUI 0.30).
+
+A good illustration of why the three loaders are separate nodes. Flux.2 Klein 9B is a **bare diffusion model** — the shelf files it as a checkpoint on its parameter count, and ComfyUI cannot build a CLIP or a VAE out of it — so only the Checkpoint Loader's `model` output is wired, and `clip` and `vae` come from their own shelf loaders beside it. The CLIP Loader is set to `flux2` with one encoder; its second slot stays empty.
 
 ## Installation
 
