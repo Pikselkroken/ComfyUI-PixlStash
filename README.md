@@ -194,6 +194,18 @@ Upscale a vault image and save the result back with metadata intact.
 
 → [PixlStash-Upscale.json](examples/PixlStash-Upscale.json)
 
+### Generate from the model shelf
+
+Every model in this graph comes off the PixlStash shelf: the checkpoint, the VAE and the text encoder are each picked from a Browse grid rather than a dropdown, and the render goes straight back into a project.
+
+[![Flux.2 Klein 9B generating from shelf-loaded models in ComfyUI](screenshots/PixlStash-Flux2-Models.jpg)](examples/PixlStash-Flux2-Models.json)
+
+→ [PixlStash-Flux2-Models.json](examples/PixlStash-Flux2-Models.json)
+
+The sampler half lives in a `Text to Image (Flux.2 Klein 9B)` subgraph, so the graph reads as what it is about: three shelf loaders in, one image out, saved to a project. It needs a ComfyUI new enough to have subgraphs — this one was saved on frontend 1.47.11 (ComfyUI 0.30).
+
+A good illustration of why the three loaders are separate nodes. Flux.2 Klein 9B is a **bare diffusion model** — the shelf files it as a checkpoint on its parameter count, and ComfyUI cannot build a CLIP or a VAE out of it — so only the Checkpoint Loader's `model` output is wired, and `clip` and `vae` come from their own shelf loaders beside it. The CLIP Loader is set to `flux2` with one encoder; its second slot stays empty.
+
 ## Installation
 
 ### Via ComfyUI Manager (recommended)
