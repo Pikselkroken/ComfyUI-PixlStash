@@ -187,9 +187,11 @@ export function nameOf(record) {
     return record?.display_name || record?.filename || null;
 }
 
-// value → shelf record, for the button labels and the node's thumbnail. A
-// shelf record does not change while a graph is open, and several nodes
-// commonly hold the same file.
+// value → shelf record, for the button labels and the node's thumbnail. Held
+// for the life of the page, which is right for the two things read off it here
+// — a name and a face, neither of which changes while a graph is open — and
+// would not be for `locations`: the grid re-fetches those rather than reading
+// them from here, because a drive can come back mid-session.
 const _recordCache = new Map();
 
 /**
