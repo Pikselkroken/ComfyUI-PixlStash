@@ -108,6 +108,8 @@ Click **Browse adapters…** to open a thumbnail grid of the adapters on your sh
 
 Once you have picked one, the node wears it: the button reads the adapter's name, and the picture from the grid is drawn on the node itself, so a graph holding four loaders is readable at a glance instead of being four identical buttons. A saved workflow stores only the digest, so the name and the picture are looked up from the shelf when the node loads — an unreachable server or a missing token leaves the start of the digest on the button and no picture, and nothing else breaks. The checkpoint, VAE and text-encoder loaders do the same.
 
+[![Adapter (LoRA) Loader wearing the picked adapter's name and thumbnail](screenshots/PixlStashFaceLikenessGateModels.jpg)](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
+
 `adapter_kind` and `base_model` filter the Browse grid only. They do not affect what is loaded, so changing one does not disturb a selection you already made.
 
 `clip` is optional so model-only adapters work without a CLIP wire. ComfyUI can't vary a node's outputs per graph, so the CLIP *output* still exists in that case and carries nothing — leave it unconnected when you leave the input unconnected.
@@ -175,6 +177,14 @@ Or run it end to end: generate with a character LoRA, gate by face likeness, the
 [![Generate with a character LoRA, gate by face likeness, then upscale and save the matches](screenshots/FaceLikenessGateUpscale.jpg)](examples/PixlStash-FaceLikenessGate-Upscale.json)
 
 → [PixlStash-FaceLikenessGate-Upscale.json](examples/PixlStash-FaceLikenessGate-Upscale.json)
+
+Or the same pipeline with the models off the shelf: a Checkpoint Loader feeds the Adapter (LoRA) Loader, a CLIP Loader supplies the text encoder, and a Character Loader is wired into the adapter so the Browse grid shows only that character's LoRAs — which is also why the loader node draws their face.
+
+[![The same gate-and-upscale pipeline with checkpoint, adapter and text encoder picked off the model shelf](screenshots/PixlStashFaceLikenessGateModels.jpg)](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
+
+→ [PixlStash-FaceLikenessGateUpscaleModels.json](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
+
+The upscale half sits in an `Image Upscale(Z-image-Turbo)` subgraph, so it needs a ComfyUI new enough to have subgraphs. Z-Image Turbo is a bare diffusion model, so only the Checkpoint Loader's `model` output is wired; the VAE comes from ComfyUI's own Load VAE here.
 
 ### Picture Likeness Gate
 
