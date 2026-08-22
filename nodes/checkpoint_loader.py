@@ -1,5 +1,11 @@
 """PixlStash Checkpoint Loader node.
 
+Shaped after ComfyUI's built-in ``CheckpointLoaderSimple`` — same three
+outputs, in the same order, so it drops into a graph where one already sits —
+and written against the same public API (``comfy.sd``, ``folder_paths``) that
+every custom-node pack calls.  No ComfyUI source is copied here; see the
+licence note in README.md.
+
 The one shelf loader that cannot fetch its file.  ``GET /adapters/{sha256}``
 and the ``/file`` route beside it **refuse checkpoints by design** ("that hash
 is a checkpoint; see GET /checkpoints"), and no route serves checkpoint bytes —
@@ -60,7 +66,7 @@ class PixlStashCheckpointLoader:
         "outputs empty, so wire those from their own loaders."
     )
     OUTPUT_TOOLTIPS = (
-        "The model used for denoising latents.",
+        "The diffusion model, for a KSampler.",
         "The CLIP for encoding prompts. Empty for a checkpoint that carries "
         "no text encoder — wire a PixlStash CLIP Loader instead.",
         "The VAE for encoding and decoding images. Empty for a checkpoint that "

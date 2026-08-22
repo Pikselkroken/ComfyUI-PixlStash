@@ -1,6 +1,10 @@
 """PixlStash VAE Loader node.
 
-ComfyUI's ``VAELoader`` with its dropdown replaced by the shelf's Browse grid.
+Shaped after ComfyUI's built-in ``VAELoader``, with its dropdown replaced by
+the shelf's Browse grid, and written against the same public API
+(``comfy.utils.load_torch_file``, ``comfy.sd.VAE``) that every custom-node pack
+calls.  No ComfyUI source is copied here; see the licence note in README.md.
+
 The file is resolved (or fetched and cached under ``<vae>/pixlstash/``) by
 ``shelf_file``, exactly as the Adapter Loader's is — a VAE is hash-addressed on
 the shelf like every other non-checkpoint, so the same routes serve it.

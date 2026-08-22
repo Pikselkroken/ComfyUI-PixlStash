@@ -252,3 +252,18 @@ ruff format .
 ## License
 
 Open Source MIT License. See [LICENSE](LICENSE).
+
+### Third-party code
+
+**No ComfyUI source is copied into this repository.** ComfyUI is GPL-3.0, this package is MIT, and the two stay apart because everything here is written against ComfyUI's *public* APIs — the same ones every custom-node pack calls:
+
+| What this package uses | Where |
+|---|---|
+| `comfy.utils.load_torch_file`, `comfy.sd.VAE`, `comfy.sd.load_clip`, `comfy.sd.CLIPType`, `comfy.sd.load_lora_for_models`, `comfy.sd.load_checkpoint_guess_config`, `comfy.sd.load_diffusion_model` | the model-shelf loaders |
+| `folder_paths` (models directories, user directory) | loaders, credential lookup |
+| `server.PromptServer.instance.routes` | the `/pixlstash/*` proxy |
+| `app.registerExtension`, the LiteGraph node API | `web/js/*` |
+
+The loader nodes deliberately **mirror the shape** of ComfyUI's built-ins — `LoraLoader`, `CheckpointLoaderSimple`, `VAELoader`, `CLIPLoader`/`DualCLIPLoader` — in their inputs, outputs and widget names, so they drop into a graph where a built-in already sits. That is an interface, not an implementation: none of their code is reproduced here. The same goes for the `IMAGE`/`MASK` tensor conventions (`[N,H,W,3]` float32 in `[0,1]`), which are ComfyUI's documented data format that any node must produce to interoperate, and for identifiers such as `CLIPType` member names, which have to match to call the API at all.
+
+Runtime dependencies are installed from PyPI, never vendored here: [requests](https://pypi.org/project/requests/) (Apache-2.0) and [Pillow](https://pypi.org/project/Pillow/) (MIT-CMU). ComfyUI itself supplies `torch` and `numpy`.

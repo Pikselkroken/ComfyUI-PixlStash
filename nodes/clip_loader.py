@@ -1,5 +1,9 @@
 """PixlStash CLIP (text encoder) Loader node.
 
+Shaped after ComfyUI's built-in ``CLIPLoader`` / ``DualCLIPLoader`` and written
+against the same public API (``comfy.sd.load_clip``, ``comfy.sd.CLIPType``).
+No ComfyUI source is copied here; see the licence note in README.md.
+
 ComfyUI splits this in two — ``CLIPLoader`` for one encoder, ``DualCLIPLoader``
 for the two that Flux, SD3 and HiDream need — because each takes its filenames
 off a combo widget and a node cannot grow a widget.  Here both files come off
@@ -24,7 +28,9 @@ LABEL = "PixlStash CLIP Loader"
 
 # Used only when ``comfy`` cannot be imported (outside ComfyUI, i.e. the tests).
 # Not a maintained mirror of the enum — the point is that INPUT_TYPES returns
-# *something* combo-shaped rather than raising during a node scan.
+# *something* combo-shaped rather than raising during a node scan. The six are
+# ``CLIPType`` member names, which are the interop identifiers this has to
+# match to call the API at all.
 _FALLBACK_TYPES = ["stable_diffusion", "sdxl", "sd3", "flux", "wan", "qwen_image"]
 
 

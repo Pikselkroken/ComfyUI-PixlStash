@@ -3,7 +3,8 @@
 Applies one adapter (LoRA / LoKr / …) from the PixlStash model shelf to a
 MODEL, resolving or fetching the file first.
 
-Shaped like ComfyUI's built-in ``LoraLoader`` on purpose. An earlier version
+Shaped like ComfyUI's built-in ``LoraLoader`` on purpose (no ComfyUI source is
+copied — see the licence note in README.md). An earlier version
 emitted the file *path* and left the applying to another node; that could not
 be wired to anything, because every LoRA loader in the ecosystem takes a name
 off a combo widget and a combo input will not accept a STRING link. A loader
