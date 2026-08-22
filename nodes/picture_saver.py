@@ -29,6 +29,12 @@ _POLL_INTERVAL = 0.5  # seconds between import-status polls
 # PixlStash returns a "detail" field; we look for these in it.
 _FACE_WORKER_HINTS = ("face extraction", "face worker", "worker not running")
 
+# The import route answers 404 with "Project <n> not found" — a row, not a
+# route. A workflow outlives the vault it was drawn against: the project can be
+# deleted, or the token can be pointed at a different library, and either way
+# the id sitting in the Project Loader still looks perfectly valid.
+_MISSING_PROJECT = "project"
+
 
 class PixlStashPictureSaver:
     """Uploads images to PixlStash and assigns them to optional contexts.
@@ -245,6 +251,14 @@ class PixlStashPictureSaver:
                     raise RuntimeError(
                         "PixlStash: face extraction worker is not running. "
                         "Start it in PixlStash before importing."
+                    ) from exc
+                if "not found" in msg and _MISSING_PROJECT in msg:
+                    raise RuntimeError(
+                        f"PixlStash Picture Saver: project {project_id} is not "
+                        "in the library this token opens — it may have been "
+                        "deleted, or the token may point at another library. "
+                        "Pick the project again on the Project Loader wired "
+                        "into this node."
                     ) from exc
                 raise
 

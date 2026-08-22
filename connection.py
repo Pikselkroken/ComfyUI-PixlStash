@@ -169,6 +169,33 @@ class PixlStashClient:
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
 
+    @staticmethod
+    def _detail(response: requests.Response) -> str:
+        """What the server said went wrong, in one line.
+
+        FastAPI answers with ``{"detail": …}``; a validation error makes that
+        detail a *list* of dicts rather than a string, and a proxy or a crash
+        makes the body something else entirely. All three are flattened here,
+        because the alternative — the caller peeking at ``.json()`` itself —
+        is what left this class discarding the one useful sentence in a 404.
+        """
+        try:
+            payload = response.json()
+        except Exception:
+            return (response.text or "")[:500].strip()
+        detail = (
+            payload.get("detail", payload) if isinstance(payload, dict) else payload
+        )
+        if isinstance(detail, str):
+            return detail.strip()[:500]
+        # A validation error: [{"loc": [...], "msg": "field required", ...}, …]
+        if isinstance(detail, list):
+            msgs = [
+                str(d.get("msg", d)) if isinstance(d, dict) else str(d) for d in detail
+            ]
+            return "; ".join(m for m in msgs if m)[:500]
+        return str(detail)[:500] if detail else ""
+
     def _check(
         self,
         response: requests.Response,
@@ -178,12 +205,7 @@ class PixlStashClient:
     ) -> None:
         """Raise a descriptive RuntimeError for any unsuccessful response."""
         if response.status_code == 400:
-            detail = ""
-            try:
-                detail = response.json().get("detail", response.text[:500])
-            except Exception:
-                detail = response.text[:500]
-            raise RuntimeError(f"PixlStash: bad request — {detail}")
+            raise RuntimeError(f"PixlStash: bad request — {self._detail(response)}")
 
         if response.status_code == 401:
             raise RuntimeError("PixlStash: invalid or expired API token.")
@@ -200,7 +222,16 @@ class PixlStashClient:
             )
 
         if response.status_code == 404:
-            raise RuntimeError(f"PixlStash: not found — {url}")
+            # The detail, when there is one, is the whole message: a 404 on a
+            # route that exists says *what* was not found ("Project 7 not
+            # found"), and reporting only the URL sends the reader looking for
+            # a missing endpoint instead of a missing row.
+            detail = self._detail(response)
+            raise RuntimeError(
+                f"PixlStash: not found — {detail} ({url})"
+                if detail
+                else f"PixlStash: not found — {url}"
+            )
 
         if not response.ok:
             excerpt = response.text[:500] if response.text else "(empty body)"
