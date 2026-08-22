@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 
 from aiohttp import web
 
@@ -36,6 +37,24 @@ from .connection import (
 )
 
 log = logging.getLogger(__name__)
+
+# A model / icon is addressed by its full-file SHA-256, lowercase hex.  Anything
+# else is refused before it can be interpolated into an upstream path — the same
+# guard ``_positive_id`` is for the routes addressed by row id.
+_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+
+
+# A row id as it is actually written: no sign, no padding, no separators, and
+# ASCII.  ``isdigit()`` was the guard here and it is true of all of ``"0"``,
+# ``"007"`` and ``"٧"`` — so a route documenting "positive integer" forwarded
+# ids no row can have, and ``int()`` then *renumbered* two of those three into
+# a row that does exist.  Refusing beats guessing which row the caller meant.
+_ID_RE = re.compile(r"[1-9][0-9]*\Z")
+
+
+def _positive_id(raw: str) -> int | None:
+    """``raw`` as a positive row id, or ``None`` if it is not written as one."""
+    return int(raw) if _ID_RE.match(raw) else None
 
 
 # ---------------------------------------------------------------------------
@@ -159,15 +178,135 @@ async def proxy_thumbnail(request: web.Request) -> web.Response:
     except web.HTTPBadRequest as exc:
         return _err(exc.reason, status=400)
 
-    raw_id = request.rel_url.query.get("picture_id", "")
-    if not raw_id.isdigit():
+    picture_id = _positive_id(request.rel_url.query.get("picture_id", ""))
+    if picture_id is None:
         return _err("picture_id query param must be a positive integer.", status=400)
 
-    path = f"/api/v1/pictures/thumbnails/{int(raw_id)}.webp"
+    path = f"/api/v1/pictures/thumbnails/{picture_id}.webp"
     try:
         resp = await asyncio.to_thread(client.get, path)
     except RuntimeError as exc:
         log.warning("[PixlStash proxy] %s: %s", path, exc)
+        return _err(str(exc))
+
+    return web.Response(
+        body=resp.content,
+        content_type=resp.headers.get("Content-Type", "image/webp"),
+    )
+
+
+async def proxy_adapters(request: web.Request) -> web.Response:
+    """Proxy the model shelf's adapter list.
+
+    Filters ride through ``_proxy_get``'s query forwarding rather than being
+    enumerated here, so this route needs no changes when the caller starts
+    sending a different set.  The picker currently sends ``file_kind``,
+    ``kind``, ``base_model`` and one of ``character_id`` / ``set_id``; it
+    searches client-side over the one response rather than sending ``q``.
+    """
+    return await _proxy_get(request, "/api/v1/adapters")
+
+
+async def proxy_adapter(request: web.Request) -> web.Response:
+    """Proxy one shelf record by hash.
+
+    What the node's Browse button needs to draw a *name* on a workflow that
+    was saved with only a hash in it. Fetching the whole filtered shelf to find
+    one row would work and would be absurd — this is one small request per
+    node.
+
+    Validated before a client is built, like the icon route: the digest is
+    interpolated into the upstream path, so a non-digest is a malformed
+    request rather than a lookup that happens to miss.
+    """
+    sha256 = request.rel_url.query.get("sha256", "")
+    if not _SHA256_RE.match(sha256):
+        return _err(
+            "sha256 query param must be a 64-character lowercase hex digest.",
+            status=400,
+        )
+    return await _proxy_get(request, f"/api/v1/adapters/{sha256}")
+
+
+async def proxy_checkpoints(request: web.Request) -> web.Response:
+    """Proxy the model shelf's checkpoint list.
+
+    A separate route because checkpoints are a separate one upstream: they are
+    listed by ``id`` (``sha256`` is null until the background hasher gets to
+    the file) and are refused by the hash-addressed adapter routes.
+    """
+    return await _proxy_get(request, "/api/v1/checkpoints")
+
+
+async def proxy_model_icon(request: web.Request) -> web.Response:
+    """Proxy a model-shelf icon (binary) from PixlStash.
+
+    Same reason as ``proxy_thumbnail``: the browser can't reach a self-signed
+    or private PixlStash directly.
+    """
+    icon_sha256 = request.rel_url.query.get("icon_sha256", "")
+    # Validated before a client is even built: the value is interpolated into
+    # the upstream path, so a non-digest is a malformed request, not a lookup.
+    if not _SHA256_RE.match(icon_sha256):
+        return _err(
+            "icon_sha256 query param must be a 64-character lowercase hex digest.",
+            status=400,
+        )
+
+    try:
+        client = _build_client(request)
+    except web.HTTPBadRequest as exc:
+        return _err(exc.reason, status=400)
+
+    path = f"/api/v1/model-icons/{icon_sha256}"
+    try:
+        resp = await asyncio.to_thread(client.get, path)
+    except RuntimeError as exc:
+        log.warning("[PixlStash proxy] %s: %s", path, exc)
+        return _err(str(exc))
+
+    return web.Response(
+        body=resp.content,
+        content_type=resp.headers.get("Content-Type", "image/webp"),
+    )
+
+
+async def proxy_entity_thumbnail(request: web.Request) -> web.Response:
+    """Proxy the thumbnail of the character / set a model is attached to.
+
+    Most adapters carry no icon of their own — on a real shelf almost none do —
+    so the picker borrows the face of whoever the model is attached to, which is
+    what PixlStash's own shelf draws (``ModelMark``'s fallback chain).  A LoRA of
+    a person is far better identified by that person's face than by two letters.
+
+    Two entity types, because ``attachments[].entity_type`` has two values.  The
+    type picks the upstream path from a fixed table rather than being
+    interpolated into one, so an unknown value is a 400 here and never a request.
+    """
+    upstream = {
+        "character": "/api/v1/characters/{}/thumbnail",
+        "set": "/api/v1/picture_sets/{}/thumbnail",
+    }.get(request.rel_url.query.get("entity_type", ""))
+    if upstream is None:
+        return _err("entity_type query param must be 'character' or 'set'.", status=400)
+
+    entity_id = _positive_id(request.rel_url.query.get("entity_id", ""))
+    if entity_id is None:
+        return _err("entity_id query param must be a positive integer.", status=400)
+
+    try:
+        client = _build_client(request)
+    except web.HTTPBadRequest as exc:
+        return _err(exc.reason, status=400)
+
+    path = upstream.format(entity_id)
+    try:
+        resp = await asyncio.to_thread(client.get, path)
+    except RuntimeError as exc:
+        # An entity with no picture 404s, which is ordinary rather than broken —
+        # the caller falls back to the generated mark. Logged at debug so a
+        # cast of faceless characters doesn't fill the console on every grid.
+        log.debug("[PixlStash proxy] %s: %s", path, exc)
         return _err(str(exc))
 
     return web.Response(
@@ -192,9 +331,7 @@ async def proxy_version(request: web.Request) -> web.Response:
         except Exception:
             version = text
         # Sanity-check: must look like a version number, not HTML or an error page.
-        import re as _re
-
-        if not _re.match(r"^\d+\.\d+", str(version or "")):
+        if not re.match(r"^\d+\.\d+", str(version or "")):
             return _err(
                 f"Server did not return a valid version string (got: {str(version)[:80]})",
                 status=502,
@@ -227,6 +364,11 @@ def register_routes() -> None:
         r.get("/pixlstash/sort_mechanisms")(proxy_sort_mechanisms)
         r.get("/pixlstash/pictures")(proxy_pictures)
         r.get("/pixlstash/thumbnail")(proxy_thumbnail)
+        r.get("/pixlstash/adapters")(proxy_adapters)
+        r.get("/pixlstash/adapter")(proxy_adapter)
+        r.get("/pixlstash/checkpoints")(proxy_checkpoints)
+        r.get("/pixlstash/model_icon")(proxy_model_icon)
+        r.get("/pixlstash/entity_thumbnail")(proxy_entity_thumbnail)
         r.get("/pixlstash/version")(proxy_version)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:

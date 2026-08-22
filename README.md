@@ -98,6 +98,48 @@ You can filter by project, character and set by providing those inputs.
 
 **Note:** Requires PixlStash v1.4 (for now only available as development releases)
 
+### Adapter (LoRA) Loader
+
+Applies a LoRA (or LoKr, LoHa, OFT, DoRA) from the PixlStash **model shelf** to your model — picked by browsing a grid, not by hunting for a filename in a dropdown of hundreds.
+
+It has the same shape as ComfyUI's built-in LoRA loader: `model` and `clip` in, `model` and `clip` out, `strength_model` and `strength_clip`, and you chain them for several adapters. The only difference is where the file comes from — the `lora_name` dropdown is replaced by **Browse adapters…**, and the file is resolved off the shelf (or fetched from it) instead of read out of a local folder. A third output, `trigger_words`, carries whatever the shelf recorded for the adapter; wire it into a text encode.
+
+Click **Browse adapters…** to open a thumbnail grid of the adapters on your shelf, showing each one's picture, name and base model. The picture is the adapter's own icon if it has one; almost none do, so for an adapter attached to a character or a set it falls back to that character's or set's thumbnail — a LoRA of a person is easier to spot by their face than by two letters. An adapter that is attached to nothing and carries no icon draws a generated mark instead. A LoRA that was trained in several epochs shows up as one card, not one per file: the grid draws the stack's cover — the file the shelf itself would load — and says how many files the run holds. Narrow the grid with the `adapter_kind` and `base_model` dropdowns, with the in-modal search box, or by wiring a Set Loader or Character Loader so you see only the adapters attached to that character or set. If both a set and a character are wired, the grid follows the character — the server accepts one or the other, never both.
+
+`adapter_kind` and `base_model` filter the Browse grid only. They do not affect what is loaded, so changing one does not disturb a selection you already made.
+
+`clip` is optional so model-only adapters work without a CLIP wire. ComfyUI can't vary a node's outputs per graph, so the CLIP *output* still exists in that case and carries nothing — leave it unconnected when you leave the input unconnected.
+
+**Where the file comes from.** The shelf records the paths of the machine *PixlStash* runs on. A copy is used in place only if all of this holds on the machine ComfyUI is running on: the shelf last saw that copy as `present`, the path stays inside the folder it was registered under, it ends in `.safetensors`, it is on disk here, and its size is exactly the size the shelf recorded. Anything else — including a shelf record that carries no size at all — is treated as unverifiable and fetched instead. That is deliberately strict: the alternative is loading whatever unrelated file happens to sit at the same path on a ComfyUI host that isn't the PixlStash host, which is silently wrong output rather than an error.
+
+Fetched adapters go into `<your first loras directory>/pixlstash/<sha256>.safetensors`, are verified against the SHA-256 before anything is written under that name, and are re-used from there afterwards. They also show up in ComfyUI's stock LoRA dropdown as 64-character hex names, and nothing evicts them.
+
+**Note:** Requires PixlStash v1.10 — the release that introduces both the model shelf and the route that serves adapter bytes. On an older server the node still works when ComfyUI and PixlStash share a filesystem (the file is used in place), and reports that the file could not be fetched otherwise. Fetching is `local_owner_only` on the server: an owner token from loopback, your LAN or Tailscale, which covers a normal split-host setup but not a ComfyUI reaching a PixlStash across the open internet. The Browse grid marks entries PixlStash itself has no copy of, but it cannot tell whether *your* ComfyUI can see a copy the server can — so on a split-host setup an unmarked entry can still fail at queue time.
+
+**Token scope:** the shelf routes are `OWNER_ONLY` and pinned to a library, which is stricter than the routes the other nodes use. A resource-scoped share token that works fine with the Picture Loader will get a 403 here — use an owner token. The node says so in as many words when you queue it; the Browse modal shows the server's generic "no access" message.
+
+### Checkpoint Loader
+
+Loads a checkpoint from the model shelf, browsing a grid with the names, base models and icons the shelf records instead of a dropdown of filenames. Same three outputs as the built-in Load Checkpoint — `MODEL`, `CLIP`, `VAE`.
+
+**This one cannot fetch the file.** PixlStash serves adapter bytes but not checkpoint bytes, so the copy has to be readable on the machine ComfyUI runs on — the ordinary case when the two share a filesystem, and never the case when they do not. It is also addressed by the shelf's `id` rather than by hash, because a 24 GB checkpoint is listable long before the server has finished hashing it.
+
+A bare diffusion model — a Flux UNET, say — is filed as a checkpoint by PixlStash's parameter-count rule, so it turns up in the grid too. It loads here as a `MODEL` with the `CLIP` and `VAE` outputs empty; wire those from their own loaders.
+
+### VAE Loader
+
+Loads a VAE from the model shelf. Drop-in for the built-in Load VAE, with **Browse VAEs…** in place of the dropdown. Resolved off the shelf, or fetched once and cached under `<your first vae directory>/pixlstash/<sha256>.safetensors`, verified against the digest before anything is written.
+
+TAESD and the other `vae_approx` previews are not here — PixlStash deliberately excludes them from the `vae` kind, so they never appear on the shelf. Use ComfyUI's own Load VAE for those.
+
+### CLIP Loader
+
+Loads a text encoder from the model shelf — one file for SD and SDXL, or two for the models that need a pair (Flux, SD3 and HiDream take clip-l beside a T5 or a Llama). ComfyUI splits that into `CLIPLoader` and `DualCLIPLoader` because each takes its filenames off a dropdown; here both come off the Browse grid, so the second slot is simply optional.
+
+`type` is the model family the encoder is being loaded for. The list is read from ComfyUI's own `CLIPType` at load time rather than copied out of it, so it never lags a release. A workflow saved against a newer ComfyUI still opens: an unknown value falls back to `stable_diffusion` instead of failing validation.
+
+Files are cached under `<your first text_encoders directory>/pixlstash/` on the same terms as the others.
+
 ## Workflow examples
 
 Ready-to-load workflow JSON files live in the [`examples/`](examples/) directory. Click any screenshot to open its workflow.
@@ -195,8 +237,10 @@ python -m unittest discover -s tests
 
 The tests stub ComfyUI's runtime modules, so only `requests` needs to be
 installed (`pip install -r requirements.txt`). They cover the security-sensitive
-paths: the multi-user guard, the proxy SSRF/auth checks, loader id extraction,
-and Picture Saver path containment.
+paths: the multi-user guard, the proxy SSRF/auth checks (including the shelf
+routes' digest guard and query forwarding), loader id extraction, Picture Saver
+path containment, and the Adapter (LoRA) Loader's path containment and download
+digest verification.
 
 Lint and format with [ruff](https://docs.astral.sh/ruff/):
 
@@ -208,3 +252,18 @@ ruff format .
 ## License
 
 Open Source MIT License. See [LICENSE](LICENSE).
+
+### Third-party code
+
+**No ComfyUI source is copied into this repository.** ComfyUI is GPL-3.0, this package is MIT, and the two stay apart because everything here is written against ComfyUI's *public* APIs — the same ones every custom-node pack calls:
+
+| What this package uses | Where |
+|---|---|
+| `comfy.utils.load_torch_file`, `comfy.sd.VAE`, `comfy.sd.load_clip`, `comfy.sd.CLIPType`, `comfy.sd.load_lora_for_models`, `comfy.sd.load_checkpoint_guess_config`, `comfy.sd.load_diffusion_model` | the model-shelf loaders |
+| `folder_paths` (models directories, user directory) | loaders, credential lookup |
+| `server.PromptServer.instance.routes` | the `/pixlstash/*` proxy |
+| `app.registerExtension`, the LiteGraph node API | `web/js/*` |
+
+The loader nodes deliberately **mirror the shape** of ComfyUI's built-ins — `LoraLoader`, `CheckpointLoaderSimple`, `VAELoader`, `CLIPLoader`/`DualCLIPLoader` — in their inputs, outputs and widget names, so they drop into a graph where a built-in already sits. That is an interface, not an implementation: none of their code is reproduced here. The same goes for the `IMAGE`/`MASK` tensor conventions (`[N,H,W,3]` float32 in `[0,1]`), which are ComfyUI's documented data format that any node must produce to interoperate, and for identifiers such as `CLIPType` member names, which have to match to call the API at all.
+
+Runtime dependencies are installed from PyPI, never vendored here: [requests](https://pypi.org/project/requests/) (Apache-2.0) and [Pillow](https://pypi.org/project/Pillow/) (MIT-CMU). ComfyUI itself supplies `torch` and `numpy`.

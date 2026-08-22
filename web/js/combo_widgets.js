@@ -17,6 +17,8 @@
 
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
+import { openAdapterPicker, shelfNameFor } from "./adapter_picker.js";
+import { fitLabel } from "./modal_dom.js";
 
 // ---------------------------------------------------------------------------
 // Setting IDs
@@ -42,6 +44,11 @@ const NODE_MIN_VERSION = {
     "PixlStashLikenessSearch":  "1.4.0",
     "PixlStashFaceLikenessGate": "1.6.0",
     "PixlStashPictureLikenessGate": "1.4.0",
+    // The model shelf (GET /adapters, GET /model-icons) first ships in 1.10.0.
+    "PixlStashAdapterLoader":    "1.10.0",
+    "PixlStashCheckpointLoader": "1.10.0",
+    "PixlStashVAELoader":        "1.10.0",
+    "PixlStashCLIPLoader":       "1.10.0",
 };
 
 // Cache: serverUrl → { state: "checking"|"resolved"|"error", version: string|null }
@@ -274,6 +281,26 @@ const LOADING_LABEL = "(loading…)";
 
 const fmt = (id, name) => `${name ?? id} #${id}`;
 
+/**
+ * A real adapter algorithm (`lora`, `lokr`, …) or "" for no filter.
+ *
+ * Matched by shape rather than against a copy of the Python "— Any —"
+ * sentinel: a duplicated unicode literal in two languages is a drift bug
+ * waiting to happen, and if it ever drifted the sentinel would be forwarded
+ * upstream as a filter value and the grid would come back empty with nothing
+ * to explain it.
+ */
+function adapterKindFilter(value) {
+    const v = String(value ?? "").trim();
+    return /^[a-z]+$/.test(v) ? v : "";
+}
+
+/** False for the placeholder / sentinel / error strings a dynamic combo shows. */
+function isRealComboValue(value) {
+    const v = String(value ?? "").trim();
+    return !!v && v !== NONE_LABEL && v !== LOADING_LABEL && !v.startsWith("⚠");
+}
+
 // ---------------------------------------------------------------------------
 // Fetch functions for each picker type — return arrays of formatted strings
 // ---------------------------------------------------------------------------
@@ -300,6 +327,27 @@ async function fetchCharacterOptions(projectId) {
     return [NONE_LABEL, ...data.map(c => fmt(c.id, c.name))];
 }
 
+/**
+ * Distinct base models across the shelf's adapters.
+ *
+ * These are raw strings, not `"<name> #<id>"` — the server matches
+ * `base_model` exactly, so what is shown is what is sent.
+ *
+ * ponytail: `GET /adapters` is unpaginated and the shelf has no facet
+ * endpoint, so deriving this list costs one whole-shelf fetch (records,
+ * locations and attachments included) the first time a node draws. It is
+ * cached for the session. If the shelf grows past a few thousand rows, that
+ * wants a `GET /adapters/facets` on the server rather than a fix here.
+ */
+async function fetchBaseModelOptions() {
+    const data = await proxyFetch("/pixlstash/adapters", getSettingsCredentials(), {
+        file_kind: "adapter",
+    });
+    const names = [...new Set((data?.adapters ?? []).map(a => a.base_model).filter(Boolean))];
+    names.sort((a, b) => a.localeCompare(b));
+    return [NONE_LABEL, ...names];
+}
+
 // ---------------------------------------------------------------------------
 // Cache + dynamic options binding
 // ---------------------------------------------------------------------------
@@ -321,9 +369,10 @@ function _kickOffFetch(kind, projectId, node, widget) {
     _optsCache.set(key, entry);
 
     const fetcher =
-        kind === "projects"   ? fetchProjectOptions()
-      : kind === "sets"       ? fetchSetOptions(projectId)
-      : /* characters */        fetchCharacterOptions(projectId);
+        kind === "projects"    ? fetchProjectOptions()
+      : kind === "sets"        ? fetchSetOptions(projectId)
+      : kind === "base_models" ? fetchBaseModelOptions()
+      : /* characters */         fetchCharacterOptions(projectId);
 
     fetcher
         .then(items => {
@@ -343,6 +392,20 @@ function _invalidateKind(kind) {
     for (const k of [..._optsCache.keys()]) {
         if (k.startsWith(`${kind}|`)) _optsCache.delete(k);
     }
+}
+
+/**
+ * Drop every cached dropdown, and the cached server version with it.
+ *
+ * Called when the connection settings change. Without this, a failed fetch is
+ * cached for the life of the page: drop a node before configuring a token and
+ * every dropdown stays stuck on "⚠ Configure URL and API Token…" even after
+ * you configure one, which reads as the node being broken.
+ */
+function _invalidateAll() {
+    _optsCache.clear();
+    _versionCache.clear();
+    app.graph?.setDirtyCanvas?.(true, true);
 }
 
 /**
@@ -412,6 +475,96 @@ function resetDownstreamFilters(node) {
 // Extension
 // ---------------------------------------------------------------------------
 
+/**
+ * Hide a hash/id widget and drive it from the shelf Browse modal.
+ *
+ * The widget's value is the whole of a shelf loader's serialised state, so the
+ * button's label is the whole of its visible state: the picked file's name
+ * after a pick, and the raw value's first characters after a workflow reload
+ * (nothing has been fetched at that point, and blocking the canvas on a lookup
+ * to render a label is not worth it).
+ *
+ * @param {Object}   node        the LiteGraph node
+ * @param {Object}   valueWidget the hidden widget the modal writes
+ * @param {Object}   opts        { fileKind, browse, picked, filters? }
+ */
+function addShelfBrowseButton(node, valueWidget, opts) {
+    const { fileKind, browse, picked, filters = () => ({}) } = opts;
+
+    valueWidget.hidden = true;
+    valueWidget.computeSize = () => [0, -4];
+
+    let browseBtn;
+    // The label the button *means*, kept whole: what it draws is this cut to
+    // the node's current width, and a node can be widened again.
+    let fullLabel = browse;
+    const render = () => {
+        if (!browseBtn) return;
+        // The widget's own width, less the padding the arrows and the button's
+        // rounded ends need. LiteGraph's margin is per side.
+        const margin = globalThis.LiteGraph?.NODE_WIDGET_MARGIN ?? 15;
+        const shown = fitLabel(fullLabel, (node.size?.[0] ?? 200) - 2 * margin - 20);
+        // `name` for the canvas widget, `label` for the newer frontend —
+        // whichever this ComfyUI renders.
+        browseBtn.name  = shown;
+        browseBtn.label = shown;
+        node.setDirtyCanvas?.(true, true);
+    };
+    const setLabel = (text) => {
+        fullLabel = text ? `${picked}: ${text}` : browse;
+        render();
+    };
+
+    // Re-cut on resize: the label is right for one width only, and dragging a
+    // node narrower is exactly when this matters.
+    const prevResize = node.onResize;
+    node.onResize = function (size) {
+        prevResize?.call(this, size);
+        render();
+    };
+    // A hash is what the workflow stores and it is not a name anyone knows, so
+    // it is drawn only until the lookup below comes back — and left in place if
+    // it never does (no credentials, server down, file forgotten off the shelf).
+    const labelFromValue = () => {
+        const v = String(valueWidget.value ?? "").trim();
+        setLabel(v ? (v.length > 12 ? `${v.slice(0, 10)}…` : `#${v}`) : "");
+        if (!v) return;
+        const creds = getSettingsCredentials();
+        if (!creds.url || !creds.token) return;
+        shelfNameFor(v, creds, fileKind).then(name => {
+            // The user may have picked something else while this was in
+            // flight; labelling with the old file's name would be a lie.
+            if (name && String(valueWidget.value ?? "").trim() === v) setLabel(name);
+        });
+    };
+
+    const prevConfigure = node.onConfigure;
+    node.onConfigure = function (data) {
+        prevConfigure?.call(this, data);
+        labelFromValue();
+    };
+
+    browseBtn = node.addWidget(
+        "button",
+        browse,
+        null,
+        () => {
+            const creds = getSettingsCredentials();
+            if (!creds.url || !creds.token) {
+                alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
+                return;
+            }
+            openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record) => {
+                setLabel(record.display_name || record.filename
+                         || String(record.sha256 ?? record.id ?? "").slice(0, 10));
+            }).catch(err => alert(`PixlStash picker error: ${err.message}`));
+        },
+        { serialize: false },
+    );
+
+    labelFromValue();
+}
+
 app.registerExtension({
     name: "ComfyUI.PixlStash",
 
@@ -419,12 +572,15 @@ app.registerExtension({
     // 1. Register ComfyUI settings
     // ------------------------------------------------------------------
     async setup() {
+        // Every one of these invalidates the cached dropdowns and version:
+        // they all change which server answers, or whether it answers at all.
         app.ui.settings.addSetting({
             id:           S_URL,
             name:         "PixlStash: Server URL",
             type:         "text",
             defaultValue: "http://localhost:8000",
             tooltip:      "Base URL of your PixlStash instance.",
+            onChange:     _invalidateAll,
         });
         app.ui.settings.addSetting({
             id:           S_TOKEN,
@@ -432,6 +588,7 @@ app.registerExtension({
             type:         "text",
             defaultValue: "",
             tooltip:      "Bearer token — stored here, never in workflow JSON.",
+            onChange:     _invalidateAll,
         });
         app.ui.settings.addSetting({
             id:           S_SSL,
@@ -439,6 +596,7 @@ app.registerExtension({
             type:         "boolean",
             defaultValue: true,
             tooltip:      "Disable to accept self-signed certificates.",
+            onChange:     _invalidateAll,
         });
         // Credentials (URL / token / Verify SSL) live only in these ComfyUI
         // settings.  ComfyUI persists them server-side, so the PixlStash nodes
@@ -562,6 +720,74 @@ app.registerExtension({
                     },
                     { serialize: false },
                 );
+            };
+        }
+
+        // ============================================================
+        // PixlStash Adapter Loader — dynamic base-model list + Browse grid
+        // ============================================================
+        if (nodeData.name === "PixlStashAdapterLoader") {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+
+                const shaWidget   = this.widgets?.find(w => w.name === "adapter_sha256");
+                const kindWidget  = this.widgets?.find(w => w.name === "adapter_kind");
+                const baseWidget  = this.widgets?.find(w => w.name === "base_model");
+                if (!shaWidget || !kindWidget || !baseWidget) return;
+
+                bindDynamicValues(this, baseWidget, "base_models", () => null);
+
+                // adapter_kind / base_model are deliberately NOT chained to
+                // clear adapter_sha256. They only narrow the Browse grid — the
+                // node ignores them — so a selection that no longer matches
+                // them still resolves correctly, and wiping it because someone
+                // flipped a dropdown to see what was there would destroy real
+                // state with no undo.
+                addShelfBrowseButton(this, shaWidget, {
+                    fileKind: "adapter",
+                    browse:   "Browse adapters…",
+                    picked:   "Adapter",
+                    filters:  () => ({
+                        kind:        adapterKindFilter(kindWidget.value),
+                        baseModel:   isRealComboValue(baseWidget.value) ? baseWidget.value : "",
+                        // Character wins over set: GET /adapters 400s if given
+                        // both. Mirrored in nodes/adapter_loader.py.
+                        characterId: getWiredValue(this, "pixlstash_character"),
+                        setId:       getWiredValue(this, "pixlstash_set"),
+                    }),
+                });
+            };
+        }
+
+        // ============================================================
+        // The other shelf loaders — a Browse grid and nothing else
+        // ============================================================
+        // No kind or base-model widget on these: /checkpoints takes neither,
+        // and for a VAE or a text encoder the modal's search box is the whole
+        // of the narrowing anyone needs. The CLIP loader gets two buttons
+        // because it takes two files — one for SD/SDXL, two for Flux and SD3.
+        const SHELF_BROWSERS = {
+            "PixlStashVAELoader": [
+                { widget: "vae_sha256", fileKind: "vae", browse: "Browse VAEs…", picked: "VAE" },
+            ],
+            "PixlStashCLIPLoader": [
+                { widget: "clip_sha256",   fileKind: "text_encoder", browse: "Browse text encoders…",      picked: "Encoder" },
+                { widget: "clip_sha256_2", fileKind: "text_encoder", browse: "Second encoder (optional)…", picked: "Encoder 2" },
+            ],
+            "PixlStashCheckpointLoader": [
+                { widget: "checkpoint_id", fileKind: "checkpoint", browse: "Browse checkpoints…", picked: "Checkpoint" },
+            ],
+        };
+        const browsers = SHELF_BROWSERS[nodeData.name];
+        if (browsers) {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+                for (const spec of browsers) {
+                    const w = this.widgets?.find(x => x.name === spec.widget);
+                    if (w) addShelfBrowseButton(this, w, spec);
+                }
             };
         }
 
