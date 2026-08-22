@@ -18,6 +18,7 @@
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
 import { openAdapterPicker, shelfNameFor } from "./adapter_picker.js";
+import { fitLabel } from "./modal_dom.js";
 
 // ---------------------------------------------------------------------------
 // Setting IDs
@@ -494,14 +495,32 @@ function addShelfBrowseButton(node, valueWidget, opts) {
     valueWidget.computeSize = () => [0, -4];
 
     let browseBtn;
-    const setLabel = (text) => {
+    // The label the button *means*, kept whole: what it draws is this cut to
+    // the node's current width, and a node can be widened again.
+    let fullLabel = browse;
+    const render = () => {
         if (!browseBtn) return;
-        const label = text ? `${picked}: ${text}` : browse;
+        // The widget's own width, less the padding the arrows and the button's
+        // rounded ends need. LiteGraph's margin is per side.
+        const margin = globalThis.LiteGraph?.NODE_WIDGET_MARGIN ?? 15;
+        const shown = fitLabel(fullLabel, (node.size?.[0] ?? 200) - 2 * margin - 20);
         // `name` for the canvas widget, `label` for the newer frontend —
         // whichever this ComfyUI renders.
-        browseBtn.name  = label;
-        browseBtn.label = label;
+        browseBtn.name  = shown;
+        browseBtn.label = shown;
         node.setDirtyCanvas?.(true, true);
+    };
+    const setLabel = (text) => {
+        fullLabel = text ? `${picked}: ${text}` : browse;
+        render();
+    };
+
+    // Re-cut on resize: the label is right for one width only, and dragging a
+    // node narrower is exactly when this matters.
+    const prevResize = node.onResize;
+    node.onResize = function (size) {
+        prevResize?.call(this, size);
+        render();
     };
     // A hash is what the workflow stores and it is not a name anyone knows, so
     // it is drawn only until the lookup below comes back — and left in place if

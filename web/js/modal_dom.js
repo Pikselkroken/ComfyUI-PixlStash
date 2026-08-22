@@ -9,6 +9,10 @@
  *
  * `el` assigns properties rather than parsing markup, so server-supplied
  * strings passed as `textContent` are never interpreted as HTML.
+ *
+ * `fitLabel` is the odd one out — it measures canvas text for the node widgets
+ * rather than building DOM — and lives here because it is the other thing in
+ * this package that needs a document and nothing else.
  */
 
 export function el(tag, props = {}) {
@@ -40,3 +44,26 @@ export function mkRow(...children) {
 export function selStyle() {
     return "background:#2d2d2d; color:#ddd; border:1px solid #555; border-radius:4px; padding:4px 8px; font-size:.85em;";
 }
+
+/**
+ * The longest prefix of `text` that fits `widthPx`, ellipsised if it had to cut.
+ *
+ * LiteGraph draws a button widget's text centred and does not clip it, so a
+ * long file name on a narrow node spills over both edges of the button and
+ * over its neighbours. Measured rather than estimated at so-many-pixels-per-
+ * character: these are file names, and one full of `W`s would still overflow
+ * while one full of `l`s would be cut with room to spare.
+ */
+const _measureCtx = document.createElement("canvas").getContext("2d");
+
+export function fitLabel(text, widthPx) {
+    if (widthPx <= 0) return text;
+    _measureCtx.font = `${globalThis.LiteGraph?.NODE_TEXT_SIZE ?? 14}px Arial`;
+    if (_measureCtx.measureText(text).width <= widthPx) return text;
+    let cut = text;
+    while (cut.length && _measureCtx.measureText(`${cut}…`).width > widthPx) {
+        cut = cut.slice(0, -1);
+    }
+    return `${cut.trimEnd()}…`;
+}
+
