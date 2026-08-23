@@ -1,7 +1,7 @@
 [project]
 name = "pixlstash"
-description = "ComfyUI nodes for PixlStash (https://pixlstash.dev)"
-version = "1.5.0"
+description = "Give ComfyUI a database instead of a mess of folders. Query your library by prompt, tag or face likeness to load images, gate a batch into accepted and rejected against a reference, save generations back with their metadata, and load checkpoints, LoRAs, VAE and CLIP from the same library. Requires a PixlStash server (https://pixlstash.dev)."
+version = "1.5.1"
 license = { file = "LICENSE" }
 # classifiers = [
 #     # For OS-independent nodes (works on all operating systems)
