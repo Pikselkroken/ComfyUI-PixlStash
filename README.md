@@ -86,10 +86,12 @@ filenames. Each loader has the same inputs and outputs as its ComfyUI built-in,
 so it drops straight into an existing graph. The Adapter Loader adds a
 `trigger_words` output.
 
-Once picked, the node shows the model's name and a small icon of its face, so
-a graph with four loaders stays readable without ballooning in size.
+Once picked, the node shows the model's name and its face: a resizable
+thumbnail on the Adapter (LoRA) Loader, where seeing the face is the point,
+and a small favicon on the others — so a graph with four loaders stays
+readable without any of them ballooning in size.
 
-[![Adapter (LoRA) Loader wearing the picked adapter's name and icon](screenshots/PixlStashFaceLikenessGateModels.jpg)](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
+[![Adapter (LoRA) Loader wearing the picked adapter's name and thumbnail](screenshots/PixlStashFaceLikenessGateModels.jpg)](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
 
 Wire a Set or Character Loader into the Adapter Loader to see only that
 character's or set's adapters.

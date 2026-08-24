@@ -475,51 +475,58 @@ function resetDownstreamFilters(node) {
 // Extension
 // ---------------------------------------------------------------------------
 
-// Drawn beside a shelf loader's Browse button instead of the picked file's
-// face going through `node.imgs`. The frontend's own image-preview widget
-// forces a 190px floor on the node the first time it is shown (a fresh DOM
-// host imposes it once, and dropping the widget to reclaim the space when a
-// value is cleared resets that floor on the next pick) — too tall for what
-// is a small square face, and the reason the node's minimum size used to
-// balloon the moment anything was picked. A fixed-size icon drawn on the
-// canvas costs no widget row and no minimum size at all.
-const SHELF_ICON_SIZE = 16;
-const SHELF_ICON_PAD  = 4;
+// ---------------------------------------------------------------------------
+// The picked file's face, next to its Browse button
+// ---------------------------------------------------------------------------
+//
+// A real DOM widget (`node.addDOMWidget`), not `node.imgs`. ComfyUI's own
+// per-node image preview is a canvas-only widget whose `computeLayoutSize()`
+// hard-codes a 220px floor on the node — baked into ComfyUI core, not
+// something a caller can shrink — which is what made a shelf loader balloon
+// the moment a face was picked. A DOM widget's floor is ours to set instead.
+//
+// `small` picks which of the two the issue asked for: a fixed little favicon
+// for the loaders that only need to say "this is the file", or a real but
+// modest thumbnail for the Adapter (LoRA) Loader — floored low enough that
+// the node can be dragged down small, unlike the 220px it used to be stuck
+// at, but still free to grow when there's room.
+const SHELF_ICON_SIZE = 20;  // small favicon: fixed, both edges
+const THUMB_MIN_SIDE  = 48;  // Adapter Loader: floor a user can shrink to
+const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
 
-/** Where a shelf-icon's face image lives per node: button widget → {url, img}. */
-function shelfIconMap(node) {
-    return (node._pixlstashShelfIcons ??= new Map());
-}
+/** One `<img>`-backed DOM widget for a shelf loader's picked-file face. */
+function addShelfFaceWidget(node, name, { small }) {
+    const box = document.createElement("div");
+    box.style.cssText = "display:flex; align-items:center; justify-content:center; width:100%; height:100%;";
+    const img = document.createElement("img");
+    img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
+    box.appendChild(img);
 
-/**
- * Paint every loaded shelf icon beside its Browse button.
- *
- * `widget.last_y` is the position LiteGraph's own widget-draw pass wrote on
- * the *previous* frame, not this one — that pass runs after
- * `onDrawForeground`, not before it. Fine here: a button's row rarely moves
- * frame to frame, and every path that could move one (resize, a fresh face
- * loading in) already calls `setDirtyCanvas` to force the next frame, which
- * is what catches the icon up. Only the very first paint has no `last_y` yet,
- * which is what the guard below skips rather than drawing at `undefined`.
- */
-function drawShelfIcons(node, ctx) {
-    const icons = node._pixlstashShelfIcons;
-    if (!icons || !icons.size) return;
-    const margin = globalThis.LiteGraph?.NODE_WIDGET_MARGIN ?? 15;
-    const rowH   = globalThis.LiteGraph?.NODE_WIDGET_HEIGHT ?? 20;
-    for (const [widget, icon] of icons) {
-        if (widget.last_y === undefined || !icon.img.complete || !icon.img.naturalWidth) continue;
-        const x = node.size[0] - margin - SHELF_ICON_PAD - SHELF_ICON_SIZE;
-        const y = widget.last_y + (rowH - SHELF_ICON_SIZE) / 2;
-        ctx.drawImage(icon.img, x, y, SHELF_ICON_SIZE, SHELF_ICON_SIZE);
-    }
+    const widget = node.addDOMWidget(name, "custom", box, { serialize: false, hideOnZoom: false });
+    widget.computeLayoutSize = () => small
+        ? { minHeight: SHELF_ICON_SIZE, maxHeight: SHELF_ICON_SIZE, minWidth: SHELF_ICON_SIZE }
+        : { minHeight: THUMB_MIN_SIDE,  maxHeight: THUMB_MAX_SIDE,  minWidth: THUMB_MIN_SIDE };
+
+    let currentUrl = null;
+    widget.onRemove = () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
+
+    return {
+        /** `null` clears the square — a picture of the file a node used to hold is worse than none. */
+        setUrl(url) {
+            if (currentUrl) URL.revokeObjectURL(currentUrl);
+            currentUrl = url;
+            img.src = url ?? "";
+            img.style.display = url ? "" : "none";
+            node.setDirtyCanvas?.(true, true);
+        },
+    };
 }
 
 /**
  * Hide a hash/id widget and drive it from the shelf Browse modal.
  *
  * The widget's value is the whole of a shelf loader's serialised state, so the
- * button's label and the little icon beside it are the whole of its visible
+ * button's label and the face widget beside it are the whole of its visible
  * state: the picked file's name and face after a pick, and the raw value's
  * first characters after a workflow reload until the lookup that turns a hash
  * back into a record comes back (the canvas is not blocked on it).
@@ -541,12 +548,9 @@ function addShelfBrowseButton(node, valueWidget, opts) {
     const render = () => {
         if (!browseBtn) return;
         // The widget's own width, less the padding the arrows and the button's
-        // rounded ends need, and the icon slot reserved on the right — kept
-        // clear whether or not this button's icon has loaded yet, so the
-        // label never jumps when it does. LiteGraph's margin is per side.
+        // rounded ends need. LiteGraph's margin is per side.
         const margin = globalThis.LiteGraph?.NODE_WIDGET_MARGIN ?? 15;
-        const iconSlot = SHELF_ICON_SIZE + SHELF_ICON_PAD;
-        const shown = fitLabel(fullLabel, (node.size?.[0] ?? 200) - 2 * margin - 20 - iconSlot);
+        const shown = fitLabel(fullLabel, (node.size?.[0] ?? 200) - 2 * margin - 20);
         // `name` for the canvas widget, `label` for the newer frontend —
         // whichever this ComfyUI renders.
         browseBtn.name  = shown;
@@ -566,62 +570,32 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         render();
     };
 
-    // Paints every button's icon in one pass, so it is installed once per
-    // node rather than once per button — a CLIP loader's second `addShelfBrowseButton`
-    // call would otherwise stack a redundant layer on top of the first.
-    if (!node._pixlstashShelfIconHook) {
-        node._pixlstashShelfIconHook = true;
-        const prevFG = node.onDrawForeground;
-        node.onDrawForeground = function (ctx) {
-            prevFG?.call(this, ctx);
-            drawShelfIcons(this, ctx);
-        };
-    }
-    const icons = shelfIconMap(node);
-
-    // The blob belongs to the node, so it goes when it does. Without this,
-    // loading another workflow over this one leaks one per shelf loader.
-    const prevRemoved = node.onRemoved;
-    node.onRemoved = function () {
-        prevRemoved?.call(this);
-        const icon = icons.get(browseBtn);
-        if (icon) URL.revokeObjectURL(icon.url);
-        icons.delete(browseBtn);
-    };
+    // Declared now, built once the button exists below — so the face widget
+    // lands right after it in the node's widget list rather than above it.
+    let faceWidget;
 
     /**
-     * Draw the picked file's face beside this button as a small icon.
+     * Fetch and show the picked file's face.
      *
      * Kept per widget rather than merged into one strip: the CLIP loader
      * carries two of these buttons, and a face picked for one of them must
-     * not be revoked or overwritten by the other.
-     *
-     * `null` clears this widget's icon — the face belongs to the value, and a
-     * picture of the file a node used to hold is worse than none.
+     * not be overwritten by the other.
      */
     const showFace = (record) => {
-        const previous = icons.get(browseBtn);
-        if (previous) URL.revokeObjectURL(previous.url);
-        icons.delete(browseBtn);
-        node.setDirtyCanvas?.(true, true);
+        faceWidget.setUrl(null);
 
         const creds = getSettingsCredentials();
         if (!record || !creds.url || !creds.token) return;
         const v = String(valueWidget.value ?? "").trim();
         fetchFaceUrl(record, creds).then(url => {
             if (!url) return;
-            // Something else was picked while this was in flight, or the modal
-            // painted a newer face already: this one is nobody's now, and only
-            // what is in the map is ever revoked.
-            if (String(valueWidget.value ?? "").trim() !== v || icons.has(browseBtn)) {
+            // Something else was picked while this was in flight: this face
+            // belongs to a value that is no longer selected.
+            if (String(valueWidget.value ?? "").trim() !== v) {
                 URL.revokeObjectURL(url);
                 return;
             }
-            const img = new Image();
-            img.onload = () => node.setDirtyCanvas?.(true, true);
-            img.src = url;
-            icons.set(browseBtn, { url, img });
-            node.setDirtyCanvas?.(true, true);
+            faceWidget.setUrl(url);
         }).catch(() => {});
     };
 
@@ -674,6 +648,12 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         },
         { serialize: false },
     );
+
+    // Only the Adapter (LoRA) Loader gets the bigger, resizable thumbnail —
+    // it is the one loader where seeing the face is the point of picking.
+    // The others (VAE, CLIP, Checkpoint) get the small favicon: enough to
+    // say "this is the file", nothing that grows the node.
+    faceWidget = addShelfFaceWidget(node, `${valueWidget.name}_face`, { small: fileKind !== "adapter" });
 
     labelFromValue();
 }
