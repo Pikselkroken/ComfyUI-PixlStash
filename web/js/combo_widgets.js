@@ -476,46 +476,39 @@ function resetDownstreamFilters(node) {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// The picked file's face, next to its Browse button
+// The picked file's face
 // ---------------------------------------------------------------------------
 //
-// A real DOM widget (`node.addDOMWidget`), not `node.imgs`. ComfyUI's own
-// per-node image preview is a canvas-only widget whose `computeLayoutSize()`
-// hard-codes a 220px floor on the node — baked into ComfyUI core, not
-// something a caller can shrink — which is what made a shelf loader balloon
-// the moment a face was picked. A DOM widget's floor is ours to set instead.
+// Two treatments, both via `node.addDOMWidget` rather than `node.imgs`:
+// ComfyUI's own per-node image preview is a canvas-only widget whose
+// `computeLayoutSize()` hard-codes a 220px floor on the node — baked into
+// ComfyUI core, not something a caller can shrink — which is what made a
+// shelf loader balloon the moment a face was picked. A DOM widget's floor is
+// ours to set instead.
 //
-// `small` picks which of the two the issue asked for: a fixed little favicon
-// for the loaders that only need to say "this is the file", or a real but
-// modest thumbnail for the Adapter (LoRA) Loader — floored low enough that
-// the node can be dragged down small, unlike the 220px it used to be stuck
-// at, but still free to grow when there's room.
-const SHELF_ICON_SIZE   = 20;  // small favicon: the image itself, always this size
-const SHELF_ICON_MAXROW = 28;  // small favicon: layout row — a hair taller than the icon
-const THUMB_MIN_SIDE    = 48;  // Adapter Loader: floor a user can shrink to
-const THUMB_MAX_SIDE    = 220; // Adapter Loader: ceiling when there's room
+// The Adapter (LoRA) Loader — the one loader where seeing the face is the
+// point of picking — gets a real, resizable thumbnail in its own row below
+// the button (`addShelfFaceWidget`/`addShelfBrowseButton`). The others (VAE,
+// CLIP, Checkpoint) only need to say "this is the file", so they get a fixed
+// little favicon sharing the button's own row (`addShelfBrowseButtonInline`)
+// — a native LiteGraph button widget always claims a full-width row of its
+// own, so putting an icon beside one instead of below it means building the
+// row ourselves.
+const SHELF_ICON_SIZE = 20;  // inline favicon: fixed, both edges
+const THUMB_MIN_SIDE  = 48;  // Adapter Loader: floor a user can shrink to
+const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
 
-/** One `<img>`-backed DOM widget for a shelf loader's picked-file face. */
-function addShelfFaceWidget(node, name, { small }) {
+/** One `<img>`-backed DOM widget for the Adapter Loader's picked-file thumbnail. */
+function addShelfFaceWidget(node, name) {
     const box = document.createElement("div");
     box.style.cssText = "display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:"
-        + (small ? SHELF_ICON_SIZE : THUMB_MIN_SIDE) + "px;";
+        + THUMB_MIN_SIDE + "px;";
     const img = document.createElement("img");
-    img.style.cssText = small
-        ? `width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; object-fit:cover; border-radius:3px; display:none;`
-        : "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
+    img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
     box.appendChild(img);
 
     const widget = node.addDOMWidget(name, "custom", box, { serialize: false, hideOnZoom: false });
-    // `minHeight === maxHeight` (an exactly-fixed row) is untested territory
-    // in ComfyUI's own flexible-widget layout, which this repo cannot run to
-    // verify — a sliver of slack (`SHELF_ICON_MAXROW`) keeps the favicon row
-    // in the same "genuinely flexible" shape as the Adapter Loader's
-    // thumbnail row, which is confirmed working. The icon itself stays a
-    // fixed `SHELF_ICON_SIZE` regardless via its own pixel width/height above.
-    widget.computeLayoutSize = () => small
-        ? { minHeight: SHELF_ICON_SIZE, maxHeight: SHELF_ICON_MAXROW, minWidth: SHELF_ICON_SIZE }
-        : { minHeight: THUMB_MIN_SIDE,  maxHeight: THUMB_MAX_SIDE,    minWidth: THUMB_MIN_SIDE };
+    widget.computeLayoutSize = () => ({ minHeight: THUMB_MIN_SIDE, maxHeight: THUMB_MAX_SIDE, minWidth: THUMB_MIN_SIDE });
 
     let currentUrl = null;
     widget.onRemove = () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
@@ -533,13 +526,17 @@ function addShelfFaceWidget(node, name, { small }) {
 }
 
 /**
- * Hide a hash/id widget and drive it from the shelf Browse modal.
+ * Hide a hash/id widget and drive it from the shelf Browse modal, via a
+ * native button with a real thumbnail in its own row below.
  *
  * The widget's value is the whole of a shelf loader's serialised state, so the
- * button's label and the face widget beside it are the whole of its visible
+ * button's label and the thumbnail below it are the whole of its visible
  * state: the picked file's name and face after a pick, and the raw value's
  * first characters after a workflow reload until the lookup that turns a hash
  * back into a record comes back (the canvas is not blocked on it).
+ *
+ * Adapter (LoRA) Loader only — see the other two loader-setup functions below
+ * for the small-favicon treatment the rest of the shelf loaders get.
  *
  * @param {Object}   node        the LiteGraph node
  * @param {Object}   valueWidget the hidden widget the modal writes
@@ -580,17 +577,10 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         render();
     };
 
-    // Declared now, built once the button exists below — so the face widget
+    // Declared now, built once the button exists below — so the thumbnail
     // lands right after it in the node's widget list rather than above it.
     let faceWidget;
 
-    /**
-     * Fetch and show the picked file's face.
-     *
-     * Kept per widget rather than merged into one strip: the CLIP loader
-     * carries two of these buttons, and a face picked for one of them must
-     * not be overwritten by the other.
-     */
     const showFace = (record) => {
         faceWidget.setUrl(null);
 
@@ -659,11 +649,124 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         { serialize: false },
     );
 
-    // Only the Adapter (LoRA) Loader gets the bigger, resizable thumbnail —
-    // it is the one loader where seeing the face is the point of picking.
-    // The others (VAE, CLIP, Checkpoint) get the small favicon: enough to
-    // say "this is the file", nothing that grows the node.
-    faceWidget = addShelfFaceWidget(node, `${valueWidget.name}_face`, { small: fileKind !== "adapter" });
+    faceWidget = addShelfFaceWidget(node, `${valueWidget.name}_face`);
+
+    labelFromValue();
+}
+
+/**
+ * Hide a hash/id widget and drive it from the shelf Browse modal, via one
+ * custom row holding a button and a small favicon side by side.
+ *
+ * VAE / CLIP / Checkpoint Loaders: unlike `addShelfBrowseButton` above, the
+ * button here is a plain `<button>` we draw ourselves rather than a native
+ * LiteGraph widget, because that's what it takes to put the favicon in the
+ * same row instead of a row of its own — CSS truncates the label with an
+ * ellipsis and shows the untruncated text as a tooltip, so this needs none of
+ * the `fitLabel`/`onResize` machinery the native-button version does.
+ *
+ * @param {Object}   node        the LiteGraph node
+ * @param {Object}   valueWidget the hidden widget the modal writes
+ * @param {Object}   opts        { fileKind, browse, picked, filters? }
+ */
+function addShelfBrowseButtonInline(node, valueWidget, opts) {
+    const { fileKind, browse, picked, filters = () => ({}) } = opts;
+
+    valueWidget.hidden = true;
+    valueWidget.computeSize = () => [0, -4];
+
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; gap:6px; width:100%; height:100%;";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.style.cssText = `
+        flex:1 1 auto; min-width:0; height:22px; padding:0 8px;
+        border-radius:4px; border:1px solid #4a4a4a; background:#353535; color:#eee;
+        font: 11px inherit; cursor:pointer; overflow:hidden;
+        text-overflow:ellipsis; white-space:nowrap;
+    `;
+    btn.addEventListener("mouseenter", () => { btn.style.background = "#404040"; });
+    btn.addEventListener("mouseleave", () => { btn.style.background = "#353535"; });
+
+    const img = document.createElement("img");
+    img.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
+        + "object-fit:cover; border-radius:3px; display:none;";
+
+    row.append(btn, img);
+    node.addDOMWidget(`${valueWidget.name}_browse`, "custom", row, { serialize: false, hideOnZoom: false });
+
+    const setLabel = (text) => {
+        const fullLabel = text ? `${picked}: ${text}` : browse;
+        btn.textContent = fullLabel;
+        btn.title = fullLabel;
+    };
+
+    let currentUrl = null;
+    const showFace = (record) => {
+        if (currentUrl) URL.revokeObjectURL(currentUrl);
+        currentUrl = null;
+        img.src = "";
+        img.style.display = "none";
+
+        const creds = getSettingsCredentials();
+        if (!record || !creds.url || !creds.token) return;
+        const v = String(valueWidget.value ?? "").trim();
+        fetchFaceUrl(record, creds).then(url => {
+            if (!url) return;
+            if (String(valueWidget.value ?? "").trim() !== v) {
+                URL.revokeObjectURL(url);
+                return;
+            }
+            currentUrl = url;
+            img.src = url;
+            img.style.display = "";
+            node.setDirtyCanvas?.(true, true);
+        }).catch(() => {});
+    };
+
+    const labelFromValue = () => {
+        const v = String(valueWidget.value ?? "").trim();
+        setLabel(v ? (v.length > 12 ? `${v.slice(0, 10)}…` : `#${v}`) : "");
+        if (!v) {
+            showFace(null);
+            return;
+        }
+        const creds = getSettingsCredentials();
+        if (!creds.url || !creds.token) return;
+        shelfRecordFor(v, creds, fileKind).then(record => {
+            if (String(valueWidget.value ?? "").trim() !== v) return;
+            const name = nameOf(record);
+            if (name) setLabel(name);
+            showFace(record);
+        });
+    };
+
+    const prevConfigure = node.onConfigure;
+    node.onConfigure = function (data) {
+        prevConfigure?.call(this, data);
+        labelFromValue();
+    };
+
+    btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const creds = getSettingsCredentials();
+        if (!creds.url || !creds.token) {
+            alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
+            return;
+        }
+        openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record) => {
+            setLabel(nameOf(record) || String(record.sha256 ?? record.id ?? "").slice(0, 10));
+            showFace(record);
+        }).catch(err => alert(`PixlStash picker error: ${err.message}`));
+    });
+
+    const prevRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        prevRemoved?.call(this);
+        if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
 
     labelFromValue();
 }
@@ -889,7 +992,7 @@ app.registerExtension({
                 orig?.call(this);
                 for (const spec of browsers) {
                     const w = this.widgets?.find(x => x.name === spec.widget);
-                    if (w) addShelfBrowseButton(this, w, spec);
+                    if (w) addShelfBrowseButtonInline(this, w, spec);
                 }
             };
         }
