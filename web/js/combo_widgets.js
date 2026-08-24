@@ -490,22 +490,32 @@ function resetDownstreamFilters(node) {
 // modest thumbnail for the Adapter (LoRA) Loader — floored low enough that
 // the node can be dragged down small, unlike the 220px it used to be stuck
 // at, but still free to grow when there's room.
-const SHELF_ICON_SIZE = 20;  // small favicon: fixed, both edges
-const THUMB_MIN_SIDE  = 48;  // Adapter Loader: floor a user can shrink to
-const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
+const SHELF_ICON_SIZE   = 20;  // small favicon: the image itself, always this size
+const SHELF_ICON_MAXROW = 28;  // small favicon: layout row — a hair taller than the icon
+const THUMB_MIN_SIDE    = 48;  // Adapter Loader: floor a user can shrink to
+const THUMB_MAX_SIDE    = 220; // Adapter Loader: ceiling when there's room
 
 /** One `<img>`-backed DOM widget for a shelf loader's picked-file face. */
 function addShelfFaceWidget(node, name, { small }) {
     const box = document.createElement("div");
-    box.style.cssText = "display:flex; align-items:center; justify-content:center; width:100%; height:100%;";
+    box.style.cssText = "display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:"
+        + (small ? SHELF_ICON_SIZE : THUMB_MIN_SIDE) + "px;";
     const img = document.createElement("img");
-    img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
+    img.style.cssText = small
+        ? `width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; object-fit:cover; border-radius:3px; display:none;`
+        : "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
     box.appendChild(img);
 
     const widget = node.addDOMWidget(name, "custom", box, { serialize: false, hideOnZoom: false });
+    // `minHeight === maxHeight` (an exactly-fixed row) is untested territory
+    // in ComfyUI's own flexible-widget layout, which this repo cannot run to
+    // verify — a sliver of slack (`SHELF_ICON_MAXROW`) keeps the favicon row
+    // in the same "genuinely flexible" shape as the Adapter Loader's
+    // thumbnail row, which is confirmed working. The icon itself stays a
+    // fixed `SHELF_ICON_SIZE` regardless via its own pixel width/height above.
     widget.computeLayoutSize = () => small
-        ? { minHeight: SHELF_ICON_SIZE, maxHeight: SHELF_ICON_SIZE, minWidth: SHELF_ICON_SIZE }
-        : { minHeight: THUMB_MIN_SIDE,  maxHeight: THUMB_MAX_SIDE,  minWidth: THUMB_MIN_SIDE };
+        ? { minHeight: SHELF_ICON_SIZE, maxHeight: SHELF_ICON_MAXROW, minWidth: SHELF_ICON_SIZE }
+        : { minHeight: THUMB_MIN_SIDE,  maxHeight: THUMB_MAX_SIDE,    minWidth: THUMB_MIN_SIDE };
 
     let currentUrl = null;
     widget.onRemove = () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
