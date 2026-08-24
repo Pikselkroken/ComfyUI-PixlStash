@@ -475,21 +475,43 @@ function resetDownstreamFilters(node) {
 // Extension
 // ---------------------------------------------------------------------------
 
+// Drawn beside a shelf loader's Browse button instead of the picked file's
+// face going through `node.imgs`. The frontend's own image-preview widget
+// forces a 190px floor on the node the first time it is shown (a fresh DOM
+// host imposes it once, and dropping the widget to reclaim the space when a
+// value is cleared resets that floor on the next pick) — too tall for what
+// is a small square face, and the reason the node's minimum size used to
+// balloon the moment anything was picked. A fixed-size icon drawn on the
+// canvas costs no widget row and no minimum size at all.
+const SHELF_ICON_SIZE = 16;
+const SHELF_ICON_PAD  = 4;
+
+/** Where a shelf-icon's face image lives per node: button widget → {url, img}. */
+function shelfIconMap(node) {
+    return (node._pixlstashShelfIcons ??= new Map());
+}
+
 /**
- * Take the frontend's image-preview widget back off a node.
+ * Paint every loaded shelf icon beside its Browse button.
  *
- * `node.imgs` is only half a switch. The first time the frontend draws a node
- * that has images it inserts a `$$canvas-image-preview` widget to hold them,
- * and it drops that widget again only on the animated-preview path — so
- * clearing `imgs` alone leaves the strip's empty space on the node for good.
- * Matched by name because the widget is the frontend's, not ours; a frontend
- * that never inserted one simply has nothing to find here.
+ * `widget.last_y` is the position LiteGraph's own widget-draw pass wrote on
+ * the *previous* frame, not this one — that pass runs after
+ * `onDrawForeground`, not before it. Fine here: a button's row rarely moves
+ * frame to frame, and every path that could move one (resize, a fresh face
+ * loading in) already calls `setDirtyCanvas` to force the next frame, which
+ * is what catches the icon up. Only the very first paint has no `last_y` yet,
+ * which is what the guard below skips rather than drawing at `undefined`.
  */
-function dropImagePreviewWidget(node) {
-    const i = node.widgets?.findIndex(w => w.name === "$$canvas-image-preview") ?? -1;
-    if (i > -1) {
-        node.widgets[i].onRemove?.();
-        node.widgets.splice(i, 1);
+function drawShelfIcons(node, ctx) {
+    const icons = node._pixlstashShelfIcons;
+    if (!icons || !icons.size) return;
+    const margin = globalThis.LiteGraph?.NODE_WIDGET_MARGIN ?? 15;
+    const rowH   = globalThis.LiteGraph?.NODE_WIDGET_HEIGHT ?? 20;
+    for (const [widget, icon] of icons) {
+        if (widget.last_y === undefined || !icon.img.complete || !icon.img.naturalWidth) continue;
+        const x = node.size[0] - margin - SHELF_ICON_PAD - SHELF_ICON_SIZE;
+        const y = widget.last_y + (rowH - SHELF_ICON_SIZE) / 2;
+        ctx.drawImage(icon.img, x, y, SHELF_ICON_SIZE, SHELF_ICON_SIZE);
     }
 }
 
@@ -497,10 +519,10 @@ function dropImagePreviewWidget(node) {
  * Hide a hash/id widget and drive it from the shelf Browse modal.
  *
  * The widget's value is the whole of a shelf loader's serialised state, so the
- * button's label and the node's picture are the whole of its visible state:
- * the picked file's name and face after a pick, and the raw value's first
- * characters after a workflow reload until the lookup that turns a hash back
- * into a record comes back (the canvas is not blocked on it).
+ * button's label and the little icon beside it are the whole of its visible
+ * state: the picked file's name and face after a pick, and the raw value's
+ * first characters after a workflow reload until the lookup that turns a hash
+ * back into a record comes back (the canvas is not blocked on it).
  *
  * @param {Object}   node        the LiteGraph node
  * @param {Object}   valueWidget the hidden widget the modal writes
@@ -519,9 +541,12 @@ function addShelfBrowseButton(node, valueWidget, opts) {
     const render = () => {
         if (!browseBtn) return;
         // The widget's own width, less the padding the arrows and the button's
-        // rounded ends need. LiteGraph's margin is per side.
+        // rounded ends need, and the icon slot reserved on the right — kept
+        // clear whether or not this button's icon has loaded yet, so the
+        // label never jumps when it does. LiteGraph's margin is per side.
         const margin = globalThis.LiteGraph?.NODE_WIDGET_MARGIN ?? 15;
-        const shown = fitLabel(fullLabel, (node.size?.[0] ?? 200) - 2 * margin - 20);
+        const iconSlot = SHELF_ICON_SIZE + SHELF_ICON_PAD;
+        const shown = fitLabel(fullLabel, (node.size?.[0] ?? 200) - 2 * margin - 20 - iconSlot);
         // `name` for the canvas widget, `label` for the newer frontend —
         // whichever this ComfyUI renders.
         browseBtn.name  = shown;
@@ -540,72 +565,64 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         prevResize?.call(this, size);
         render();
     };
-    // Seeded now, in the order the buttons are added, so the faces a node ends
-    // up with are drawn in widget order however the fetches land — re-setting
-    // an existing key does not move it. A widget with no face holds no slot
-    // open: a CLIP loader whose second encoder has a picture and whose first
-    // has none draws that one picture, not a picture beside a blank square.
-    const faces = (node._pixlstashShelfFaces ??= new Map());
-    faces.set(valueWidget.name, null);
 
-    // The blobs belong to the node, so they go when it does. Without this,
+    // Paints every button's icon in one pass, so it is installed once per
+    // node rather than once per button — a CLIP loader's second `addShelfBrowseButton`
+    // call would otherwise stack a redundant layer on top of the first.
+    if (!node._pixlstashShelfIconHook) {
+        node._pixlstashShelfIconHook = true;
+        const prevFG = node.onDrawForeground;
+        node.onDrawForeground = function (ctx) {
+            prevFG?.call(this, ctx);
+            drawShelfIcons(this, ctx);
+        };
+    }
+    const icons = shelfIconMap(node);
+
+    // The blob belongs to the node, so it goes when it does. Without this,
     // loading another workflow over this one leaks one per shelf loader.
     const prevRemoved = node.onRemoved;
     node.onRemoved = function () {
         prevRemoved?.call(this);
-        for (const url of faces.values()) if (url) URL.revokeObjectURL(url);
-        faces.clear();
+        const icon = icons.get(browseBtn);
+        if (icon) URL.revokeObjectURL(icon.url);
+        icons.delete(browseBtn);
     };
 
     /**
-     * Draw the picked file's face on the node, the way the Picture Loader
-     * draws its previews.
+     * Draw the picked file's face beside this button as a small icon.
      *
-     * Kept per widget rather than written straight onto `node.imgs`: the CLIP
-     * loader carries two of these buttons, and a face picked for one of them
-     * must not be revoked or overwritten by the other.
+     * Kept per widget rather than merged into one strip: the CLIP loader
+     * carries two of these buttons, and a face picked for one of them must
+     * not be revoked or overwritten by the other.
      *
-     * `null` clears this widget's square — the face belongs to the value, and
-     * a picture of the file a node used to hold is worse than none.
+     * `null` clears this widget's icon — the face belongs to the value, and a
+     * picture of the file a node used to hold is worse than none.
      */
     const showFace = (record) => {
-        const previous = faces.get(valueWidget.name);
-        if (previous) URL.revokeObjectURL(previous);
-        faces.set(valueWidget.name, null);
-
-        const paint = () => {
-            const urls = [...faces.values()].filter(Boolean);
-            node.imgs = urls.length
-                ? urls.map(url => Object.assign(new Image(), { src: url }))
-                : null;
-            // No `setSizeForImage()`: it is a deprecated no-op on the current
-            // frontend and warns on every call. The preview widget the
-            // frontend inserts is what gives the picture its room, and taking
-            // that widget away is what gives the room back.
-            if (!urls.length) dropImagePreviewWidget(node);
-            node.setDirtyCanvas?.(true, true);
-        };
+        const previous = icons.get(browseBtn);
+        if (previous) URL.revokeObjectURL(previous.url);
+        icons.delete(browseBtn);
+        node.setDirtyCanvas?.(true, true);
 
         const creds = getSettingsCredentials();
-        if (!record || !creds.url || !creds.token) {
-            paint();
-            return;
-        }
+        if (!record || !creds.url || !creds.token) return;
         const v = String(valueWidget.value ?? "").trim();
         fetchFaceUrl(record, creds).then(url => {
             if (!url) return;
             // Something else was picked while this was in flight, or the modal
             // painted a newer face already: this one is nobody's now, and only
             // what is in the map is ever revoked.
-            if (String(valueWidget.value ?? "").trim() !== v
-                || faces.get(valueWidget.name)) {
+            if (String(valueWidget.value ?? "").trim() !== v || icons.has(browseBtn)) {
                 URL.revokeObjectURL(url);
                 return;
             }
-            faces.set(valueWidget.name, url);
-            paint();
+            const img = new Image();
+            img.onload = () => node.setDirtyCanvas?.(true, true);
+            img.src = url;
+            icons.set(browseBtn, { url, img });
+            node.setDirtyCanvas?.(true, true);
         }).catch(() => {});
-        paint();
     };
 
     // A hash is what the workflow stores and it is not a name anyone knows, so
