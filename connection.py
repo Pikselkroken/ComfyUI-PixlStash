@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 import requests
 import urllib3
@@ -13,8 +14,14 @@ from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
 )
 
-VERSION = "1.4.0"
+VERSION = "1.5.1"  # kept equal to pyproject.toml by tests/test_server_version.py
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
+
+# The oldest PixlStash this package runs against at all. A node that needs a
+# newer server passes its own floor to ``make_client``. The check runs once per
+# server URL, against ``GET /version``, before the first real request.
+MIN_SERVER_VERSION = "1.2.0"
+_server_versions: dict[str, str] = {}
 
 # ComfyUI Settings keys (must match the IDs registered in web/js/combo_widgets.js).
 _SETTING_URL = "PixlStash.ServerURL"
@@ -28,13 +35,29 @@ MULTI_USER_MESSAGE = (
 )
 
 
-def make_client(url: str, token: str, verify_ssl: bool = True) -> "PixlStashClient":
+def make_client(
+    url: str,
+    token: str,
+    verify_ssl: bool = True,
+    min_server_version: str = MIN_SERVER_VERSION,
+) -> "PixlStashClient":
     """Build a PixlStashClient from individual credential arguments."""
     return PixlStashClient(
         base_url=url,
         api_token=token,
         verify_ssl=verify_ssl,
+        min_server_version=min_server_version,
     )
+
+
+def _base_version(text) -> tuple[int, int, int] | None:
+    """``major.minor.patch`` of a version string, or None if it has none.
+
+    Pre-release tags are dropped, so ``1.4.0rc1`` counts as ``1.4.0`` — the
+    same rule as ``_versionSatisfies`` in ``web/js/combo_widgets.js``.
+    """
+    m = re.match(r"(\d+)\.(\d+)\.(\d+)", str(text or ""))
+    return (int(m[1]), int(m[2]), int(m[3])) if m else None
 
 
 def _as_bool(value, default: bool = True) -> bool:
@@ -149,9 +172,11 @@ class PixlStashClient:
         base_url: str,
         api_token: str,
         verify_ssl: bool = True,
+        min_server_version: str = MIN_SERVER_VERSION,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.verify_ssl = verify_ssl
+        self.min_server_version = min_server_version
         if not verify_ssl:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self._session = requests.Session()
@@ -251,6 +276,18 @@ class PixlStashClient:
                 f"Response: {excerpt}"
             )
 
+    def _require_server_version(self) -> None:
+        """Refuse, in plain words, a server too old for this package."""
+        found = self.server_version()
+        if _base_version(found) < _base_version(self.min_server_version):
+            # Forget it so an upgrade is noticed on the next run.
+            _server_versions.pop(self.base_url, None)
+            raise RuntimeError(
+                f"PixlStash: ComfyUI-PixlStash {VERSION} needs PixlStash "
+                f"{self.min_server_version} or newer, but {self.base_url} is "
+                f"running {found}. Update PixlStash."
+            )
+
     def _request(
         self,
         method: str,
@@ -259,6 +296,8 @@ class PixlStashClient:
         is_write: bool = False,
         **kwargs,
     ) -> requests.Response:
+        if path != "/version":
+            self._require_server_version()
         url = self._url(path)
         try:
             response = self._session.request(
@@ -283,6 +322,21 @@ class PixlStashClient:
     # ------------------------------------------------------------------
     # Public API surface
     # ------------------------------------------------------------------
+
+    def server_version(self) -> str:
+        """The server's version string from ``GET /version``, cached per URL."""
+        cached = _server_versions.get(self.base_url)
+        if cached is not None:
+            return cached
+        payload = self._request("GET", "/version").json()
+        version = payload if isinstance(payload, str) else payload.get("version")
+        if _base_version(version) is None:
+            raise RuntimeError(
+                f"PixlStash: {self.base_url}/version did not report a version "
+                f"number (got {str(version)[:80]!r})."
+            )
+        _server_versions[self.base_url] = version
+        return version
 
     def get(self, path: str, **kwargs) -> requests.Response:
         return self._request("GET", path, **kwargs)
