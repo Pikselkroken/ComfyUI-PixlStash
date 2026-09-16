@@ -30,8 +30,12 @@ from .nodes.checkpoint_loader import PixlStashCheckpointLoader
 from .nodes.clip_loader import PixlStashCLIPLoader
 from .nodes.vae_loader import PixlStashVAELoader
 from .proxy_routes import register_routes
+from .serve_routes import register_routes as register_serve_routes
 
 register_routes()
+# The inventory / asset-upload routes PixlStash will call. Nothing here calls
+# them — see serve_routes.py.
+register_serve_routes()
 
 NODE_CLASS_MAPPINGS = {
     "PixlStashProjectLoader": PixlStashProjectLoader,

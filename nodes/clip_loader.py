@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 
-from . import shelf_file
+from . import lock, shelf_file
 
 log = logging.getLogger(__name__)
 
@@ -125,16 +125,20 @@ class PixlStashCLIPLoader:
         import folder_paths  # noqa: PLC0415
 
         folder = _encoder_folder()
-        paths = [
-            shelf_file.resolve(sha, label=LABEL, folder_key=folder)[1]
+        shas = [
+            str(sha).strip().lower()
             for sha in (clip_sha256, clip_sha256_2)
             if str(sha or "").strip()
         ]
-        if not paths:
+        if not shas:
             raise RuntimeError(
                 f"{LABEL}: no text encoder selected. Click “Browse text "
                 "encoders…” on the node and pick one."
             )
+        resolved = [
+            shelf_file.resolve(sha, label=LABEL, folder_key=folder) for sha in shas
+        ]
+        paths = [path for _record, path in resolved]
 
         # getattr rather than a lookup table, exactly as the built-in does it:
         # the widget list came from this enum, so a miss means the enum changed
@@ -147,7 +151,15 @@ class PixlStashCLIPLoader:
             embedding_directory=folder_paths.get_folder_paths("embeddings"),
             clip_type=clip_type,
         )
-        return (clip,)
+        # Both files, in widget order — a pair is two locks, not one, and which
+        # encoder sat in which slot is part of what was run.
+        return lock.report(
+            (clip,),
+            models=[
+                lock.shelf_model("clip", sha256=record.get("sha256") or sha)
+                for sha, (record, _path) in zip(shas, resolved)
+            ],
+        )
 
     @classmethod
     def VALIDATE_INPUTS(cls, type):  # noqa: A002

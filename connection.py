@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
+import re
 
 import requests
 import urllib3
@@ -13,7 +15,32 @@ from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
 )
 
-VERSION = "1.4.0"
+
+def _version() -> str:
+    """This package's version, read from the file a release actually bumps.
+
+    It used to be a literal here, and the literal drifted: it still said 1.4.0
+    at 1.5.1, because tagging a release edits ``pyproject.toml`` and nothing
+    else. That was invisible in a User-Agent and is not invisible in
+    ``/pixlstash/inventory``, which exists to tell PixlStash what is installed.
+
+    A regex rather than ``tomllib``, which is 3.11+ and this is not; and the
+    first ``version =`` at the start of a line, which in this file is the
+    project's own and not a dependency's.
+    """
+    try:
+        text = (
+            pathlib.Path(__file__)
+            .with_name("pyproject.toml")
+            .read_text(encoding="utf-8")
+        )
+    except OSError:
+        return "unknown"
+    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    return match.group(1) if match else "unknown"
+
+
+VERSION = _version()
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
 
 # ComfyUI Settings keys (must match the IDs registered in web/js/combo_widgets.js).

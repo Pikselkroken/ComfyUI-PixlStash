@@ -104,6 +104,47 @@ locally.
 
 **Note:** the shelf needs an owner token. Resource-scoped share tokens get a 403.
 
+## What a run reports
+
+A workflow says what to *look for*; a run resolves that to what was actually
+*used*. A Picture Loader with an empty selection picks its batch off a live
+query, a search node picks its off a score, and a shelf hash becomes one
+particular file. None of that is in the saved workflow, and re-running it
+tomorrow can legitimately resolve to something else.
+
+So the picture loaders, the two search nodes and the four shelf loaders attach
+their **resolution lock** to their own output: the picture IDs that loaded, and
+the models they were locked to. ComfyUI carries it in the `executed` websocket
+message and keeps it in `GET /history/{prompt_id}`, so PixlStash can record
+what went into a render without the nodes having to call anything. Nothing else
+changes — the sockets, the wiring and the outputs are the same.
+
+The lock lands under a `pixlstash_lock` key on the node:
+
+```json
+{"pictures": [12, 15],
+ "models": [{"kind": "adapter", "sha256": "…", "id": null}]}
+```
+
+`kind` is `adapter`, `checkpoint`, `vae` or `clip`. Both identifiers are always
+present and either may be null: hash-addressed files have no row id, and a
+checkpoint's `sha256` stays null until the shelf has hashed it.
+
+### Endpoints for PixlStash
+
+Two routes ship **dormant** — nothing in this package or its UI calls them, and
+they are here so a future PixlStash can drive a ComfyUI it does not live on:
+
+| Route | What it does |
+|---|---|
+| `GET /pixlstash/inventory` | This package's version, and the checkpoint / LoRA / VAE / text-encoder filenames ComfyUI can see. |
+| `POST /pixlstash/assets` | Takes one multipart `file` into ComfyUI's input directory under `pixlstash/`, and answers with the `{name, subfolder, type}` a workflow needs to reference it. |
+
+Unlike the `/pixlstash/*` proxy routes, these two authenticate: the request
+must carry the API token from **Settings > PixlStash** as
+`Authorization: Bearer <token>`. ComfyUI's own server usually has no auth in
+front of it, and one of these writes a file.
+
 ## Workflow examples
 
 Ready-to-load JSON lives in [`examples/`](examples/). Click a screenshot to open
@@ -185,7 +226,8 @@ ruff check . && ruff format .
 
 The tests stub ComfyUI's runtime modules, so only `requests` needs installing
 (`pip install -r requirements.txt`). They cover the security-sensitive paths:
-the multi-user guard, the proxy SSRF and auth checks, loader id extraction, and
+the multi-user guard, the proxy SSRF and auth checks, the token check and
+filename containment on the two served endpoints, loader id extraction, and
 path containment and digest verification in the savers and loaders.
 
 ## License

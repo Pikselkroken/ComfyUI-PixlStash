@@ -15,6 +15,11 @@ Browses and loads pictures from a PixlStash vault.  Two operating modes:
 The three filter IDs (``project_id``, ``set_id``, ``character_id``) are
 passed through as outputs so a downstream Saver can receive them without
 requiring extra wires from each individual filter node.
+
+Whichever mode ran, the pictures that actually came back are reported as the
+node's resolution lock — see ``nodes/lock.py``.  In Browse mode they are not
+in the saved workflow at all, and in either mode a picture that has since
+vanished from the vault is skipped rather than failing the run.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ import torch
 from PIL import Image
 
 from ..connection import make_client, read_credentials
+from . import lock
 
 log = logging.getLogger(__name__)
 
@@ -134,10 +140,15 @@ class PixlStashPictureLoader:
             )
 
         pil_pairs: list[tuple[Image.Image, np.ndarray]] = []
+        # The lock is what came back, not what was asked for: a picture that
+        # 404s is skipped below, and reporting it would tell PixlStash the
+        # render used an image it never saw.
+        loaded: list[int] = []
         skipped: list[int] = []
         for pid in ids:
             try:
                 pil_pairs.append(self._fetch_image(client, pid))
+                loaded.append(pid)
             except RuntimeError as exc:
                 log.warning("[PixlStash] Picture %s skipped — %s", pid, exc)
                 skipped.append(pid)
@@ -175,13 +186,16 @@ class PixlStashPictureLoader:
         image_batch = torch.cat(tensors, dim=0)  # [N,H,W,3]
         mask_batch = torch.cat(masks, dim=0)  # [N,H,W]
 
-        return (
-            image_batch,
-            mask_batch,
-            pixlstash_project,
-            pixlstash_set,
-            pixlstash_character,
-            len(pil_pairs),
+        return lock.report(
+            (
+                image_batch,
+                mask_batch,
+                pixlstash_project,
+                pixlstash_set,
+                pixlstash_character,
+                len(pil_pairs),
+            ),
+            pictures=loaded,
         )
 
     # ------------------------------------------------------------------

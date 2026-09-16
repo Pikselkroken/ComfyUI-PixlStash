@@ -198,7 +198,7 @@ class LoadLoraTests(unittest.TestCase):
             clip="CLIP",
             strength_model=0.8,
             strength_clip=0.4,
-        )
+        )["result"]
         self.assertEqual(
             node._applier.calls,
             [("MODEL", "CLIP", "/loras/knight.safetensors", 0.8, 0.4)],
@@ -209,7 +209,7 @@ class LoadLoraTests(unittest.TestCase):
         # clip stays None all the way through rather than being invented, which
         # is what lets a model-only adapter work with no CLIP wire.
         node = self._node()
-        _, clip, _ = node.load_lora("MODEL", "— Any —", "— None —", SHA)
+        _, clip, _ = node.load_lora("MODEL", "— Any —", "— None —", SHA)["result"]
         self.assertIsNone(clip)
         self.assertIsNone(node._applier.calls[0][1])
 
@@ -225,7 +225,7 @@ class LoadLoraTests(unittest.TestCase):
         node = self._node(shelf_row=record(trigger_words="a knight, plate armour"))
         _, _, triggers = node.load_lora(
             "MODEL", "— Any —", "— None —", SHA, strength_model=0.0, strength_clip=0.0
-        )
+        )["result"]
         self.assertEqual(triggers, "a knight, plate armour")
 
     def test_a_resolve_failure_is_not_swallowed(self):
