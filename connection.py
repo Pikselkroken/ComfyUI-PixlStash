@@ -24,9 +24,16 @@ def _version() -> str:
     else. That was invisible in a User-Agent and is not invisible in
     ``/pixlstash/inventory``, which exists to tell PixlStash what is installed.
 
-    A regex rather than ``tomllib``, which is 3.11+ and this is not; and the
-    first ``version =`` at the start of a line, which in this file is the
-    project's own and not a dependency's.
+    A regex rather than ``tomllib``, which is 3.11+ and this is not, and scoped
+    to the ``[project]`` table: the first line-anchored ``version =`` in the
+    whole file is this package's only by the accident of table order, and a
+    ``[tool.something]`` inserted above it would silently start reporting that
+    tool's version instead.
+
+    ``"unknown"`` when the file is not there (an install that dropped it) or
+    says nothing — reported as such rather than guessed at, since the callers
+    are a User-Agent and an inventory route and a wrong number is worse in both
+    than an admission.
     """
     try:
         text = (
@@ -36,7 +43,10 @@ def _version() -> str:
         )
     except OSError:
         return "unknown"
-    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    table = re.search(r"^\[project\]$(.*?)(?=^\[|\Z)", text, re.MULTILINE | re.DOTALL)
+    match = re.search(
+        r'^version\s*=\s*"([^"]+)"', table.group(1) if table else "", re.MULTILINE
+    )
     return match.group(1) if match else "unknown"
 
 

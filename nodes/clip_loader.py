@@ -126,7 +126,7 @@ class PixlStashCLIPLoader:
 
         folder = _encoder_folder()
         shas = [
-            str(sha).strip().lower()
+            str(sha).strip()
             for sha in (clip_sha256, clip_sha256_2)
             if str(sha or "").strip()
         ]

@@ -23,6 +23,7 @@ the user's vault can list their models or drop a file in their input directory.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hmac
 import logging
@@ -68,8 +69,21 @@ _MODEL_KINDS: dict[str, tuple[str, ...]] = {
 # letter, no leading dot, and bounded — the name arrives on the wire and is
 # joined to a directory, so this is the containment check and not a nicety.
 # Deliberately a whitelist: a blacklist of "../" and friends is the version of
-# this that keeps being bypassed.
-_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
+# this that keeps being bypassed. Spaces are in it because "my photo.png" is an
+# ordinary filename and refusing it would be a bug of its own; non-ASCII is
+# not, so a caller holding a "café.png" renames it — this route is
+# machine-to-machine and the caller chooses the name it sends.
+_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,127}\Z")
+
+# Windows opens these as *devices* whatever the extension, so "NUL.png" is not
+# a file that can be created: every write succeeds against the device and the
+# rename afterwards fails with an OSError nobody expected. A trailing dot or
+# space is silently stripped there too, which would make the name reported back
+# not the name on disk — and the caller builds a workflow reference out of it.
+_RESERVED_STEMS = frozenset(
+    ["CON", "PRN", "AUX", "NUL"]
+    + [f"{port}{n}" for port in ("COM", "LPT") for n in range(1, 10)]
+)
 
 # ponytail: a flat ceiling rather than a configurable one. It is here so a
 # stuck or hostile upload cannot fill the disk; make it a setting if anyone
@@ -80,6 +94,25 @@ MAX_ASSET_BYTES = 64 * 1024 * 1024
 def _discard(path: str) -> None:
     with contextlib.suppress(OSError):
         os.remove(path)
+
+
+def _asset_name(raw) -> str | None:
+    """``raw`` if it is a filename this route will create, else ``None``.
+
+    Split out of the handler so the containment rule can be exercised on its
+    own — the alternative is a test that proves a traversal was refused by
+    checking that a directory it was never going to reach is still empty, which
+    passes just as happily when the traversal succeeded somewhere else.
+    """
+    name = str(raw or "")
+    if not _NAME_RE.match(name):
+        return None
+    # match() guarantees at least one character, so [-1] is safe.
+    if name[-1] in ". ":
+        return None
+    if name.split(".")[0].upper() in _RESERVED_STEMS:
+        return None
+    return name
 
 
 def _refusal(request: web.Request) -> web.Response | None:
@@ -138,7 +171,9 @@ def _filenames(kinds: tuple[str, ...]) -> list[str]:
 async def inventory(request: web.Request) -> web.Response:
     """What this ComfyUI could run, as far as PixlStash's shelf is concerned.
 
-    ``{"package_version": "1.4.0", "models": {"checkpoints": [...], ...}}``.
+    ``{"package_version": "<this package's>", "models": {"checkpoints": [...], ...}}``
+    — the version is read from ``pyproject.toml`` at import, so it is whatever
+    this install actually is.
 
     The point is the gap: a shelf row whose file is not in this list has to be
     fetched (or, for a checkpoint, cannot be used here at all), and PixlStash
@@ -148,12 +183,15 @@ async def inventory(request: web.Request) -> web.Response:
     if problem is not None:
         return problem
 
-    return _ok(
-        {
-            "package_version": VERSION,
-            "models": {name: _filenames(kinds) for name, kinds in _MODEL_KINDS.items()},
-        }
-    )
+    # to_thread, for the reason proxy_routes gives for its own: this walks the
+    # models directories whenever ComfyUI's cache is cold or a mtime moved, and
+    # that is not a thing to do on the event loop that carries every other
+    # client's progress updates.
+    models = {
+        name: await asyncio.to_thread(_filenames, kinds)
+        for name, kinds in _MODEL_KINDS.items()
+    }
+    return _ok({"package_version": VERSION, "models": models})
 
 
 async def upload_asset(request: web.Request) -> web.Response:
@@ -184,11 +222,13 @@ async def upload_asset(request: web.Request) -> web.Response:
     # which is contained but silent — a caller sending a path it thinks is
     # meaningful should hear that it is not, rather than find its file under a
     # name it never chose.
-    name = str(field.filename or "")
-    if not _NAME_RE.match(name):
+    name = _asset_name(field.filename)
+    if name is None:
         return _err(
-            "The file's name must be 1-128 characters of A-Z, a-z, 0-9, dot, "
-            "dash or underscore, starting with a letter or digit.",
+            "The file's name must be 1-128 characters of A-Z, a-z, 0-9, space, "
+            "dot, dash or underscore, must start with a letter or digit, must "
+            "not end with a dot or a space, and must not be a Windows device "
+            "name (CON, NUL, COM1 …).",
             status=400,
         )
 
@@ -197,33 +237,84 @@ async def upload_asset(request: web.Request) -> web.Response:
     directory = os.path.join(folder_paths.get_input_directory(), ASSET_SUBFOLDER)
     os.makedirs(directory, exist_ok=True)
     final = os.path.join(directory, name)
+    if os.path.exists(final):
+        return _err(
+            f"An asset named {name!r} is already here. Assets are never "
+            "replaced: a prompt already sitting in ComfyUI's queue against "
+            "this name would start loading bytes it was not submitted "
+            "against. Send it under another name.",
+            status=409,
+        )
 
     # Written under .part and renamed only once the whole body is on disk, as
     # the shelf download does: a dropped connection must not leave a truncated
     # file under a name a submitted workflow is about to load.
+    #
+    # os.open with O_CREAT|O_EXCL|O_NOFOLLOW rather than open(part, "wb"), and
+    # it is doing three jobs. It refuses to follow a symlink someone pre-created
+    # at this path, where "wb" would happily write through it. It makes two
+    # concurrent uploads of one name a refusal for the second rather than two
+    # writers interleaving chunks into a single corrupt file — the shelf
+    # download can argue that ComfyUI runs one prompt at a time, and an aiohttp
+    # handler cannot borrow that argument. And it does not silently adopt the
+    # leftovers of a crashed upload.
+    #
+    # ponytail: the exists() check above and this open are not one atomic step,
+    # so two callers can still both pass the check and the later one win. The
+    # window is microseconds and the loser gets its own file back; a lock or an
+    # O_EXCL on `final` itself is the fix if anyone ever uploads concurrently
+    # under one name on purpose.
     part = f"{final}.part"
-    written = 0
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
-        with open(part, "wb") as fh:
+        handle = os.open(part, flags, 0o600)
+    except OSError as exc:
+        return _err(
+            f"Could not start writing {name!r}: {exc.strerror}. Another upload "
+            "of this name may be in flight.",
+            status=409,
+        )
+
+    written = 0
+    oversize = False
+    try:
+        with os.fdopen(handle, "wb") as fh:
             while True:
                 chunk = await field.read_chunk()
                 if not chunk:
                     break
                 written += len(chunk)
                 if written > MAX_ASSET_BYTES:
-                    raise ValueError("too large")
+                    # A flag and a break, not a raise: aiohttp raises its own
+                    # ValueError for a malformed or truncated multipart body,
+                    # and an `except ValueError` around this loop told the
+                    # sender of a truncated 200 kB PNG that it exceeded a 64 MB
+                    # limit.
+                    oversize = True
+                    break
+                # ponytail: a synchronous write on the event loop. Local disk,
+                # so it is bounded by the chunk and not by the client, and
+                # to_thread per 8 kB chunk would cost more hops than it saves.
+                # Revisit if a slow filesystem (a network mount) ever shows up
+                # as a stalled progress bar.
                 fh.write(chunk)
-    except ValueError:
+        if oversize:
+            _discard(part)
+            return _err(
+                f"The file is larger than the {MAX_ASSET_BYTES} byte limit.",
+                status=413,
+            )
+        # Inside the try, so a failure here cleans up too — the promise above
+        # is that a failed upload leaves nothing behind, and a rename is as
+        # capable of failing as a write.
+        os.replace(part, final)
+    except ValueError as exc:
         _discard(part)
-        return _err(
-            f"The file is larger than the {MAX_ASSET_BYTES} byte limit.",
-            status=413,
-        )
+        return _err(f"The multipart body could not be read: {exc}", status=400)
     except BaseException:
         _discard(part)
         raise
 
-    os.replace(part, final)
     log.info("[PixlStash] Stored asset %s (%d bytes).", name, written)
     return _ok({"name": name, "subfolder": ASSET_SUBFOLDER, "type": "input"})
 

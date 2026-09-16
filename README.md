@@ -116,8 +116,12 @@ So the picture loaders, the two search nodes and the four shelf loaders attach
 their **resolution lock** to their own output: the picture IDs that loaded, and
 the models they were locked to. ComfyUI carries it in the `executed` websocket
 message and keeps it in `GET /history/{prompt_id}`, so PixlStash can record
-what went into a render without the nodes having to call anything. Nothing else
-changes — the sockets, the wiring and the outputs are the same.
+what went into a render without the nodes having to call anything.
+
+Your graphs do not change: the sockets, their types and their order are the
+same, and an existing workflow loads and runs exactly as before. (Under the
+hood those seven nodes now return ComfyUI's `{"ui": …, "result": …}` form
+instead of a bare tuple, which matters only if you call them from Python.)
 
 The lock lands under a `pixlstash_lock` key on the node:
 
@@ -140,10 +144,16 @@ they are here so a future PixlStash can drive a ComfyUI it does not live on:
 | `GET /pixlstash/inventory` | This package's version, and the checkpoint / LoRA / VAE / text-encoder filenames ComfyUI can see. |
 | `POST /pixlstash/assets` | Takes one multipart `file` into ComfyUI's input directory under `pixlstash/`, and answers with the `{name, subfolder, type}` a workflow needs to reference it. |
 
-Unlike the `/pixlstash/*` proxy routes, these two authenticate: the request
-must carry the API token from **Settings > PixlStash** as
-`Authorization: Bearer <token>`. ComfyUI's own server usually has no auth in
-front of it, and one of these writes a file.
+Both need `Authorization: Bearer <token>` carrying the API token from
+**Settings > PixlStash**. Every `/pixlstash/*` route asks for that header, but
+the proxy routes only *forward* it and let PixlStash decide; these two are
+checked here, because they run locally and one of them writes a file while
+ComfyUI's own server usually has nothing in front of it.
+
+An asset's filename must be 1–128 characters of `A–Z a–z 0–9`, space, dot, dash
+or underscore. A name that is already taken gets a 409 rather than being
+replaced — a prompt sitting in ComfyUI's queue must not start loading bytes it
+was not submitted against.
 
 ## Workflow examples
 

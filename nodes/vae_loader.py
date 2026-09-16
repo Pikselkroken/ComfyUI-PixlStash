@@ -79,10 +79,5 @@ class PixlStashVAELoader:
             vae.throw_exception_if_invalid()
         return lock.report(
             (vae,),
-            models=[
-                lock.shelf_model(
-                    "vae",
-                    sha256=str(record.get("sha256") or vae_sha256).strip().lower(),
-                )
-            ],
+            models=[lock.shelf_model("vae", sha256=record.get("sha256") or vae_sha256)],
         )

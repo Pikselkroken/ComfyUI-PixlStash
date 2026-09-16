@@ -246,13 +246,13 @@ class PixlStashAdapterLoader:
         # The shelf's own digest in preference to the widget's, so the lock
         # records what the server says this file is rather than what the
         # workflow asked for. They agree today; if they ever stop, the one the
-        # bytes were verified against is the honest answer.
+        # bytes were verified against is the honest answer. Normalising is
+        # shelf_model's job, not each loader's.
         return lock.report(
             (model, clip, triggers),
             models=[
                 lock.shelf_model(
-                    "adapter",
-                    sha256=str(record.get("sha256") or adapter_sha256).strip().lower(),
+                    "adapter", sha256=record.get("sha256") or adapter_sha256
                 )
             ],
         )

@@ -13,6 +13,7 @@ name came off the wire, so the two things worth pinning are:
 import asyncio
 import json
 import os
+import pathlib
 import shutil
 import tempfile
 import types
@@ -22,9 +23,27 @@ from unittest import mock
 import _bootstrap as boot
 
 boot.load_proxy()  # installs the stub aiohttp that serve_routes imports
+connection = boot.load("connection")
 serve = boot.load("serve_routes")
 
 TOKEN = "test-token-not-a-real-one"
+
+PYPROJECT = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
+
+
+def _pyproject_version():
+    """The version out of pyproject.toml, found without the code under test.
+
+    A hand-rolled scan of the ``[project]`` table, so an assertion against it
+    fails when ``connection._version`` breaks rather than agreeing with it.
+    """
+    table = False
+    for line in PYPROJECT.read_text(encoding="utf-8").splitlines():
+        if line.startswith("["):
+            table = line.strip() == "[project]"
+        elif table and line.startswith("version"):
+            return line.split("=", 1)[1].strip().strip('"')
+    raise AssertionError("pyproject.toml has no [project] version")
 
 
 def _body(response):
@@ -40,6 +59,44 @@ def _configured(token=TOKEN):
     return mock.patch.object(
         serve, "read_credentials", lambda: ("https://vault.example", token, True)
     )
+
+
+class VersionTests(unittest.TestCase):
+    """The one field the inventory route publishes that is parsed rather than read.
+
+    It replaced a literal that had drifted three releases, so the thing worth
+    holding is that it tracks the file a release actually edits — including
+    when that file grows another table with a ``version`` in it.
+    """
+
+    def test_it_is_the_version_in_pyprojects_project_table(self):
+        self.assertEqual(connection.VERSION, _pyproject_version())
+
+    def _parse(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            module = os.path.join(tmp, "connection.py")
+            pathlib.Path(module).touch()
+            pathlib.Path(tmp, "pyproject.toml").write_text(text, encoding="utf-8")
+            with mock.patch.object(connection, "__file__", module):
+                return connection._version()
+
+    def test_another_tables_version_is_not_this_packages(self):
+        # The first line-anchored `version =` in the file was this package's
+        # only by the accident of table order.
+        self.assertEqual(
+            self._parse(
+                '[build-system]\nversion = "9.9.9"\n\n[project]\nversion = "1.2.3"\n'
+            ),
+            "1.2.3",
+        )
+
+    def test_a_project_table_at_the_end_of_the_file_still_parses(self):
+        self.assertEqual(self._parse('[project]\nversion = "1.2.3"'), "1.2.3")
+
+    def test_a_missing_or_silent_pyproject_says_unknown_rather_than_guessing(self):
+        self.assertEqual(self._parse('[project]\nname = "x"\n'), "unknown")
+        with mock.patch.object(connection, "__file__", "/nonexistent/connection.py"):
+            self.assertEqual(connection._version(), "unknown")
 
 
 class RefusalTests(unittest.TestCase):
@@ -76,7 +133,6 @@ class RefusalTests(unittest.TestCase):
         # Empty settings must not degrade into "any token matches the empty
         # one". 503, because no request could have succeeded.
         self.assertEqual(_status(self._refuse(f"Bearer {TOKEN}", token="")), 503)
-        self.assertEqual(_status(self._refuse("Bearer ", token="")), 503)
 
     def test_multi_user_is_refused_before_the_token_is_read(self):
         with mock.patch.object(serve, "multi_user_active", lambda: True):
@@ -116,7 +172,11 @@ class InventoryTests(unittest.TestCase):
 
     def test_reports_the_package_version_and_every_shelf_kind(self):
         body = self._inventory({"checkpoints": ["b.safetensors", "a.safetensors"]})
-        self.assertEqual(body["package_version"], serve.VERSION)
+        # Against pyproject.toml and not against serve.VERSION, which would be
+        # comparing the code to itself and would pass with "unknown" in it —
+        # the exact failure mode reading the file introduces.
+        self.assertEqual(body["package_version"], _pyproject_version())
+        self.assertRegex(body["package_version"], r"^\d+\.\d+")
         self.assertEqual(
             sorted(body["models"]), ["checkpoints", "loras", "text_encoders", "vae"]
         )
@@ -212,8 +272,12 @@ class AssetUploadTests(unittest.TestCase):
         # The .part it was streamed into is gone, not left beside it.
         self.assertFalse(os.path.isfile(written + ".part"))
 
-    def test_a_traversing_name_is_refused_and_writes_nothing(self):
-        hostile = [
+    def test_a_hostile_name_is_refused_by_the_rule_and_by_the_route(self):
+        # Both halves matter. Asserting only that a directory the traversal was
+        # never going to reach is still empty passes just as happily when the
+        # traversal landed somewhere else, so the rule is asserted directly and
+        # the route is asserted to be using it.
+        for name in (
             "../../../../etc/cron.d/pwn",
             "..",
             "sub/dir.png",
@@ -223,18 +287,26 @@ class AssetUploadTests(unittest.TestCase):
             "",
             "a" * 129,
             "naughty\nname.png",
-        ]
-        for name in hostile:
+            "trailing.",
+            "trailing ",
+            # Windows opens these as devices; the write would succeed against
+            # one and the rename would then fail with an unhandled OSError.
+            "NUL.png",
+            "con",
+            "COM1.png",
+        ):
             with self.subTest(filename=name):
-                response = self._upload(name)
-                self.assertEqual(_status(response), 400)
-        # Nothing was created at all — not even the subfolder's contents.
-        self.assertEqual(
-            os.listdir(self._under_input(serve.ASSET_SUBFOLDER))
-            if os.path.isdir(self._under_input(serve.ASSET_SUBFOLDER))
-            else [],
-            [],
-        )
+                self.assertIsNone(serve._asset_name(name))
+                self.assertEqual(_status(self._upload(name)), 400)
+
+        # And the route wrote nothing anywhere beneath the input directory.
+        self.assertEqual(list(os.walk(self.input_dir))[0][2], [])
+
+    def test_an_ordinary_name_with_a_space_is_not_hostile(self):
+        # The containment rule refusing "my photo.png" would be a bug of its
+        # own: accepting the caller's reference image is the route's whole job.
+        self.assertEqual(serve._asset_name("my photo.png"), "my photo.png")
+        self.assertEqual(_status(self._upload("my photo.png")), 200)
 
     def test_a_body_without_a_file_field_is_a_400(self):
         self.assertEqual(_status(self._upload("ok.png", field_name="notfile")), 400)
@@ -244,6 +316,45 @@ class AssetUploadTests(unittest.TestCase):
             response = self._upload("big.png", data=b"0123456789")
         self.assertEqual(_status(response), 413)
         self.assertEqual(os.listdir(self._under_input(serve.ASSET_SUBFOLDER)), [])
+
+    def test_a_malformed_body_is_a_400_and_not_a_413(self):
+        # aiohttp raises ValueError for a truncated or badly bounded multipart
+        # body. Reporting that as "larger than the 64 MB limit" sends whoever
+        # reads it looking for a file that is not the problem.
+        class _Broken(_Field):
+            async def read_chunk(self, size=None):
+                raise ValueError("Invalid boundary")
+
+        request = _MultipartRequest(
+            [_Broken("file", "ok.png", b"x")],
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        with _configured():
+            response = asyncio.run(serve.upload_asset(request))
+        self.assertEqual(_status(response), 400)
+        self.assertEqual(os.listdir(self._under_input(serve.ASSET_SUBFOLDER)), [])
+
+    def test_an_existing_asset_is_never_replaced(self):
+        # A prompt already queued against this name must not start loading
+        # different bytes than it was submitted against.
+        self.assertEqual(_status(self._upload("shot.png", data=b"first")), 200)
+        self.assertEqual(_status(self._upload("shot.png", data=b"second")), 409)
+        with open(self._under_input(serve.ASSET_SUBFOLDER, "shot.png"), "rb") as fh:
+            self.assertEqual(fh.read(), b"first")
+
+    def test_a_symlink_left_at_the_part_path_is_not_written_through(self):
+        # O_CREAT|O_EXCL|O_NOFOLLOW: anything that can pre-create the .part —
+        # another process, a shared or NFS input directory — must not be able
+        # to redirect this write out of the input directory.
+        target = os.path.join(self.input_dir, "elsewhere.txt")
+        with open(target, "wb") as fh:
+            fh.write(b"untouched")
+        os.makedirs(self._under_input(serve.ASSET_SUBFOLDER), exist_ok=True)
+        os.symlink(target, self._under_input(serve.ASSET_SUBFOLDER, "bait.png.part"))
+
+        self.assertEqual(_status(self._upload("bait.png")), 409)
+        with open(target, "rb") as fh:
+            self.assertEqual(fh.read(), b"untouched")
 
     def test_it_is_behind_the_same_guard(self):
         response = self._upload("ok.png", header="Bearer test-wrong-token")

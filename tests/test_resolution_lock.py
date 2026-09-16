@@ -24,6 +24,7 @@ import _bootstrap as boot
 lock = boot.load("nodes.lock")
 shelf_file = boot.load("nodes.shelf_file")
 clip_loader = boot.load("nodes.clip_loader")
+checkpoint_loader = boot.load("nodes.checkpoint_loader")
 
 SHA_A = "a" * 64
 SHA_B = "b" * 64
@@ -115,8 +116,20 @@ class PayloadShapeTests(unittest.TestCase):
             {"kind": "checkpoint", "sha256": None, "id": 7},
         )
 
-    def test_an_empty_digest_is_reported_as_null_not_as_an_empty_string(self):
-        self.assertIsNone(lock.shelf_model("vae", sha256="")["sha256"])
+    def test_the_digest_is_normalised_here_and_not_at_four_call_sites(self):
+        # PixlStash matches these against its own rows, which are lowercase
+        # hex. Three loaders lowercasing and a fourth passing the server's
+        # field through raw is not a contract.
+        for raw in (SHA_A.upper(), f"  {SHA_A}  ", f"\t{SHA_A.upper()}\n"):
+            with self.subTest(raw=raw):
+                self.assertEqual(lock.shelf_model("vae", sha256=raw)["sha256"], SHA_A)
+
+    def test_anything_that_is_not_a_digest_is_null_rather_than_reported(self):
+        # Null says "address this by id"; a junk string says "address it by
+        # this", which is worse than saying nothing.
+        for raw in ("", None, "not-a-digest", 12345, SHA_A[:-1], SHA_A + "a", "z" * 64):
+            with self.subTest(raw=raw):
+                self.assertIsNone(lock.shelf_model("vae", sha256=raw)["sha256"])
 
 
 class PictureLockTests(unittest.TestCase):
@@ -157,9 +170,6 @@ class PictureLockTests(unittest.TestCase):
         out = self._load([11, 12, 13], missing={12})
         self.assertEqual(out["ui"][lock.UI_KEY][0]["pictures"], [11, 13])
         self.assertEqual(out["result"][5], 2)
-
-    def test_nothing_is_locked_to_a_model(self):
-        self.assertEqual(self._load([11])["ui"][lock.UI_KEY][0]["models"], [])
 
 
 class ClipLockTests(unittest.TestCase):
@@ -209,10 +219,89 @@ class ClipLockTests(unittest.TestCase):
             [m["sha256"] for m in self._models(SHA_A, SHA_B)], [SHA_A, SHA_B]
         )
 
-    def test_an_uppercase_selection_is_locked_in_the_shelf_s_own_casing(self):
+    def test_an_uppercase_selection_is_locked_in_lowercase_hex(self):
         # The widget can hold either; the shelf addresses in lowercase hex and
         # a lock PixlStash cannot match against its own rows is no lock at all.
         self.assertEqual(self._models(SHA_A.upper(), "")[0]["sha256"], SHA_A)
+
+    def test_the_shelf_s_own_digest_wins_over_the_widget_s(self):
+        # They agree today. If they ever stop, the one the bytes were verified
+        # against is the honest answer.
+        self.assertEqual(
+            self._models(SHA_A, "", shelf_digest=SHA_B)[0]["sha256"], SHA_B
+        )
+
+
+class CheckpointLockTests(unittest.TestCase):
+    """The only loader addressed by row id, and the only one that can lock a null digest."""
+
+    def setUp(self):
+        comfy = types.ModuleType("comfy")
+        comfy.__path__ = []
+        sd = types.ModuleType("comfy.sd")
+        sd.load_checkpoint_guess_config = lambda path, **kwargs: (
+            "MODEL",
+            "CLIP",
+            "VAE",
+            "extra",
+        )
+        comfy.sd = sd
+
+        fp = types.ModuleType("folder_paths")
+        fp.get_folder_paths = lambda kind: ["/models/embeddings"]
+
+        patch = mock.patch.dict(
+            sys.modules, {"comfy": comfy, "comfy.sd": sd, "folder_paths": fp}
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.sd = sd
+
+    def _load(self, row):
+        node = checkpoint_loader.PixlStashCheckpointLoader()
+        with (
+            mock.patch.object(
+                checkpoint_loader.PixlStashCheckpointLoader,
+                "_fetch_record",
+                staticmethod(lambda checkpoint_id: row),
+            ),
+            mock.patch.object(
+                checkpoint_loader.shelf_file,
+                "local_path",
+                lambda record, label="": "/m/c.st",
+            ),
+        ):
+            return node.load_checkpoint("7")
+
+    def test_an_unhashed_checkpoint_locks_its_row_id_with_a_null_digest(self):
+        # The reason this loader is addressed by id at all: a 24 GB file is
+        # loadable here long before the shelf's hasher has read it.
+        out = self._load({"id": 7, "sha256": None})
+        self.assertEqual(out["result"], ("MODEL", "CLIP", "VAE"))
+        self.assertEqual(
+            out["ui"][lock.UI_KEY][0]["models"],
+            [{"kind": "checkpoint", "sha256": None, "id": 7}],
+        )
+
+    def test_a_hashed_checkpoint_locks_both_identifiers(self):
+        models = self._load({"id": 7, "sha256": SHA_A.upper()})["ui"][lock.UI_KEY][0][
+            "models"
+        ]
+        self.assertEqual(models, [{"kind": "checkpoint", "sha256": SHA_A, "id": 7}])
+
+    def test_a_bare_diffusion_model_still_reports_its_lock(self):
+        # load_checkpoint_guess_config raises for a Flux UNET; the node falls
+        # back to a MODEL with no CLIP or VAE, and the lock must survive the
+        # fallback rather than only existing on the happy path.
+        def explode(path, **kwargs):
+            raise RuntimeError("ERROR: Could not detect model type")
+
+        self.sd.load_checkpoint_guess_config = explode
+        self.sd.load_diffusion_model = lambda path: "UNET"
+
+        out = self._load({"id": 7, "sha256": None})
+        self.assertEqual(out["result"], ("UNET", None, None))
+        self.assertEqual(out["ui"][lock.UI_KEY][0]["models"][0]["id"], 7)
 
 
 if __name__ == "__main__":
