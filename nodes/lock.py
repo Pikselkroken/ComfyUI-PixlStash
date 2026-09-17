@@ -21,11 +21,19 @@ node whose outputs came from cache has its UI payload replayed rather than
 dropped, so a second queue of an unchanged graph still reports — that is
 ComfyUI's behaviour and not a promise this module can keep on its own.
 
-The payload, under the ``pixlstash_lock`` key, is a one-element list (the shape
-every ComfyUI UI value has) holding::
+The payload, under the ``pixlstash_lock`` key, is a list (the shape every
+ComfyUI UI value has) whose entries look like::
 
     {"pictures": [12, 15],
      "models": [{"kind": "adapter", "sha256": "…", "id": None}]}
+
+**One entry per execution of the node, and usually that means one.**  It is not
+reliably one: wire something with ``OUTPUT_IS_LIST`` into a loader's widget and
+ComfyUI's ``_map_node_over_list`` runs the node once per element, merging the UI
+dicts with ``ui.setdefault(k, []).extend(v)`` — so the key comes back holding N
+entries and this module cannot fold them, because each call only ever sees its
+own.  A consumer therefore folds every entry rather than indexing ``[0]``:
+taking the first would silently record one resolution out of N.
 
 ``kind`` is ``adapter`` / ``checkpoint`` / ``vae`` / ``clip``.  Both identifiers
 are always present and either may be null: adapters, VAEs and text encoders are
@@ -40,7 +48,30 @@ import re
 
 UI_KEY = "pixlstash_lock"
 
-_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+# What a shelf digest looks like. Lives here rather than in ``shelf_file``,
+# which imports it: this module is the leaf, and the shape of an identifier
+# belongs beside the thing that puts identifiers on the wire.
+SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+
+# A row id as it is actually written: no sign, no padding, no separators. The
+# same rule (and the same reasoning) as ``proxy_routes._ID_RE`` — which cannot
+# be imported here, since it would pull aiohttp into every node import.
+_ID_RE = re.compile(r"[1-9][0-9]*\Z")
+
+
+def _row_id(value):
+    """``value`` as a positive row id, or ``None`` if it is not written as one.
+
+    The digest's argument applies verbatim to the id, and this is where it was
+    missing. ``checkpoint_loader._fetch_record`` matches with
+    ``str(row.get("id")) == wanted``, so a server serialising ids as strings is
+    already supported — and passing the field through raw would then put
+    ``{"id": "7"}`` on the wire where another server puts ``{"id": 7}``, which
+    PixlStash matching against an integer primary key matches in one case only.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    return int(value) if _ID_RE.match(str(value).strip()) else None
 
 
 def shelf_model(kind: str, *, sha256=None, row_id=None) -> dict:
@@ -59,15 +90,16 @@ def shelf_model(kind: str, *, sha256=None, row_id=None) -> dict:
     "address this by id"; a junk string says "address it by this", which is
     worse than saying nothing.
 
-    ``row_id`` rather than ``id`` because the key on the wire is ``id`` and the
-    keyword is not — shadowing the builtin in every loader's call to save four
-    characters is a poor trade.
+    ``row_id`` gets the same treatment, for the same reason — see ``_row_id``.
+    It is named that rather than ``id`` because the key on the wire is ``id``
+    and the keyword is not: shadowing the builtin in every loader's call to save
+    four characters is a poor trade.
     """
     digest = str(sha256 or "").strip().lower()
     return {
         "kind": kind,
-        "sha256": digest if _SHA256_RE.match(digest) else None,
-        "id": row_id,
+        "sha256": digest if SHA256_RE.match(digest) else None,
+        "id": _row_id(row_id),
     }
 
 

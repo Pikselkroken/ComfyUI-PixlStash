@@ -47,7 +47,16 @@ class _Tensor:
         return self
 
 
-def _install_tensor_stubs():
+def _tensor_stubs():
+    """sys.modules entries for the tensor plumbing, for a ``patched_modules`` block.
+
+    Installed for the length of the import and then taken back out. The stubs
+    are thin — a numpy with four attributes, a torch with two — so leaving them
+    in sys.modules for the whole process (unittest imports every test module
+    before running any of them) would hand a later test a fake numpy and make
+    it fail somewhere else entirely. ``picture_loader`` binds them at its own
+    import and keeps those bindings, which is all this needs.
+    """
     numpy = types.ModuleType("numpy")
     numpy.uint8 = "uint8"
     numpy.float32 = "float32"
@@ -70,9 +79,7 @@ def _install_tensor_stubs():
             return arr
 
     pil.Image = _Image
-    sys.modules.update(
-        {"numpy": numpy, "torch": torch, "PIL": pil, "PIL.Image": pil.Image}
-    )
+    return {"numpy": numpy, "torch": torch, "PIL": pil, "PIL.Image": pil.Image}
 
 
 class _Pil:
@@ -84,8 +91,8 @@ class _Pil:
         return self
 
 
-_install_tensor_stubs()
-picture_loader = boot.load("nodes.picture_loader")
+with boot.patched_modules(_tensor_stubs()):
+    picture_loader = boot.load("nodes.picture_loader")
 
 
 class PayloadShapeTests(unittest.TestCase):
@@ -123,6 +130,28 @@ class PayloadShapeTests(unittest.TestCase):
         for raw in (SHA_A.upper(), f"  {SHA_A}  ", f"\t{SHA_A.upper()}\n"):
             with self.subTest(raw=raw):
                 self.assertEqual(lock.shelf_model("vae", sha256=raw)["sha256"], SHA_A)
+
+    def test_the_row_id_is_normalised_too_and_not_passed_through_raw(self):
+        # checkpoint_loader._fetch_record matches on str(row["id"]), so a
+        # server serialising ids as strings is supported — and the lock would
+        # then report {"id": "7"} where another server reports {"id": 7}.
+        for raw, expected in (
+            (7, 7),
+            ("7", 7),
+            ("  7  ", 7),
+            (None, None),
+            ("", None),
+            (0, None),
+            (-1, None),
+            (True, None),
+            ("007", None),
+            ("7; DROP", None),
+            ("٧", None),
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(
+                    lock.shelf_model("checkpoint", row_id=raw)["id"], expected
+                )
 
     def test_anything_that_is_not_a_digest_is_null_rather_than_reported(self):
         # Null says "address this by id"; a junk string says "address it by

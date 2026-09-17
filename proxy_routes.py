@@ -36,12 +36,14 @@ from .connection import (
     read_credentials,
 )
 
-log = logging.getLogger(__name__)
-
 # A model / icon is addressed by its full-file SHA-256, lowercase hex.  Anything
 # else is refused before it can be interpolated into an upstream path — the same
-# guard ``_positive_id`` is for the routes addressed by row id.
-_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+# guard ``_positive_id`` is for the routes addressed by row id.  One definition
+# for the whole package, in ``nodes.lock`` because that is the leaf that has no
+# imports of its own; what counts as a digest is a thing to change once.
+from .nodes.lock import SHA256_RE as _SHA256_RE
+
+log = logging.getLogger(__name__)
 
 
 # A row id as it is actually written: no sign, no padding, no separators, and

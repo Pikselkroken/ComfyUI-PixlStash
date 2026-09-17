@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import hmac
 import logging
 import os
@@ -86,6 +87,18 @@ _RESERVED_STEMS = frozenset(
     + [f"{port}{n}" for port in ("COM", "LPT") for n in range(1, 10)]
 )
 
+# What ComfyUI can actually load as an input image — and not a nicety either.
+# ComfyUI's own ``GET /view`` serves anything under the input directory back
+# over ComfyUI's origin, with a content type guessed from the extension and no
+# attachment disposition. An ``.html`` or ``.svg`` dropped in here is therefore
+# stored XSS on that origin, with read access to ``comfy.settings.json`` — which
+# is where the PixlStash URL and API token live. The whole point of this route
+# being an auth boundary is undone if what gets through it can read the secret
+# that guards it.
+_ALLOWED_SUFFIXES = frozenset(
+    (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff")
+)
+
 # ponytail: a flat ceiling rather than a configurable one. It is here so a
 # stuck or hostile upload cannot fill the disk; make it a setting if anyone
 # ever has a legitimate input image bigger than this.
@@ -113,6 +126,8 @@ def _asset_name(raw) -> str | None:
         return None
     if name.split(".")[0].upper() in _RESERVED_STEMS:
         return None
+    if os.path.splitext(name)[1].lower() not in _ALLOWED_SUFFIXES:
+        return None
     return name
 
 
@@ -139,8 +154,11 @@ def _refusal(request: web.Request) -> web.Response | None:
             status=503,
         )
 
-    auth = request.headers.get("Authorization", "")
-    presented = auth[len("Bearer ") :] if auth.startswith("Bearer ") else ""
+    # The scheme is matched case-insensitively (RFC 7235 says it is), and only
+    # the scheme: the token itself stays on compare_digest.
+    scheme, _space, presented = request.headers.get("Authorization", "").partition(" ")
+    if scheme.lower() != "bearer":
+        presented = ""
     if not hmac.compare_digest(presented.encode(), token.encode()):
         return _err(
             "This route requires the PixlStash API token configured in ComfyUI "
@@ -162,7 +180,12 @@ def _filenames(kinds: tuple[str, ...]) -> list[str]:
     for kind in kinds:
         try:
             names = folder_paths.get_filename_list(kind)
-        except Exception:  # noqa: BLE001 — an unregistered folder is not an error
+        except KeyError:
+            # The only case that is not an error: a folder this ComfyUI never
+            # registered. Anything else — a dead NFS mount, a permission
+            # change — is a real failure, and answering [] for it would tell
+            # PixlStash "no models of that kind are here", which is the one
+            # sentence this route must not say by accident.
             continue
         if names:
             return sorted(names)
@@ -196,10 +219,18 @@ async def inventory(request: web.Request) -> web.Response:
     # models directories whenever ComfyUI's cache is cold or a mtime moved, and
     # that is not a thing to do on the event loop that carries every other
     # client's progress updates.
-    models = {
-        name: await asyncio.to_thread(_filenames, kinds)
-        for name, kinds in _MODEL_KINDS.items()
-    }
+    named = list(_MODEL_KINDS.items())
+    try:
+        scanned = await asyncio.gather(
+            *(asyncio.to_thread(_filenames, kinds) for _name, kinds in named)
+        )
+    except OSError as exc:
+        # Reported rather than flattened into empty lists — see _filenames.
+        return _err(
+            f"Could not read this ComfyUI's model folders: {exc.strerror}.",
+            status=500,
+        )
+    models = {name: names for (name, _kinds), names in zip(named, scanned)}
     return _ok(
         {
             "package_version": VERSION,
@@ -212,10 +243,15 @@ async def inventory(request: web.Request) -> web.Response:
 async def upload_asset(request: web.Request) -> web.Response:
     """Take one file into ComfyUI's input directory and say what to call it.
 
-    Multipart, in a field named ``file``.  The reply is the shape ComfyUI's own
-    ``/upload/image`` answers with — ``{"name", "subfolder", "type"}`` — because
-    a workflow refers to an input image as ``<subfolder>/<name>`` and the caller
-    has to build that string to put in the prompt it submits next.
+    Multipart, the **first** field, named ``file``, an image type ComfyUI can
+    load.  The reply is the shape ComfyUI's own ``/upload/image`` answers with —
+    ``{"name", "subfolder", "type"}`` — because a workflow refers to an input
+    image as ``<subfolder>/<name>`` and the caller has to build that string to
+    put in the prompt it submits next.
+
+    A name already in use is a 409 and never a replacement.  Every other reason
+    the write cannot start is a 500 naming it: a full disk reported as a name
+    conflict sends the caller off retrying under new names forever.
     """
     problem = _refusal(request)
     if problem is not None:
@@ -226,11 +262,19 @@ async def upload_asset(request: web.Request) -> web.Response:
     except Exception:  # noqa: BLE001 — a non-multipart body is a 400, not a 500
         return _err("Send the file as a multipart/form-data body.", status=400)
 
+    # The FIRST field, and it has to be the file. Skipping forward to find it
+    # means reader.next() drains whatever precedes it — and it drains by
+    # reading, with no limit, so a 20 GB field named anything at all would be
+    # swallowed whole before MAX_ASSET_BYTES was ever consulted. aiohttp's
+    # client_max_size is not applied to streaming multipart reads either. One
+    # field is also all this route was ever specified to take.
     field = await reader.next()
-    while field is not None and getattr(field, "name", None) != "file":
-        field = await reader.next()
-    if field is None:
-        return _err("No multipart field named 'file' in the body.", status=400)
+    if field is None or getattr(field, "name", None) != "file":
+        return _err(
+            "Send the file as the first multipart field, named 'file'. "
+            "Nothing before it is read.",
+            status=400,
+        )
 
     # No basename() ahead of this. Stripping the directory part would turn
     # "../../etc/cron.d/pwn" into the perfectly acceptable "pwn" and store it,
@@ -252,7 +296,11 @@ async def upload_asset(request: web.Request) -> web.Response:
     directory = os.path.join(folder_paths.get_input_directory(), ASSET_SUBFOLDER)
     os.makedirs(directory, exist_ok=True)
     final = os.path.join(directory, name)
-    if os.path.exists(final):
+    # lexists, not exists: the latter is False for a symlink whose target is
+    # gone, and os.replace would then quietly consume the link — so a prompt
+    # already queued against this name would start resolving to other bytes,
+    # which is the exact thing the 409 below promises cannot happen.
+    if os.path.lexists(final):
         return _err(
             f"An asset named {name!r} is already here. Assets are never "
             "replaced: a prompt already sitting in ComfyUI's queue against "
@@ -279,16 +327,35 @@ async def upload_asset(request: web.Request) -> web.Response:
     # window is microseconds and the loser gets its own file back; a lock or an
     # O_EXCL on `final` itself is the fix if anyone ever uploads concurrently
     # under one name on purpose.
+    # O_BINARY is not optional. Windows leaves an os.open fd in the CRT's text
+    # mode, where every 0x0A written is expanded to 0x0D 0x0A — the file lands
+    # longer than `written`, its digest is not the digest of what was sent, and
+    # LoadImage cannot decode it. os.fdopen(..., "wb") does not undo that; the
+    # flag does. CPython's own tempfile carries the same line for the same
+    # reason, and builtin open(..., "wb") was safe, so this arrived with the
+    # switch to os.open.
     part = f"{final}.part"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
     try:
         handle = os.open(part, flags, 0o600)
     except OSError as exc:
-        return _err(
-            f"Could not start writing {name!r}: {exc.strerror}. Another upload "
-            "of this name may be in flight.",
-            status=409,
-        )
+        # Only these two mean "someone else is here". A full disk, a read-only
+        # filesystem or a permission change answered 409 "another upload may be
+        # in flight", which sends the caller off to retry under a new name and
+        # the operator off looking for an upload that does not exist.
+        if exc.errno in (errno.EEXIST, errno.ELOOP):
+            return _err(
+                f"Could not start writing {name!r}: another upload of this "
+                "name is in flight, or something is already at its path.",
+                status=409,
+            )
+        return _err(f"Could not start writing {name!r}: {exc.strerror}.", status=500)
 
     written = 0
     oversize = False

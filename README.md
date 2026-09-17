@@ -114,7 +114,7 @@ query, a search node picks its off a score, and a shelf hash becomes one
 particular file. None of that is in the saved workflow, and re-running it
 tomorrow can legitimately resolve to something else.
 
-So the picture loaders, the two search nodes and the four shelf loaders attach
+So the Picture Loader, the two search nodes and the four shelf loaders attach
 their **resolution lock** to their own output: the picture IDs that loaded, and
 the models they were locked to. ComfyUI carries it in the `executed` websocket
 message and keeps it in `GET /history/{prompt_id}`, so PixlStash can record
@@ -125,16 +125,22 @@ same, and an existing workflow loads and runs exactly as before. (Under the
 hood those seven nodes now return ComfyUI's `{"ui": …, "result": …}` form
 instead of a bare tuple, which matters only if you call them from Python.)
 
-The lock lands under a `pixlstash_lock` key on the node:
+The lock lands under a `pixlstash_lock` key on the node, as a list of entries:
 
 ```json
-{"pictures": [12, 15],
- "models": [{"kind": "adapter", "sha256": "…", "id": null}]}
+[{"pictures": [12, 15],
+  "models": [{"kind": "adapter", "sha256": "…", "id": null}]}]
 ```
 
 `kind` is `adapter`, `checkpoint`, `vae` or `clip`. Both identifiers are always
 present and either may be null: hash-addressed files have no row id, and a
 checkpoint's `sha256` stays null until the shelf has hashed it.
+
+**Fold every entry, don't take the first.** One entry per execution of the
+node, which is normally one — but a node fed from something with
+`OUTPUT_IS_LIST` runs once per element and ComfyUI concatenates the payloads,
+so the list can hold several and indexing `[0]` would record one resolution out
+of N.
 
 ### Endpoints for PixlStash
 
@@ -144,7 +150,7 @@ they are here so a future PixlStash can drive a ComfyUI it does not live on:
 | Route | What it does |
 |---|---|
 | `GET /pixlstash/inventory` | This package's version, the oldest PixlStash its nodes accept, and the checkpoint / LoRA / VAE / text-encoder filenames ComfyUI can see. |
-| `POST /pixlstash/assets` | Takes one multipart `file` into ComfyUI's input directory under `pixlstash/`, and answers with the `{name, subfolder, type}` a workflow needs to reference it. |
+| `POST /pixlstash/assets` | Takes one image into ComfyUI's input directory under `pixlstash/`, as the first multipart field, named `file` — and answers with the `{name, subfolder, type}` a workflow needs to reference it. |
 
 Both need `Authorization: Bearer <token>` carrying the API token from
 **Settings > PixlStash**. Every `/pixlstash/*` route asks for that header, but
@@ -153,9 +159,16 @@ checked here, because they run locally and one of them writes a file while
 ComfyUI's own server usually has nothing in front of it.
 
 An asset's filename must be 1–128 characters of `A–Z a–z 0–9`, space, dot, dash
-or underscore. A name that is already taken gets a 409 rather than being
-replaced — a prompt sitting in ComfyUI's queue must not start loading bytes it
-was not submitted against.
+or underscore, and must end in an image extension ComfyUI can load (`.png`,
+`.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`, `.tif`, `.tiff`). The extension rule
+is containment, not tidiness: ComfyUI's own `/view` serves anything under the
+input directory back over ComfyUI's origin, so an `.html` or `.svg` there would
+run as a page with read access to the settings file holding this very token.
+
+A name that is already taken gets a 409 rather than being replaced — a prompt
+sitting in ComfyUI's queue must not start loading bytes it was not submitted
+against. Nothing before the `file` field is read, so the 64 MB ceiling cannot
+be reached around by a large field in front of it.
 
 ## Workflow examples
 

@@ -11,6 +11,7 @@ name came off the wire, so the two things worth pinning are:
 """
 
 import asyncio
+import errno
 import json
 import os
 import pathlib
@@ -85,6 +86,13 @@ class RefusalTests(unittest.TestCase):
     def test_another_scheme_is_refused(self):
         self.assertEqual(_status(self._refuse(f"Token {TOKEN}")), 401)
 
+    def test_the_scheme_is_matched_case_insensitively(self):
+        # RFC 7235 makes the auth scheme case-insensitive, and an intermediary
+        # that normalises it would otherwise get a 401 telling it to send
+        # exactly what it just sent.
+        self.assertIsNone(self._refuse(f"bearer {TOKEN}"))
+        self.assertIsNone(self._refuse(f"BEARER {TOKEN}"))
+
     def test_a_different_token_is_refused(self):
         # The whole point of the guard: ComfyUI's HTTP server is routinely open
         # on a LAN, so "anyone who can reach the port" must not be enough.
@@ -154,6 +162,26 @@ class InventoryTests(unittest.TestCase):
 
     def test_a_folder_this_comfyui_does_not_register_is_empty_not_an_error(self):
         self.assertEqual(self._inventory({})["models"]["loras"], [])
+
+    def test_a_folder_that_cannot_be_read_is_reported_rather_than_emptied(self):
+        # A dead NFS mount answering [] would tell PixlStash "no checkpoints
+        # here", which is the one sentence this route must not say by accident:
+        # it would conclude every shelf checkpoint is missing and either refuse
+        # to submit or try to push gigabytes.
+        fp = types.ModuleType("folder_paths")
+
+        def get_filename_list(kind):
+            raise OSError(errno.EIO, "Input/output error")
+
+        fp.get_filename_list = get_filename_list
+        with mock.patch.dict("sys.modules", {"folder_paths": fp}), _configured():
+            response = asyncio.run(
+                serve.inventory(
+                    boot.FakeRequest(headers={"Authorization": f"Bearer {TOKEN}"})
+                )
+            )
+        self.assertEqual(_status(response), 500)
+        self.assertIn("Input/output error", _body(response)["error"])
 
     def test_an_old_comfyui_s_clip_folder_is_reported_as_text_encoders(self):
         # The folder was renamed; the node loaders already know both names, and
@@ -256,6 +284,16 @@ class AssetUploadTests(unittest.TestCase):
             "naughty\nname.png",
             "trailing.",
             "trailing ",
+            # No extension ComfyUI could load, so nothing this route stores.
+            # ComfyUI's own GET /view would serve these back over ComfyUI's
+            # origin, which makes an .html or .svg here stored XSS with read
+            # access to the settings file holding the PixlStash token.
+            "payload.html",
+            "payload.htm",
+            "payload.svg",
+            "payload.js",
+            "payload.safetensors",
+            "noextension",
             # Windows opens these as devices; the write would succeed against
             # one and the rename would then fail with an unhandled OSError.
             "NUL.png",
@@ -269,6 +307,11 @@ class AssetUploadTests(unittest.TestCase):
         # And the route wrote nothing anywhere beneath the input directory.
         self.assertEqual(list(os.walk(self.input_dir))[0][2], [])
 
+    def test_every_image_type_a_workflow_can_load_is_accepted(self):
+        for name in ("a.png", "a.jpg", "a.JPEG", "a.webp", "a.gif", "a.bmp", "a.tiff"):
+            with self.subTest(filename=name):
+                self.assertEqual(serve._asset_name(name), name)
+
     def test_an_ordinary_name_with_a_space_is_not_hostile(self):
         # The containment rule refusing "my photo.png" would be a bug of its
         # own: accepting the caller's reference image is the route's whole job.
@@ -277,6 +320,21 @@ class AssetUploadTests(unittest.TestCase):
 
     def test_a_body_without_a_file_field_is_a_400(self):
         self.assertEqual(_status(self._upload("ok.png", field_name="notfile")), 400)
+
+    def test_a_field_before_the_file_is_refused_rather_than_drained(self):
+        # reader.next() releases the previous part by READING it, with no
+        # limit, so skipping forward to find "file" would swallow a 20 GB field
+        # named anything at all before MAX_ASSET_BYTES was ever consulted.
+        notes = _Field("notes", "notes.txt", b"x" * 64)
+        request = _MultipartRequest(
+            [notes, _Field("file", "ok.png", b"PNGDATA")],
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        with _configured():
+            response = asyncio.run(serve.upload_asset(request))
+        self.assertEqual(_status(response), 400)
+        # Not one chunk of the leading field was consumed.
+        self.assertEqual(len(notes._chunks), 3)
 
     def test_an_oversized_body_is_refused_and_leaves_nothing_behind(self):
         with mock.patch.object(serve, "MAX_ASSET_BYTES", 4):
@@ -308,6 +366,69 @@ class AssetUploadTests(unittest.TestCase):
         self.assertEqual(_status(self._upload("shot.png", data=b"second")), 409)
         with open(self._under_input(serve.ASSET_SUBFOLDER, "shot.png"), "rb") as fh:
             self.assertEqual(fh.read(), b"first")
+
+    def test_a_dangling_symlink_at_the_name_is_a_conflict_not_a_replacement(self):
+        # os.path.exists is False for a symlink whose target is gone, so a
+        # check on it would fall through to os.replace and quietly consume the
+        # link — and a prompt already queued against this name would start
+        # resolving to other bytes, which is what the 409 promises cannot
+        # happen. os.path.lexists is the difference.
+        os.makedirs(self._under_input(serve.ASSET_SUBFOLDER), exist_ok=True)
+        link = self._under_input(serve.ASSET_SUBFOLDER, "gone.png")
+        os.symlink(os.path.join(self.input_dir, "deleted.png"), link)
+        self.assertFalse(os.path.exists(link))
+
+        self.assertEqual(_status(self._upload("gone.png")), 409)
+        self.assertTrue(os.path.islink(link))
+
+    def test_a_failure_that_is_not_a_conflict_is_not_reported_as_one(self):
+        # A full disk, a read-only filesystem or a permission change answered
+        # 409 "another upload may be in flight", sending the caller off to
+        # retry under a new name forever.
+        real_open = os.open
+
+        def refuse(path, flags, *rest):
+            if str(path).endswith(".part"):
+                raise OSError(errno.EACCES, "Permission denied")
+            return real_open(path, flags, *rest)
+
+        with mock.patch.object(os, "open", refuse):
+            response = self._upload("ok.png")
+        self.assertEqual(_status(response), 500)
+        self.assertIn("Permission denied", _body(response)["error"])
+
+    def test_the_part_is_opened_in_binary_mode_where_there_is_one(self):
+        # Windows leaves an os.open fd in the CRT's text mode, where every 0x0A
+        # written becomes 0x0D 0x0A — the asset lands longer than was sent and
+        # LoadImage cannot decode it. os.fdopen(..., "wb") does not undo that.
+        #
+        # O_BINARY is 0 on this platform and does not exist at all on most, so
+        # asserting the real constant is in the flags is an assertion that
+        # passes whatever the code does. A distinguishable bit is installed
+        # instead, which is what the module's getattr will find.
+        marker = 0x8000
+        seen = {}
+        real_open = os.open
+
+        def record(path, flags, *rest):
+            if str(path).endswith(".part"):
+                seen["flags"] = flags
+            return real_open(path, flags & ~marker, *rest)
+
+        with (
+            mock.patch.object(os, "O_BINARY", marker, create=True),
+            mock.patch.object(os, "open", record),
+        ):
+            self.assertEqual(_status(self._upload("ok.png", data=b"a\nb")), 200)
+
+        self.assertTrue(seen["flags"] & marker, "the .part was not opened binary")
+        # The other two flags the same open is carrying, for the symlink and
+        # concurrency guarantees below.
+        self.assertTrue(seen["flags"] & os.O_EXCL)
+        self.assertTrue(seen["flags"] & getattr(os, "O_NOFOLLOW", 0))
+        # And the bytes came back exactly as sent, newline included.
+        with open(self._under_input(serve.ASSET_SUBFOLDER, "ok.png"), "rb") as fh:
+            self.assertEqual(fh.read(), b"a\nb")
 
     def test_a_symlink_left_at_the_part_path_is_not_written_through(self):
         # O_CREAT|O_EXCL|O_NOFOLLOW: anything that can pre-create the .part —
