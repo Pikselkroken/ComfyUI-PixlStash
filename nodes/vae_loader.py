@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 
-from . import shelf_file
+from . import lock, shelf_file
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class PixlStashVAELoader:
         import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
         import comfy.utils  # noqa: PLC0415
 
-        _, path = shelf_file.resolve(vae_sha256, label=LABEL, folder_key="vae")
+        record, path = shelf_file.resolve(vae_sha256, label=LABEL, folder_key="vae")
         # safe_load, as everywhere in this package: the path came off the wire.
         sd = comfy.utils.load_torch_file(path, safe_load=True)
         vae = comfy.sd.VAE(sd=sd)
@@ -77,4 +77,7 @@ class PixlStashVAELoader:
         # addition to ComfyUI than this node's minimum.
         if hasattr(vae, "throw_exception_if_invalid"):
             vae.throw_exception_if_invalid()
-        return (vae,)
+        return lock.report(
+            (vae,),
+            models=[lock.shelf_model("vae", sha256=record.get("sha256") or vae_sha256)],
+        )

@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 import logging
 
-from . import shelf_file
+from . import lock, shelf_file
 from .adapter_applier import AdapterApplier
 
 log = logging.getLogger(__name__)
@@ -243,7 +243,19 @@ class PixlStashAdapterLoader:
         model, clip = self._applier.apply(
             model, clip, path, strength_model, strength_clip
         )
-        return (model, clip, triggers)
+        # The shelf's own digest in preference to the widget's, so the lock
+        # records what the server says this file is rather than what the
+        # workflow asked for. They agree today; if they ever stop, the one the
+        # bytes were verified against is the honest answer. Normalising is
+        # shelf_model's job, not each loader's.
+        return lock.report(
+            (model, clip, triggers),
+            models=[
+                lock.shelf_model(
+                    "adapter", sha256=record.get("sha256") or adapter_sha256
+                )
+            ],
+        )
 
     @staticmethod
     def _resolve(adapter_sha256: str):

@@ -31,13 +31,11 @@ import contextlib
 import hashlib
 import logging
 import os
-import re
 
 from ..connection import make_client, read_credentials
+from .lock import SHA256_RE
 
 log = logging.getLogger(__name__)
-
-_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 # The shelf is a catalogue of safetensors and nothing else: PixlStash's folder
 # scanner skips every other extension outright (``MODEL_SUFFIX`` in
@@ -343,7 +341,7 @@ def resolve(sha256: str, *, label: str, folder_key: str, download: bool = True):
             f"{label}: nothing selected. Click the Browse button on the node "
             "and pick a file."
         )
-    if not _SHA256_RE.match(sha256):
+    if not SHA256_RE.match(sha256):
         raise RuntimeError(
             f"{label}: the selected hash must be a 64-character lowercase hex "
             f"digest (got {sha256!r})."

@@ -9,8 +9,14 @@ by path.  None of that exists in the lint/test venv, so this helper:
 * provides minimal stand-ins for the heavy/ComfyUI-only modules.
 
 The stubs are deliberately tiny: just enough surface for the security paths
-under test (credential resolution, the multi-user guard, the proxy SSRF
-checks, id extraction, and the Saver's output-path containment).
+under test (credential resolution, the multi-user guard, the proxy SSRF checks,
+the token check and filename containment on the routes in ``serve_routes`` —
+which ``load_proxy`` also bootstraps, since they share the stub ``aiohttp`` —
+id extraction, and the Saver's output-path containment).
+
+They are stubs, so what they prove is bounded: nothing here exercises real
+aiohttp status handling, header parsing or multipart streaming, and a test that
+would only be interesting against the real thing does not belong here.
 """
 
 from __future__ import annotations

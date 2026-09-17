@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import logging
 
-from . import shelf_file
+from . import lock, shelf_file
 
 log = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ class PixlStashCheckpointLoader:
 
         embeddings = folder_paths.get_folder_paths("embeddings")
         try:
-            return comfy.sd.load_checkpoint_guess_config(
+            outputs = comfy.sd.load_checkpoint_guess_config(
                 path,
                 output_vae=True,
                 output_clip=True,
@@ -131,7 +131,21 @@ class PixlStashCheckpointLoader:
                 path,
                 exc,
             )
-            return (loader(path), None, None)
+            outputs = (loader(path), None, None)
+
+        # Both identifiers, because a checkpoint has an id from the moment it
+        # is scanned and a sha256 only once the shelf's hasher has read it —
+        # a 24 GB file is loadable here long before that.
+        return lock.report(
+            outputs,
+            models=[
+                lock.shelf_model(
+                    "checkpoint",
+                    sha256=record.get("sha256"),
+                    row_id=record.get("id"),
+                )
+            ],
+        )
 
     @staticmethod
     def _fetch_record(checkpoint_id: str) -> dict:

@@ -179,7 +179,9 @@ class ClipPathTests(unittest.TestCase):
 
         with mock.patch.object(shelf_file, "resolve", fake_resolve):
             out = CLIP().load_clip(first, clip_type, second)
-        self.assertEqual(out, ("CLIP",))
+        # A dict, not a bare tuple, since the node reports its resolution lock —
+        # see nodes/lock.py. The outputs are under "result" either way.
+        self.assertEqual(out["result"], ("CLIP",))
         return resolved
 
     def test_one_hash_resolves_one_file(self):
