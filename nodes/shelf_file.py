@@ -303,7 +303,7 @@ def client_for(label: str):
             f"{label}: URL and API Token are required. "
             "Configure them in ComfyUI Settings › PixlStash."
         )
-    return make_client(url, token, verify_ssl)
+    return make_client(url, token, verify_ssl, min_server_version="1.10.0")
 
 
 def fetch_record(client, sha256: str, *, label: str) -> dict:

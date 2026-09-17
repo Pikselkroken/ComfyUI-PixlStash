@@ -34,8 +34,10 @@ PYPROJECT = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
 def _pyproject_version():
     """The version out of pyproject.toml, found without the code under test.
 
-    A hand-rolled scan of the ``[project]`` table, so an assertion against it
-    fails when ``connection._version`` breaks rather than agreeing with it.
+    ``connection.VERSION`` is a literal, and ``test_server_version`` is what
+    keeps it equal to this. Asserting the route against the file rather than
+    against the literal means a drift shows up here as well as there, instead
+    of the route agreeing with whatever the literal happens to say.
     """
     table = False
     for line in PYPROJECT.read_text(encoding="utf-8").splitlines():
@@ -59,44 +61,6 @@ def _configured(token=TOKEN):
     return mock.patch.object(
         serve, "read_credentials", lambda: ("https://vault.example", token, True)
     )
-
-
-class VersionTests(unittest.TestCase):
-    """The one field the inventory route publishes that is parsed rather than read.
-
-    It replaced a literal that had drifted three releases, so the thing worth
-    holding is that it tracks the file a release actually edits — including
-    when that file grows another table with a ``version`` in it.
-    """
-
-    def test_it_is_the_version_in_pyprojects_project_table(self):
-        self.assertEqual(connection.VERSION, _pyproject_version())
-
-    def _parse(self, text):
-        with tempfile.TemporaryDirectory() as tmp:
-            module = os.path.join(tmp, "connection.py")
-            pathlib.Path(module).touch()
-            pathlib.Path(tmp, "pyproject.toml").write_text(text, encoding="utf-8")
-            with mock.patch.object(connection, "__file__", module):
-                return connection._version()
-
-    def test_another_tables_version_is_not_this_packages(self):
-        # The first line-anchored `version =` in the file was this package's
-        # only by the accident of table order.
-        self.assertEqual(
-            self._parse(
-                '[build-system]\nversion = "9.9.9"\n\n[project]\nversion = "1.2.3"\n'
-            ),
-            "1.2.3",
-        )
-
-    def test_a_project_table_at_the_end_of_the_file_still_parses(self):
-        self.assertEqual(self._parse('[project]\nversion = "1.2.3"'), "1.2.3")
-
-    def test_a_missing_or_silent_pyproject_says_unknown_rather_than_guessing(self):
-        self.assertEqual(self._parse('[project]\nname = "x"\n'), "unknown")
-        with mock.patch.object(connection, "__file__", "/nonexistent/connection.py"):
-            self.assertEqual(connection._version(), "unknown")
 
 
 class RefusalTests(unittest.TestCase):
@@ -172,11 +136,14 @@ class InventoryTests(unittest.TestCase):
 
     def test_reports_the_package_version_and_every_shelf_kind(self):
         body = self._inventory({"checkpoints": ["b.safetensors", "a.safetensors"]})
-        # Against pyproject.toml and not against serve.VERSION, which would be
-        # comparing the code to itself and would pass with "unknown" in it —
-        # the exact failure mode reading the file introduces.
+        # Against pyproject.toml and not against serve.VERSION, which would
+        # be comparing the code to itself.
         self.assertEqual(body["package_version"], _pyproject_version())
         self.assertRegex(body["package_version"], r"^\d+\.\d+")
+        # The other half of the handshake the client does outbound: the floor a
+        # caller needs before it submits a prompt these nodes would refuse.
+        self.assertEqual(body["min_server_version"], connection.MIN_SERVER_VERSION)
+        self.assertRegex(body["min_server_version"], r"^\d+\.\d+")
         self.assertEqual(
             sorted(body["models"]), ["checkpoints", "loras", "text_encoders", "vae"]
         )

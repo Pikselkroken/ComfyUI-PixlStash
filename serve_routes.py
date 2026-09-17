@@ -33,6 +33,7 @@ import re
 from aiohttp import web
 
 from .connection import (
+    MIN_SERVER_VERSION,
     MULTI_USER_MESSAGE,
     VERSION,
     multi_user_active,
@@ -171,13 +172,21 @@ def _filenames(kinds: tuple[str, ...]) -> list[str]:
 async def inventory(request: web.Request) -> web.Response:
     """What this ComfyUI could run, as far as PixlStash's shelf is concerned.
 
-    ``{"package_version": "<this package's>", "models": {"checkpoints": [...], ...}}``
-    — the version is read from ``pyproject.toml`` at import, so it is whatever
-    this install actually is.
+    ``{"package_version": …, "min_server_version": …, "models": {…}}``.
 
-    The point is the gap: a shelf row whose file is not in this list has to be
-    fetched (or, for a checkpoint, cannot be used here at all), and PixlStash
-    can see that before it submits a prompt rather than after it fails.
+    ``package_version`` is ``connection.VERSION``, which
+    ``tests/test_server_version`` keeps equal to ``pyproject.toml``.
+
+    ``min_server_version`` is the other half of the handshake the client does in
+    the opposite direction: the nodes refuse a PixlStash older than this, so a
+    PixlStash asking what it can drive here wants to know the floor before it
+    submits a prompt that would be refused — and computing it from a table of
+    package versions is the version of that which goes stale.
+
+    The ``models`` gap is the point of the rest: a shelf row whose file is not
+    in this list has to be fetched (or, for a checkpoint, cannot be used here at
+    all), and PixlStash can see that before it submits rather than after it
+    fails.
     """
     problem = _refusal(request)
     if problem is not None:
@@ -191,7 +200,13 @@ async def inventory(request: web.Request) -> web.Response:
         name: await asyncio.to_thread(_filenames, kinds)
         for name, kinds in _MODEL_KINDS.items()
     }
-    return _ok({"package_version": VERSION, "models": models})
+    return _ok(
+        {
+            "package_version": VERSION,
+            "min_server_version": MIN_SERVER_VERSION,
+            "models": models,
+        }
+    )
 
 
 async def upload_asset(request: web.Request) -> web.Response:
