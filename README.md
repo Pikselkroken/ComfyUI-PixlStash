@@ -48,7 +48,9 @@ read them at runtime, so they never end up in saved workflow JSON.
 | CLIP Loader | Loads one or two text encoders from the model shelf. | 1.5 | 1.10 |
 
 "Added in" is the ComfyUI-PixlStash version. The Face Likeness Gate also needs a
-running face-extraction worker.
+running face-extraction worker. A node checks the server's version before its
+first request and refuses an older PixlStash with a message naming both
+versions, rather than failing on a route the server does not have yet.
 
 The search and gate nodes take optional project, set and character inputs as
 filters. The loaders pass their context through, so a saver downstream needs no

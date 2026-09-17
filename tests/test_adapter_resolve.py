@@ -75,7 +75,7 @@ class ResolveTests(unittest.TestCase):
         with mock.patch.object(
             shelf_file, "read_credentials", lambda: (url, token, True)
         ):
-            with mock.patch.object(shelf_file, "make_client", lambda *a: client):
+            with mock.patch.object(shelf_file, "make_client", lambda *a, **k: client):
                 # `_resolve`, not `load_lora`: everything these tests are
                 # about (digest validation, credentials, the local-vs-download
                 # decision, the 403 message) happens before a MODEL is touched,
