@@ -84,6 +84,14 @@ async function openFromUrl(key) {
     }
     await startupFinished();
     app.loadApiJson(body.workflow, `${body.name || "PixlStash workflow"}.json`);
+    // A graph rebuilt from a stored recipe keeps no seed, and can name models
+    // PixlStash has forgotten: say so, or the first queue fails unexplained.
+    if (body.seedless || body.forgotten) {
+        const parts = [];
+        if (body.seedless) parts.push("set a seed");
+        if (body.forgotten) parts.push(`pick ${body.forgotten} model(s) PixlStash no longer knows`);
+        notify("warn", `Rebuilt from a saved recipe: ${parts.join(" and ")} before you queue it.`);
+    }
 }
 
 app.registerExtension({
