@@ -12,10 +12,12 @@ that cannot be connected to a loader has to be one.
 
 The node itself filters nothing: the ``adapter_kind`` and ``base_model``
 widgets exist only so the JS Browse modal (``web/js/adapter_picker.js``) can
-narrow the grid, and the ``pixlstash_set`` / ``pixlstash_character`` wires are
-read there too.  **Character wins when both are wired** — ``GET /adapters``
+narrow the grid, and the ``pixlstash_set`` / ``pixlstash_character`` /
+``pixlstash_workflow_set`` wires are read there too.  **Character wins when both are wired** — ``GET /adapters``
 rejects being given ``character_id`` and ``set_id`` together — and that rule
-lives in the picker, next to the request that would 400.  All Python gets is
+lives in the picker, next to the request that would 400.  A workflow set is
+applied on top of either, client-side, since ``GET /adapters`` has no filter
+for one: the grid keeps only the set's LoRA-slot members.  All Python gets is
 one ``adapter_sha256``.
 
 Getting the file onto this machine is ``shelf_file.resolve`` — used in place
@@ -104,7 +106,8 @@ class PixlStashAdapterLoader:
         "Drop-in for the built-in LoRA loader: same model / clip inputs, same "
         "two strengths, same two outputs, chain as many as you like. Click "
         "“Browse adapters…” to pick one. Wire a Character Loader or Set Loader "
-        "in to see only that person's or that set's adapters. The node then wears "
+        "in to see only that person's or that set's adapters, or a Workflow "
+        "Set Loader to see only that workflow set's LoRAs. The node then wears "
         "the picked adapter's name, and its picture when it has one.\n\n"
         "The file is used where it lies when PixlStash is on this machine, and "
         "otherwise fetched once and cached under your loras folder, verified "
@@ -216,6 +219,16 @@ class PixlStashAdapterLoader:
                         ),
                     },
                 ),
+                "pixlstash_workflow_set": (
+                    "PIXLSTASH_WORKFLOW_SET",
+                    {
+                        "forceInput": True,
+                        "tooltip": (
+                            "Wire from a Workflow Set Loader to list only the "
+                            "LoRAs in that workflow set."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -230,6 +243,7 @@ class PixlStashAdapterLoader:
         strength_clip: float = 1.0,
         pixlstash_set: str = "",
         pixlstash_character: str = "",
+        pixlstash_workflow_set: str = "",
     ):
         # adapter_kind / base_model / the two wires are read by the Browse
         # modal, not here — see the module docstring.

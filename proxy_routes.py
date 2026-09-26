@@ -240,6 +240,11 @@ async def proxy_checkpoints(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/checkpoints")
 
 
+async def proxy_workflow_sets(request: web.Request) -> web.Response:
+    """Proxy the model shelf's workflow sets (the hand-made ones ship in 1.12)."""
+    return await _proxy_get(request, "/api/v1/models/workflow-sets")
+
+
 async def proxy_model_icon(request: web.Request) -> web.Response:
     """Proxy a model-shelf icon (binary) from PixlStash.
 
@@ -386,6 +391,7 @@ def register_routes() -> None:
         r.get("/pixlstash/adapters")(proxy_adapters)
         r.get("/pixlstash/adapter")(proxy_adapter)
         r.get("/pixlstash/checkpoints")(proxy_checkpoints)
+        r.get("/pixlstash/workflow_sets")(proxy_workflow_sets)
         r.get("/pixlstash/model_icon")(proxy_model_icon)
         r.get("/pixlstash/entity_thumbnail")(proxy_entity_thumbnail)
         r.get("/pixlstash/version")(proxy_version)

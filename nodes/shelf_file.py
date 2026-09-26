@@ -293,15 +293,18 @@ def cached_download(client, sha256: str, *, folder_key: str, label: str) -> str:
     return final
 
 
-def client_for(label: str):
-    """An authenticated client from the ComfyUI settings, or a clear error."""
+def client_for(label: str, *, min_server_version: str = "1.10.0"):
+    """An authenticated client from the ComfyUI settings, or a clear error.
+
+    1.10.0 is the shelf; a node needing a later route passes its own floor.
+    """
     url, token, verify_ssl = read_credentials()
     if not url or not token:
         raise RuntimeError(
             f"{label}: URL and API Token are required. "
             "Configure them in ComfyUI Settings › PixlStash."
         )
-    return make_client(url, token, verify_ssl, min_server_version="1.10.0")
+    return make_client(url, token, verify_ssl, min_server_version=min_server_version)
 
 
 def fetch_record(client, sha256: str, *, label: str) -> dict:
