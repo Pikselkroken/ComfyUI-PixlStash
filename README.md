@@ -46,6 +46,7 @@ read them at runtime, so they never end up in saved workflow JSON.
 | Checkpoint Loader | Loads a checkpoint from the model shelf. | 1.5 | 1.10 |
 | VAE Loader | Loads a VAE from the model shelf. | 1.5 | 1.10 |
 | CLIP Loader | Loads one or two text encoders from the model shelf. | 1.5 | 1.10 |
+| Workflow Set Loader | Loads a workflow set's checkpoint, text encoders and VAE in one node, and narrows an Adapter Loader to the set's LoRAs. | 1.6 | 1.12 |
 
 "Added in" is the ComfyUI-PixlStash version. The Face Likeness Gate also needs a
 running face-extraction worker. A node checks the server's version before its
@@ -98,6 +99,12 @@ readable without any of them ballooning in size.
 Wire a Set or Character Loader into the Adapter Loader to see only that
 character's or set's adapters.
 
+The Workflow Set Loader loads one of the workflow sets you made on the shelf:
+its checkpoint, with the set's text encoders and VAE in place of the
+checkpoint's own. It does not apply the set's LoRAs, since a set records no
+order or strengths. Wire its `pixlstash_workflow_set` output into an Adapter
+Loader instead, and that loader's Browse grid shows only the set's LoRAs.
+
 Files are used in place when ComfyUI and PixlStash share a filesystem. Adapters,
 VAEs and text encoders are otherwise fetched once and cached under
 `pixlstash/<sha256>.safetensors` in the matching models directory, verified
@@ -114,7 +121,7 @@ query, a search node picks its off a score, and a shelf hash becomes one
 particular file. None of that is in the saved workflow, and re-running it
 tomorrow can legitimately resolve to something else.
 
-So the Picture Loader, the two search nodes and the four shelf loaders attach
+So the Picture Loader, the two search nodes and the five shelf loaders attach
 their **resolution lock** to their own output: the picture IDs that loaded, and
 the models they were locked to. ComfyUI carries it in the `executed` websocket
 message and keeps it in `GET /history/{prompt_id}`, so PixlStash can record
@@ -122,7 +129,7 @@ what went into a render without the nodes having to call anything.
 
 Your graphs do not change: the sockets, their types and their order are the
 same, and an existing workflow loads and runs exactly as before. (Under the
-hood those seven nodes now return ComfyUI's `{"ui": …, "result": …}` form
+hood those eight nodes now return ComfyUI's `{"ui": …, "result": …}` form
 instead of a bare tuple, which matters only if you call them from Python.)
 
 The lock lands under a `pixlstash_lock` key on the node, as a list of entries:

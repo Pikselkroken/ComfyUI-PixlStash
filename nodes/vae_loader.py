@@ -28,6 +28,22 @@ log = logging.getLogger(__name__)
 LABEL = "PixlStash VAE Loader"
 
 
+def load_file(path: str):
+    """A VAE out of one file on this machine. Shared with the Workflow Set Loader."""
+    import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
+    import comfy.utils  # noqa: PLC0415
+
+    # safe_load, as everywhere in this package: the path came off the wire.
+    sd = comfy.utils.load_torch_file(path, safe_load=True)
+    vae = comfy.sd.VAE(sd=sd)
+    # Turns "a file that is not a VAE" into an error here rather than a
+    # tensor-shape crash three nodes later. Guarded because it is a newer
+    # addition to ComfyUI than this node's minimum.
+    if hasattr(vae, "throw_exception_if_invalid"):
+        vae.throw_exception_if_invalid()
+    return vae
+
+
 class PixlStashVAELoader:
     """Loads a VAE off the PixlStash model shelf."""
 
@@ -65,19 +81,8 @@ class PixlStashVAELoader:
         }
 
     def load_vae(self, vae_sha256: str):
-        import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
-        import comfy.utils  # noqa: PLC0415
-
         record, path = shelf_file.resolve(vae_sha256, label=LABEL, folder_key="vae")
-        # safe_load, as everywhere in this package: the path came off the wire.
-        sd = comfy.utils.load_torch_file(path, safe_load=True)
-        vae = comfy.sd.VAE(sd=sd)
-        # Turns "a file that is not a VAE" into an error here rather than a
-        # tensor-shape crash three nodes later. Guarded because it is a newer
-        # addition to ComfyUI than this node's minimum.
-        if hasattr(vae, "throw_exception_if_invalid"):
-            vae.throw_exception_if_invalid()
         return lock.report(
-            (vae,),
+            (load_file(path),),
             models=[lock.shelf_model("vae", sha256=record.get("sha256") or vae_sha256)],
         )

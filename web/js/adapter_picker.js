@@ -8,7 +8,7 @@
  *   valueWidget — the hidden widget written on confirm (`adapter_sha256`,
  *                 `vae_sha256`, `clip_sha256`, `checkpoint_id`)
  *   credentials — { url, token, verifySsl }
- *   filters     — { fileKind, kind, baseModel, characterId, setId }
+ *   filters     — { fileKind, kind, baseModel, characterId, setId, workflowSetId }
  *   onPicked    — called with the chosen shelf record after confirm
  *
  * One modal for every kind of file on the shelf, because they differ in three
@@ -141,6 +141,17 @@ function buildAdapterQuery({ fileKind, kind, baseModel, characterId, setId } = {
     if (characterId)  q.character_id = characterId;
     else if (setId)   q.set_id      = setId;
     return q;
+}
+
+/**
+ * The sha256s in one hand-made workflow set's LoRA slot. `GET /adapters` has
+ * no workflow-set filter, so the grid is narrowed client-side by these.
+ */
+async function fetchWorkflowSetLoras(credentials, workflowSetId) {
+    const data = await proxyFetch("/pixlstash/workflow_sets", credentials);
+    const set = (data?.hand_made ?? []).find(s => String(s.id) === String(workflowSetId));
+    if (!set) throw new Error(`Workflow set #${workflowSetId} does not exist any more.`);
+    return new Set((set.members ?? []).filter(m => m.slot === "lora").map(m => m.sha256));
 }
 
 /** Does this record have a copy the server last saw on disk? */
@@ -545,11 +556,18 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     let all = [];
     try {
         const data = await proxyFetch(shelf.path, credentials, buildAdapterQuery(filters));
-        const rows = data?.[shelf.listKey];
+        let rows = data?.[shelf.listKey];
+        rows = Array.isArray(rows) ? rows : [];
+        if (filters?.workflowSetId) {
+            // Before the stack fold, not after: a set may hold an epoch that
+            // is not its stack's cover, and folding first would hide it.
+            const loras = await fetchWorkflowSetLoras(credentials, filters.workflowSetId);
+            rows = rows.filter(r => r && loras.has(r.sha256));
+        }
         // A row with no identity cannot be picked, written or resolved again.
         // For a checkpoint that is the not-yet-hashed case, which is ordinary —
         // it has an id, so it is only the hash-addressed kinds that lose rows.
-        all = collapseStacks(Array.isArray(rows) ? rows.filter(r => r && idOf(r)) : []);
+        all = collapseStacks(rows.filter(r => r && idOf(r)));
     } catch (err) {
         if (!dismissed) showNotice(`⚠ ${err.message}`, "#f88");
         return;
@@ -582,8 +600,9 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
 // Tiny helpers (local)
 // ---------------------------------------------------------------------------
 
-function describeFilters({ kind, baseModel, characterId, setId } = {}, shelf = { noun: "adapter" }) {
+function describeFilters({ kind, baseModel, characterId, setId, workflowSetId } = {}, shelf = { noun: "adapter" }) {
     const parts = [];
+    if (workflowSetId) parts.push(`workflow set #${workflowSetId}`);
     if (kind)        parts.push(kind);
     if (baseModel)   parts.push(baseModel);
     if (characterId) parts.push(`character #${characterId}`);

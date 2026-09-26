@@ -59,6 +59,27 @@ def _encoder_folder() -> str:
     return "text_encoders" if folder_paths.get_folder_paths("text_encoders") else "clip"
 
 
+def load_files(paths: list[str], clip_type: str):
+    """One CLIP out of the encoder files on this machine, for a ``type`` name.
+
+    Shared with the Workflow Set Loader. ``comfy.sd.load_clip`` takes any
+    number of files, so a set's three encoders load as readily as one.
+    """
+    import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
+    import folder_paths  # noqa: PLC0415
+
+    # getattr rather than a lookup table, exactly as the built-in does it:
+    # the widget list came from this enum, so a miss means the enum changed
+    # under a saved workflow, and stable_diffusion is the safe landing.
+    return comfy.sd.load_clip(
+        ckpt_paths=paths,
+        embedding_directory=folder_paths.get_folder_paths("embeddings"),
+        clip_type=getattr(
+            comfy.sd.CLIPType, clip_type.upper(), comfy.sd.CLIPType.STABLE_DIFFUSION
+        ),
+    )
+
+
 class PixlStashCLIPLoader:
     """Loads one or two text encoders off the PixlStash model shelf."""
 
@@ -121,9 +142,6 @@ class PixlStashCLIPLoader:
         }
 
     def load_clip(self, clip_sha256: str, type: str, clip_sha256_2: str = ""):  # noqa: A002 — ComfyUI's own widget name
-        import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
-        import folder_paths  # noqa: PLC0415
-
         folder = _encoder_folder()
         shas = [
             str(sha).strip()
@@ -138,19 +156,7 @@ class PixlStashCLIPLoader:
         resolved = [
             shelf_file.resolve(sha, label=LABEL, folder_key=folder) for sha in shas
         ]
-        paths = [path for _record, path in resolved]
-
-        # getattr rather than a lookup table, exactly as the built-in does it:
-        # the widget list came from this enum, so a miss means the enum changed
-        # under a saved workflow, and stable_diffusion is the safe landing.
-        clip_type = getattr(
-            comfy.sd.CLIPType, type.upper(), comfy.sd.CLIPType.STABLE_DIFFUSION
-        )
-        clip = comfy.sd.load_clip(
-            ckpt_paths=paths,
-            embedding_directory=folder_paths.get_folder_paths("embeddings"),
-            clip_type=clip_type,
-        )
+        clip = load_files([path for _record, path in resolved], type)
         # Both files, in widget order — a pair is two locks, not one, and which
         # encoder sat in which slot is part of what was run.
         return lock.report(

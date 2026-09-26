@@ -103,6 +103,7 @@ class LoaderContractTests(unittest.TestCase):
         for name, wire in (
             ("pixlstash_set", "PIXLSTASH_SET"),
             ("pixlstash_character", "PIXLSTASH_CHARACTER"),
+            ("pixlstash_workflow_set", "PIXLSTASH_WORKFLOW_SET"),
         ):
             with self.subTest(name=name):
                 declared, opts = self.spec["optional"][name]

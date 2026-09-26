@@ -12,11 +12,16 @@ that cannot be connected to a loader has to be one.
 
 The node itself filters nothing: the ``adapter_kind`` and ``base_model``
 widgets exist only so the JS Browse modal (``web/js/adapter_picker.js``) can
-narrow the grid, and the ``pixlstash_set`` / ``pixlstash_character`` wires are
-read there too.  **Character wins when both are wired** — ``GET /adapters``
-rejects being given ``character_id`` and ``set_id`` together — and that rule
-lives in the picker, next to the request that would 400.  All Python gets is
-one ``adapter_sha256``.
+narrow the grid, and the ``pixlstash_set`` / ``pixlstash_character`` /
+``pixlstash_workflow_set`` wires are read there too.  **Character wins over
+set when both are wired** — ``GET /adapters`` rejects being given
+``character_id`` and ``set_id`` together — and that rule lives in the picker,
+next to the request that would 400.  A workflow set is applied on top of
+either, client-side, since ``GET /adapters`` has no filter for one: the grid
+keeps only the set's LoRA-slot members.  All Python gets is one
+``adapter_sha256``, and the one thing it checks is that a wired workflow set
+holds it — a warning, not a refusal, since a LoRA picked before the wire went
+in is the owner's choice to keep.
 
 Getting the file onto this machine is ``shelf_file.resolve`` — used in place
 when PixlStash shares this filesystem, fetched into ``<loras>/pixlstash/`` and
@@ -78,6 +83,33 @@ def _trigger_words(record: dict) -> str:
     return str(value).strip() if value else ""
 
 
+def _warn_if_outside_set(sha256: str, set_id: str) -> None:
+    """Log when the loaded adapter is not in the wired workflow set's LoRAs.
+
+    Never raises: the check is advice, and a set lookup that fails must not
+    stop a render the owner already chose the adapter for.
+    """
+    from .workflow_set_loader import fetch_set  # noqa: PLC0415
+
+    try:
+        entry = fetch_set(str(set_id))
+    except RuntimeError as exc:
+        log.warning("[PixlStash] Could not check the workflow set: %s", exc)
+        return
+    loras = {
+        m.get("sha256")
+        for m in entry.get("members") or []
+        if isinstance(m, dict) and m.get("slot") == "lora"
+    }
+    if str(sha256).strip().lower() not in loras:
+        log.warning(
+            "[PixlStash] %s: adapter %s… is not one of workflow set #%s's LoRAs.",
+            LABEL,
+            str(sha256)[:12],
+            set_id,
+        )
+
+
 class PixlStashAdapterLoader:
     """A LoRA loader whose file comes off the PixlStash shelf.
 
@@ -104,7 +136,8 @@ class PixlStashAdapterLoader:
         "Drop-in for the built-in LoRA loader: same model / clip inputs, same "
         "two strengths, same two outputs, chain as many as you like. Click "
         "“Browse adapters…” to pick one. Wire a Character Loader or Set Loader "
-        "in to see only that person's or that set's adapters. The node then wears "
+        "in to see only that person's or that set's adapters, or a Workflow "
+        "Set Loader to see only that workflow set's LoRAs. The node then wears "
         "the picked adapter's name, and its picture when it has one.\n\n"
         "The file is used where it lies when PixlStash is on this machine, and "
         "otherwise fetched once and cached under your loras folder, verified "
@@ -216,6 +249,16 @@ class PixlStashAdapterLoader:
                         ),
                     },
                 ),
+                "pixlstash_workflow_set": (
+                    "PIXLSTASH_WORKFLOW_SET",
+                    {
+                        "forceInput": True,
+                        "tooltip": (
+                            "Wire from a Workflow Set Loader to list only the "
+                            "LoRAs in that workflow set."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -230,10 +273,15 @@ class PixlStashAdapterLoader:
         strength_clip: float = 1.0,
         pixlstash_set: str = "",
         pixlstash_character: str = "",
+        pixlstash_workflow_set: str = "",
     ):
-        # adapter_kind / base_model / the two wires are read by the Browse
-        # modal, not here — see the module docstring.
+        # adapter_kind / base_model / the set and character wires are read by
+        # the Browse modal, not here — see the module docstring.
         record, path = self._resolve(adapter_sha256)
+        if pixlstash_workflow_set:
+            _warn_if_outside_set(
+                record.get("sha256") or adapter_sha256, pixlstash_workflow_set
+            )
         triggers = _trigger_words(record)
 
         # AFTER the resolve, not before. The built-in returns early on a pair of

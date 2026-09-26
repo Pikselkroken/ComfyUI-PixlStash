@@ -49,6 +49,8 @@ const NODE_MIN_VERSION = {
     "PixlStashCheckpointLoader": "1.10.0",
     "PixlStashVAELoader":        "1.10.0",
     "PixlStashCLIPLoader":       "1.10.0",
+    // Hand-made workflow sets (GET /models/workflow-sets → hand_made): 1.12.0.
+    "PixlStashWorkflowSetLoader": "1.12.0",
 };
 
 // Cache: serverUrl → { state: "checking"|"resolved"|"error", version: string|null }
@@ -328,6 +330,23 @@ async function fetchCharacterOptions(projectId) {
 }
 
 /**
+ * The owner's hand-made workflow sets. An unnamed set is called after its
+ * checkpoint, which is what the shelf's own set grid leads with.
+ */
+async function fetchWorkflowSetOptions() {
+    const data = await proxyFetch("/pixlstash/workflow_sets", getSettingsCredentials());
+    return [
+        NONE_LABEL,
+        ...(data?.hand_made ?? []).map(s => {
+            const ckpt = (s.members ?? []).find(m => m.slot === "checkpoint");
+            // Listed, not hidden: the set still narrows an Adapter Loader.
+            const name = s.name || ckpt?.name || "Unnamed set";
+            return fmt(s.id, s.incomplete ? `${name} (no checkpoint)` : name);
+        }),
+    ];
+}
+
+/**
  * Distinct base models across the shelf's adapters.
  *
  * These are raw strings, not `"<name> #<id>"` — the server matches
@@ -372,6 +391,7 @@ function _kickOffFetch(kind, projectId, node, widget) {
         kind === "projects"    ? fetchProjectOptions()
       : kind === "sets"        ? fetchSetOptions(projectId)
       : kind === "base_models" ? fetchBaseModelOptions()
+      : kind === "workflow_sets" ? fetchWorkflowSetOptions()
       : /* characters */         fetchCharacterOptions(projectId);
 
     fetcher
@@ -877,6 +897,18 @@ app.registerExtension({
         }
 
         // ============================================================
+        // Workflow Set Loader — dynamic list of the shelf's hand-made sets
+        // ============================================================
+        if (nodeData.name === "PixlStashWorkflowSetLoader") {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+                const w = this.widgets?.find(x => x.name === "pixlstash_workflow_set");
+                if (w) bindDynamicValues(this, w, "workflow_sets", () => null);
+            };
+        }
+
+        // ============================================================
         // PixlStash Picture Loader  — Browse button + hide credential widgets
         // ============================================================
         if (nodeData.name === "PixlStashPictureLoader") {
@@ -961,6 +993,7 @@ app.registerExtension({
                         // both. Mirrored in nodes/adapter_loader.py.
                         characterId: getWiredValue(this, "pixlstash_character"),
                         setId:       getWiredValue(this, "pixlstash_set"),
+                        workflowSetId: getWiredValue(this, "pixlstash_workflow_set"),
                     }),
                 });
             };
