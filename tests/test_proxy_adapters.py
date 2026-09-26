@@ -240,10 +240,6 @@ class AdapterListProxyTests(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["params"], {"file_kind": "adapter"})
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class WorkflowGraphProxyTests(unittest.TestCase):
     """``/pixlstash/workflow_graph`` puts ``workflow_key`` into an upstream path.
 
@@ -269,3 +265,7 @@ class WorkflowGraphProxyTests(unittest.TestCase):
         client, resp = self._call(GOOD)
         self.assertEqual(client.calls[0][0], f"/api/v1/workflows/{GOOD}/graph")
         self.assertEqual(json.loads(body_of(resp))["name"], "wf")
+
+
+if __name__ == "__main__":
+    unittest.main()

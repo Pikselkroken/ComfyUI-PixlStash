@@ -65,7 +65,7 @@ async function openFromUrl(key) {
     if (!token) {
         notify(
             "error",
-            "Set your PixlStash API token in Settings › PixlStash to open PixlStash workflows here.",
+            "Set your PixlStash API token in Settings › PixlStash, then open the link from PixlStash again.",
         );
         return;
     }
@@ -101,6 +101,11 @@ app.registerExtension({
         const key = takeKeyFromUrl();
         // Not awaited: `setup` is awaited by ComfyUI's start-up, and this has
         // to wait for the rest of that start-up to finish.
-        if (key !== null) openFromUrl(key);
+        if (key !== null) {
+            openFromUrl(key).catch((err) => {
+                console.error("[PixlStash] could not open workflow", key, err);
+                notify("error", `Could not open that workflow: ${err.message}`);
+            });
+        }
     },
 });
