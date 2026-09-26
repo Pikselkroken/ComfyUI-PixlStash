@@ -5,6 +5,8 @@ stubbed here; what is left is picking the set, reading its slots, and refusing
 the cases that would otherwise build a graph other than the one the owner made.
 """
 
+import sys
+import types
 import unittest
 from unittest import mock
 
@@ -58,10 +60,15 @@ class ContractTests(unittest.TestCase):
 
         def client_for(label, *, min_server_version="1.10.0"):
             seen["min"] = min_server_version
-            return _Client({"hand_made": [{"id": 3, "members": []}]})
+            return _Client(
+                {"hand_made": [{"id": 2, "members": []}, {"id": 3, "members": []}]}
+            )
 
         with mock.patch.object(shelf_file, "client_for", client_for):
             self.assertEqual(wsl.fetch_set("3")["id"], 3)
+            with self.assertRaises(RuntimeError) as ctx:
+                wsl.fetch_set("4")
+        self.assertIn("does not exist any more", str(ctx.exception))
         self.assertEqual(seen["min"], "1.12.0")
 
 
@@ -143,7 +150,10 @@ class LoadTests(unittest.TestCase):
             [(["/models/bbbb.safetensors", "/models/cccc.safetensors"], "flux")],
         )
         # LoRAs are the Adapter Loader's job; nothing resolves one here.
-        self.assertNotIn(LORA, [sha for sha, _ in self.resolved])
+        self.assertEqual(
+            self.resolved,
+            [(TE1, "text_encoders"), (TE2, "text_encoders"), (VAE1, "vae")],
+        )
         kinds = [m["kind"] for m in out["ui"]["pixlstash_lock"][0]["models"]]
         self.assertEqual(kinds, ["checkpoint", "clip", "clip", "vae"])
 
@@ -151,11 +161,12 @@ class LoadTests(unittest.TestCase):
         self._run(
             [
                 _member(CKPT_SHA, "checkpoint", "checkpoint", model_id=9),
-                _member(VAE1, "vae", "vae"),
+                # Listed out of hash order, so "first" is not "smallest".
                 _member(VAE2, "vae", "vae"),
+                _member(VAE1, "vae", "vae"),
             ]
         )
-        self.assertEqual(self.vae_calls, ["/models/dddd.safetensors"])
+        self.assertEqual(self.vae_calls, ["/models/eeee.safetensors"])
 
     def test_an_unclassified_checkpoint_is_fetched_as_a_diffusion_model(self):
         self._run([_member(CKPT_SHA, "checkpoint", "unknown", model_id=9)])
@@ -166,6 +177,14 @@ class LoadTests(unittest.TestCase):
             self._run([_member(CKPT_SHA, "checkpoint", "vae", model_id=9)])
         self.assertIn("filed on the shelf as a vae", str(ctx.exception))
         self.assertEqual(self.resolved, [])
+
+    def test_more_encoders_than_comfyui_combines_is_refused(self):
+        ckpt = _member(CKPT_SHA, "checkpoint", "checkpoint", model_id=9)
+        te = [_member(c * 64, "text_encoder", "text_encoder") for c in "0123"]
+        self._run([ckpt, *te])  # four is fine
+        with self.assertRaises(RuntimeError) as ctx:
+            self._run([ckpt, *te, _member("5" * 64, "text_encoder", "text_encoder")])
+        self.assertIn("at most 4", str(ctx.exception))
 
     def test_a_set_with_no_checkpoint_is_refused(self):
         with self.assertRaises(RuntimeError) as ctx:
@@ -194,6 +213,56 @@ class LoadTests(unittest.TestCase):
                     self.assertIn("no workflow set selected", str(ctx.exception))
 
 
+class CheckpointFlagTests(unittest.TestCase):
+    """What load_file actually forwards to ComfyUI."""
+
+    def test_the_output_flags_reach_comfy(self):
+        calls = []
+        sd = types.ModuleType("comfy.sd")
+
+        def guess(path, output_vae, output_clip, embedding_directory):
+            calls.append((output_clip, output_vae))
+            return ("M", "C", "V", "extra")
+
+        sd.load_checkpoint_guess_config = guess
+        comfy = types.ModuleType("comfy")
+        comfy.__path__ = []
+        comfy.sd = sd
+        fp = types.ModuleType("folder_paths")
+        fp.get_folder_paths = lambda kind: []
+        with mock.patch.dict(
+            sys.modules, {"comfy": comfy, "comfy.sd": sd, "folder_paths": fp}
+        ):
+            checkpoint_loader.load_file("/x", output_clip=False, output_vae=True)
+            checkpoint_loader.load_file("/x", output_clip=True, output_vae=False)
+            self.assertEqual(checkpoint_loader.load_file("/x"), ("M", "C", "V"))
+        self.assertEqual(calls, [(False, True), (True, False), (True, True)])
+
+
+class AdapterSetWarningTests(unittest.TestCase):
+    """The Adapter Loader warns, and only warns, about a LoRA outside the set."""
+
+    def _warn(self, sha, fetch):
+        adapter_loader = boot.load("nodes.adapter_loader")
+        with mock.patch.object(wsl, "fetch_set", fetch):
+            with self.assertLogs(adapter_loader.log, "WARNING") as logs:
+                adapter_loader._warn_if_outside_set(sha, "3")
+                adapter_loader.log.warning("sentinel")
+        return [r for r in logs.output if "sentinel" not in r]
+
+    def test_a_lora_outside_the_set_is_warned_about(self):
+        entry = {"members": [_member(LORA, "lora", "adapter")]}
+        self.assertEqual(self._warn(LORA, lambda i: entry), [])
+        out = self._warn(VAE1, lambda i: entry)
+        self.assertIn("is not one of workflow set #3's LoRAs", out[0])
+
+    def test_a_failed_set_lookup_does_not_stop_the_render(self):
+        def fail(i):
+            raise RuntimeError("gone")
+
+        self.assertIn("Could not check", self._warn(LORA, fail)[0])
+
+
 class CacheKeyTests(unittest.TestCase):
     """A set id can mean other files tomorrow, so it is not the cache key."""
 
@@ -201,6 +270,18 @@ class CacheKeyTests(unittest.TestCase):
         entry = {"id": 3, "members": members}
         with mock.patch.object(wsl, "fetch_set", lambda set_id: entry):
             return NODE.IS_CHANGED("My set #3", "flux")
+
+    def test_a_member_going_off_shelf_or_re_kinded_changes_the_key(self):
+        base = self._key([_member(VAE1, "vae", "vae")])
+        self.assertNotEqual(
+            base, self._key([_member(VAE1, "vae", "vae", on_shelf=False)])
+        )
+        self.assertNotEqual(base, self._key([_member(VAE1, "vae", "unknown")]))
+
+    def test_it_is_callable_without_its_inputs(self):
+        # ComfyUI leaves linked inputs out of the IS_CHANGED call.
+        key = NODE.IS_CHANGED()
+        self.assertNotEqual(key, key)
 
     def test_editing_the_set_changes_the_key(self):
         before = [_member(CKPT_SHA, "checkpoint", "checkpoint")]

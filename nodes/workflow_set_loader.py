@@ -12,6 +12,10 @@ What it does not do, and why:
   Loader instead, whose Browse grid then shows only the set's LoRAs.
 * **``other`` members are ignored.** The slot is for files the owner wanted
   kept with the set that are not part of a generation graph's base.
+* **Text encoders are one combination, not alternatives.** Every encoder in
+  the set goes into one CLIP, as clip-l + t5 does for Flux. A set holding two
+  precisions of the same T5 builds the wrong CLIP, so keep alternatives in
+  separate sets. More than ComfyUI's four is refused.
 * **More than one VAE**: the first, in the order the server lists them (by
   name). A set may hold several as alternatives and nothing says which one is
   meant, so the choice is logged rather than guessed silently.
@@ -34,6 +38,9 @@ LABEL = "PixlStash Workflow Set Loader"
 
 # Hand-made workflow sets (``GET /models/workflow-sets`` → ``hand_made``).
 MIN_SERVER_VERSION = "1.12.0"
+
+# The most files ``comfy.sd.load_clip`` combines into one CLIP (HiDream's four).
+MAX_ENCODERS = 4
 
 _ID_RE = re.compile(r"#(\d+)\s*$")
 
@@ -102,7 +109,8 @@ class PixlStashWorkflowSetLoader:
         "VAE replaces the checkpoint's VAE; with none in the set, the "
         "checkpoint's own are used. Set `clip_type` to the model family, as "
         "on the CLIP Loader.\n\n"
-        "LoRAs are not applied: wire the workflow_set output into a PixlStash "
+        "Every text encoder in the set is loaded together, as one CLIP.\n\n"
+        "LoRAs are not applied: wire the pixlstash_workflow_set output into a PixlStash "
         "Adapter (LoRA) Loader and its Browse grid shows only this set's LoRAs."
     )
     OUTPUT_TOOLTIPS = (
@@ -187,6 +195,13 @@ class PixlStashWorkflowSetLoader:
             )
         )
 
+        if len(encoders) > MAX_ENCODERS:
+            raise RuntimeError(
+                f"{LABEL}: this workflow set has {len(encoders)} text encoders, "
+                f"and ComfyUI combines at most {MAX_ENCODERS}. Every encoder in a "
+                "set is loaded together, so keep alternative versions of one "
+                "encoder in separate sets."
+            )
         if encoders:
             folder = clip_loader._encoder_folder()
             resolved = [
@@ -217,11 +232,13 @@ class PixlStashWorkflowSetLoader:
         return lock.report((model, clip, vae, set_id), models=models)
 
     @classmethod
-    def IS_CHANGED(cls, pixlstash_workflow_set, clip_type):
+    def IS_CHANGED(cls, pixlstash_workflow_set="", clip_type=""):
         # A set id, unlike the other shelf loaders' hashes, can mean different
         # files tomorrow: members are added, removed and swapped on the shelf.
         # So the cache key is what the set holds now, not its name on the node.
         # On any failure load_set runs and reports the error itself.
+        # ponytail: one whole workflow-sets read per queue (the server computes
+        # its evidence counts too); a by-id route would make this cheap.
         try:
             entry = fetch_set(_extract_id(pixlstash_workflow_set))
         except Exception:  # noqa: BLE001
@@ -236,6 +253,7 @@ class PixlStashWorkflowSetLoader:
 
     @classmethod
     def VALIDATE_INPUTS(cls, pixlstash_workflow_set, clip_type):
-        # Both lists are filled client-side or read off the running ComfyUI,
-        # so a saved value need not be in the placeholder list.
+        # The set list is filled client-side, so a saved set is never in the
+        # placeholder list; clip_type may come from another ComfyUI's
+        # CLIPType, and load_clip falls back to stable_diffusion for it.
         return True
