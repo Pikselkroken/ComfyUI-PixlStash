@@ -317,6 +317,23 @@ async def proxy_entity_thumbnail(request: web.Request) -> web.Response:
     )
 
 
+async def proxy_workflow_graph(request: web.Request) -> web.Response:
+    """Proxy one PixlStash workflow's runnable graph, for *Open in ComfyUI*.
+
+    PixlStash's Workflow tab opens ComfyUI with ``?pixlstash_workflow=<key>``;
+    ``open_workflow.js`` reads it and fetches the graph through here. A key is
+    a 64-character lowercase hex digest and is interpolated into the upstream
+    path, so anything else is refused before a client is built.
+    """
+    workflow_key = request.rel_url.query.get("workflow_key", "")
+    if not _SHA256_RE.match(workflow_key):
+        return _err(
+            "workflow_key query param must be a 64-character lowercase hex digest.",
+            status=400,
+        )
+    return await _proxy_get(request, f"/api/v1/workflows/{workflow_key}/graph")
+
+
 async def proxy_version(request: web.Request) -> web.Response:
     try:
         client = _build_client(request)
@@ -372,6 +389,7 @@ def register_routes() -> None:
         r.get("/pixlstash/model_icon")(proxy_model_icon)
         r.get("/pixlstash/entity_thumbnail")(proxy_entity_thumbnail)
         r.get("/pixlstash/version")(proxy_version)
+        r.get("/pixlstash/workflow_graph")(proxy_workflow_graph)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:
         log.warning("[PixlStash] Could not register proxy routes: %s", exc)

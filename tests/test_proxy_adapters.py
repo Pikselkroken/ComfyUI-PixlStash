@@ -240,5 +240,32 @@ class AdapterListProxyTests(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["params"], {"file_kind": "adapter"})
 
 
+class WorkflowGraphProxyTests(unittest.TestCase):
+    """``/pixlstash/workflow_graph`` puts ``workflow_key`` into an upstream path.
+
+    So it takes the digest guard the icon route has, asserted on the message
+    for the same reason: the unconfigured-server path is a 400 as well.
+    """
+
+    def _call(self, key):
+        client = _FakeClient(_Response(payload={"name": "wf", "workflow": {}}))
+        with mock.patch.object(proxy, "_build_client", lambda request: client):
+            resp = asyncio.run(proxy.proxy_workflow_graph(_Request(workflow_key=key)))
+        return client, resp
+
+    def test_rejects_anything_but_a_digest(self):
+        for bad in ("", "A" * 64, "a" * 63, GOOD + "\n", "../" + "a" * 61, f"{GOOD}/x"):
+            with self.subTest(bad=bad):
+                client, resp = self._call(bad)
+                self.assertEqual(resp.kwargs.get("status"), 400, f"accepted {bad!r}")
+                self.assertIn("hex digest", body_of(resp))
+                self.assertEqual(client.calls, [])
+
+    def test_a_digest_reaches_the_workflow_graph(self):
+        client, resp = self._call(GOOD)
+        self.assertEqual(client.calls[0][0], f"/api/v1/workflows/{GOOD}/graph")
+        self.assertEqual(json.loads(body_of(resp))["name"], "wf")
+
+
 if __name__ == "__main__":
     unittest.main()
