@@ -1,8 +1,8 @@
 # ComfyUI-PixlStash dependencies
 #
-# All packages listed here are already present in a standard ComfyUI
-# environment.  The list exists for completeness and for users who install
-# ComfyUI-PixlStash into a fresh virtual environment.
+# requests and Pillow are already present in a standard ComfyUI environment;
+# they are listed for users who install ComfyUI-PixlStash into a fresh virtual
+# environment.  gguf is not, and is needed only to load a .gguf model.
 #
 # torch and numpy are intentionally omitted — they are always present in
 # any ComfyUI installation and their version requirements are managed by
@@ -10,3 +10,5 @@
 
 requests>=2.28.0
 Pillow>=9.0.0
+# GGUF models, via vendor/comfyui_gguf
+gguf>=0.13.0

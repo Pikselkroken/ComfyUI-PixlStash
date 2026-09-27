@@ -12,7 +12,7 @@ Resolution order:
    a file of the size the shelf recorded.  See ``local_path`` for why the size
    is not optional: the shelf's paths are the **PixlStash host's** paths, and
    ComfyUI is not always on that host.
-2. Otherwise a download into ``<folder>/pixlstash/<sha256>.safetensors``, whose
+2. Otherwise a download into ``<folder>/pixlstash/<sha256><suffix>``, whose
    digest is verified before anything is cached.  ``folder`` is the ComfyUI
    models directory for the kind — ``loras``, ``vae``, ``text_encoders``.
 
@@ -37,15 +37,16 @@ from .lock import SHA256_RE
 
 log = logging.getLogger(__name__)
 
-# The shelf is a catalogue of safetensors and nothing else: PixlStash's folder
-# scanner skips every other extension outright (``MODEL_SUFFIX`` in
-# ``pixlstash/services/model_folder_scanner.py``), and its adapter kinds are
-# read out of a safetensors header.  So this is defence in depth against a
-# server sending something unexpected, not a filter that hides a real class of
-# adapter — and it is why the download cache can name every file it writes
-# ``.safetensors`` without inspecting the body.  If the shelf ever learns to
-# catalogue ``.pt`` / ``.ckpt``, both uses have to change together.
-_SUFFIX = ".safetensors"
+# What a loader accepts off the shelf, by default. PixlStash's scanner also
+# catalogues ``.gguf`` (``SHELF_MODEL_SUFFIXES``), but only the loaders that can
+# hand one to ``gguf_support`` opt in: the rest keep this default, and
+# ``resolve`` refuses a GGUF for them before downloading gigabytes they cannot
+# load.  The suffix check in ``local_path`` is defence in depth against a server
+# sending something unexpected; the download cache names each file after its
+# record's suffix, from the same list.
+SAFETENSORS = (".safetensors",)
+# ``gguf_support.SUFFIX`` beside the default, for the loaders that route to it.
+WITH_GGUF = (".safetensors", ".gguf")
 
 _CHUNK = 1 << 20
 
@@ -78,7 +79,12 @@ def _expected_size(record: dict) -> int | None:
     return size if size > 0 else None
 
 
-def local_path(record: dict, *, label: str = "PixlStash") -> str | None:
+def local_path(
+    record: dict,
+    *,
+    label: str = "PixlStash",
+    suffixes: tuple[str, ...] = SAFETENSORS,
+) -> str | None:
     """Absolute path of a usable local copy of ``record``, or ``None``.
 
     ``folder_path`` / ``relpath`` describe the machine **PixlStash** runs on.
@@ -97,8 +103,8 @@ def local_path(record: dict, *, label: str = "PixlStash") -> str | None:
     the digest, so a refusal costs a copy and never correctness.
 
     A location is used only if the shelf last saw it ``present``, the joined
-    path stays inside the folder that was registered, it is a ``.safetensors``
-    file, it is on disk, and its size matches.
+    path stays inside the folder that was registered, it ends in one of
+    ``suffixes``, it is on disk, and its size matches.
 
     The containment check is *not* a boundary against a hostile server —
     ``folder_path`` and ``relpath`` arrive on the same wire, so a server that
@@ -152,8 +158,12 @@ def local_path(record: dict, *, label: str = "PixlStash") -> str | None:
                 folder,
             )
             continue
-        if not path.lower().endswith(_SUFFIX):
-            log.warning("[PixlStash] Ignoring non-safetensors copy: %s", path)
+        if not path.lower().endswith(suffixes):
+            log.warning(
+                "[PixlStash] Ignoring a copy that is not %s: %s",
+                " or ".join(suffixes),
+                path,
+            )
             continue
 
         if expected_size is None:
@@ -214,17 +224,43 @@ def _cache_dir(folder_key: str, label: str) -> str:
     return os.path.join(roots[0], "pixlstash")
 
 
-def cached_download(client, sha256: str, *, folder_key: str, label: str) -> str:
+def _record_suffix(record: dict) -> str:
+    """The lower-case extension of the file ``record`` describes, or ``""``.
+
+    ``filename`` when the shelf sent one, else the first location's
+    ``relpath``: both name the same file.
+    """
+    name = str(record.get("filename") or "")
+    if not name:
+        locations = record.get("locations")
+        if isinstance(locations, list):
+            for loc in locations:
+                if isinstance(loc, dict) and loc.get("relpath"):
+                    name = str(loc["relpath"])
+                    break
+    return os.path.splitext(name)[1].lower()
+
+
+def cached_download(
+    client,
+    sha256: str,
+    *,
+    folder_key: str,
+    label: str,
+    suffix: str = SAFETENSORS[0],
+) -> str:
     """Return a locally cached copy of the adapter, downloading it if needed.
 
     Named by content hash, so existence *is* the validity check on later runs
     and two shelf rows of the same weights dedupe — which is only true because
     nothing is ever put under that name until its digest has been checked.
+    ``suffix`` is the record's own, because the loaders route on it: a GGUF
+    cached as ``.safetensors`` would be handed to the wrong reader.
     """
     cache_dir = _cache_dir(folder_key, label)
     os.makedirs(cache_dir, exist_ok=True)
     # ponytail: the cache never evicts. Add an LRU sweep if anyone fills a disk.
-    final = os.path.join(cache_dir, f"{sha256}{_SUFFIX}")
+    final = os.path.join(cache_dir, f"{sha256}{suffix}")
     if os.path.isfile(final):
         return final
 
@@ -332,11 +368,20 @@ def fetch_record(client, sha256: str, *, label: str) -> dict:
     return record
 
 
-def resolve(sha256: str, *, label: str, folder_key: str, download: bool = True):
+def resolve(
+    sha256: str,
+    *,
+    label: str,
+    folder_key: str,
+    download: bool = True,
+    suffixes: tuple[str, ...] = SAFETENSORS,
+):
     """``(record, path)`` for a hash-addressed shelf file.
 
     The one entry point the nodes call: everything above is reachable on its
     own for the checkpoint loader, which has no hash to address by.
+    ``suffixes`` are the file types the calling node loads; a record of any
+    other type is refused before anything is downloaded.
     """
     sha256 = (sha256 or "").strip().lower()
     if not sha256:
@@ -352,7 +397,13 @@ def resolve(sha256: str, *, label: str, folder_key: str, download: bool = True):
 
     client = client_for(label)
     record = fetch_record(client, sha256, label=label)
-    path = local_path(record, label=label)
+    suffix = _record_suffix(record)
+    if suffix and suffix not in suffixes:
+        raise RuntimeError(
+            f"{label}: “{record.get('filename') or sha256[:12]}” is a {suffix} "
+            "file, which this node does not load."
+        )
+    path = local_path(record, label=label, suffixes=suffixes)
     if path is None:
         if not download:
             raise RuntimeError(
@@ -361,6 +412,13 @@ def resolve(sha256: str, *, label: str, folder_key: str, download: bool = True):
                 "are its own host's. Put ComfyUI on the same filesystem, or "
                 "copy the file into a ComfyUI models folder and rescan."
             )
-        path = cached_download(client, sha256, folder_key=folder_key, label=label)
+        path = cached_download(
+            client,
+            sha256,
+            folder_key=folder_key,
+            label=label,
+            # A record naming no file is cached under the default, as before.
+            suffix=suffix or suffixes[0],
+        )
     log.info("[PixlStash] %s resolved to %s", sha256[:12], path)
     return record, path

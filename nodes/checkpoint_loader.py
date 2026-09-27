@@ -31,13 +31,17 @@ grid.  ``load_checkpoint_guess_config`` cannot build a CLIP or a VAE out of one
 and raises; ``load_vae``/``load_diffusion_model`` is the fallback, and the node
 then returns a MODEL with the other two outputs empty — which is what ComfyUI's
 own checkpoint loader does for a checkpoint carrying no VAE.
+
+A ``.gguf`` is a quantised diffusion model and nothing else, so it goes
+straight to ``gguf_support.load_unet`` (core ComfyUI cannot read one) and comes
+back the same way, as ``(model, None, None)``.
 """
 
 from __future__ import annotations
 
 import logging
 
-from . import lock, shelf_file
+from . import gguf_support, lock, shelf_file
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +50,7 @@ LABEL = "PixlStash Checkpoint Loader"
 
 def local_copy(record: dict, *, label: str) -> str:
     """The checkpoint's path on this machine, or an error saying why not."""
-    path = shelf_file.local_path(record, label=label)
+    path = shelf_file.local_path(record, label=label, suffixes=shelf_file.WITH_GGUF)
     if path is None:
         raise RuntimeError(
             f"{label}: no usable copy of “"
@@ -60,13 +64,22 @@ def local_copy(record: dict, *, label: str) -> str:
     return path
 
 
-def load_file(path: str, *, output_clip: bool = True, output_vae: bool = True):
+def load_file(
+    path: str,
+    *,
+    output_clip: bool = True,
+    output_vae: bool = True,
+    label: str = LABEL,
+):
     """``(model, clip, vae)`` out of one checkpoint file on this machine.
 
     Shared with the Workflow Set Loader, whose checkpoint slot is this same
     file and which turns off the outputs its set replaces. A bare diffusion
-    model comes back as ``(model, None, None)``.
+    model, a GGUF included, comes back as ``(model, None, None)``.
     """
+    if gguf_support.is_gguf(path):
+        return (gguf_support.load_unet(path, label=label), None, None)
+
     import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
     import folder_paths  # noqa: PLC0415
 
@@ -117,14 +130,16 @@ class PixlStashCheckpointLoader:
         "share a filesystem, and never the case when they do not.\n\n"
         "A bare diffusion model (a Flux UNET, say) lands on the shelf as a "
         "checkpoint too; it loads here as a MODEL with the CLIP and VAE "
-        "outputs empty, so wire those from their own loaders."
+        "outputs empty, so wire those from their own loaders. A GGUF is a "
+        "diffusion model only; its CLIP and VAE outputs are empty the same way."
     )
     OUTPUT_TOOLTIPS = (
         "The diffusion model, for a KSampler.",
         "The CLIP for encoding prompts. Empty for a checkpoint that carries "
-        "no text encoder — wire a PixlStash CLIP Loader instead.",
+        "no text encoder, and for a GGUF — wire a PixlStash CLIP Loader "
+        "instead.",
         "The VAE for encoding and decoding images. Empty for a checkpoint that "
-        "carries none — wire a PixlStash VAE Loader instead.",
+        "carries none, and for a GGUF — wire a PixlStash VAE Loader instead.",
     )
 
     @classmethod

@@ -75,19 +75,29 @@ class ContractTests(unittest.TestCase):
 class LoadTests(unittest.TestCase):
     def setUp(self):
         self.resolved = []
+        # sha → the extension its resolved path gets; .safetensors otherwise.
+        self.extensions = {}
         self.clip_calls = []
         self.vae_calls = []
         self.ckpt_flags = []
 
-        def load_ckpt(path, *, output_clip=True, output_vae=True):
+        self.suffixes = {}
+        self.ckpt_paths = []
+
+        def load_ckpt(path, *, output_clip=True, output_vae=True, label=None):
             self.ckpt_flags.append((output_clip, output_vae))
+            self.ckpt_paths.append(path)
             return ("MODEL", "CKPT_CLIP", "CKPT_VAE")
 
-        def resolve(sha, *, label, folder_key, download=True):
+        def resolve(
+            sha, *, label, folder_key, download=True, suffixes=(".safetensors",)
+        ):
             self.resolved.append((sha, folder_key))
-            return {"sha256": sha}, f"/models/{sha[:4]}.safetensors"
+            self.suffixes[sha] = suffixes
+            ext = self.extensions.get(sha, ".safetensors")
+            return {"sha256": sha}, f"/models/{sha[:4]}{ext}"
 
-        def load_clip(paths, clip_type):
+        def load_clip(paths, clip_type, *, label=None):
             self.clip_calls.append((paths, clip_type))
             return "SET_CLIP"
 
@@ -171,6 +181,24 @@ class LoadTests(unittest.TestCase):
     def test_an_unclassified_checkpoint_is_fetched_as_a_diffusion_model(self):
         self._run([_member(CKPT_SHA, "checkpoint", "unknown", model_id=9)])
         self.assertEqual(self.resolved, [(CKPT_SHA, "diffusion_models")])
+
+    def test_a_gguf_unet_routes_on_its_own_file_beside_safetensors_parts(self):
+        self.extensions[CKPT_SHA] = ".gguf"
+        out = self._run(
+            [
+                _member(CKPT_SHA, "checkpoint", "unknown", model_id=9),
+                _member(TE1, "text_encoder", "text_encoder"),
+                _member(VAE1, "vae", "vae"),
+            ]
+        )
+        self.assertEqual(out["result"], ("MODEL", "SET_CLIP", "SET_VAE", "3"))
+        self.assertEqual(self.ckpt_paths, ["/models/aaaa.gguf"])
+        self.assertEqual(self.clip_calls, [(["/models/bbbb.safetensors"], "flux")])
+        self.assertEqual(self.vae_calls, ["/models/dddd.safetensors"])
+        # The checkpoint and encoder slots take GGUF; the VAE slot does not.
+        self.assertEqual(self.suffixes[CKPT_SHA], shelf_file.WITH_GGUF)
+        self.assertEqual(self.suffixes[TE1], shelf_file.WITH_GGUF)
+        self.assertEqual(self.suffixes[VAE1], (".safetensors",))
 
     def test_a_checkpoint_member_re_kinded_to_something_else_is_refused(self):
         with self.assertRaises(RuntimeError) as ctx:

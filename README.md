@@ -105,9 +105,15 @@ checkpoint's own. It does not apply the set's LoRAs, since a set records no
 order or strengths. Wire its `pixlstash_workflow_set` output into an Adapter
 Loader instead, and that loader's Browse grid shows only the set's LoRAs.
 
+The CLIP, Checkpoint and Workflow Set loaders also read `.gguf` files. A GGUF
+text encoder loads alone or paired with a safetensors one. A GGUF checkpoint is
+a diffusion model only, so its `clip` and `vae` outputs are empty: wire them from
+their own loaders. The VAE and Adapter loaders take `.safetensors` only. GGUF
+loading needs the `gguf` Python package, which is in `requirements.txt`.
+
 Files are used in place when ComfyUI and PixlStash share a filesystem. Adapters,
 VAEs and text encoders are otherwise fetched once and cached under
-`pixlstash/<sha256>.safetensors` in the matching models directory, verified
+`pixlstash/<sha256>.safetensors` (or `.gguf`) in the matching models directory, verified
 against the digest. **Checkpoints cannot be fetched** and must be readable
 locally.
 
@@ -274,7 +280,13 @@ plus LiteGraph for the frontend. The loaders mirror the *shape* of the built-ins
 (inputs, outputs, widget names) so they drop into existing graphs, but none of
 their code is reproduced here.
 
-Runtime dependencies come from PyPI, never vendored:
-[requests](https://pypi.org/project/requests/) (Apache-2.0) and
-[Pillow](https://pypi.org/project/Pillow/) (MIT-CMU). ComfyUI supplies `torch`
+Runtime dependencies come from PyPI:
+[requests](https://pypi.org/project/requests/) (Apache-2.0),
+[Pillow](https://pypi.org/project/Pillow/) (MIT-CMU) and
+[gguf](https://pypi.org/project/gguf/) (MIT). ComfyUI supplies `torch`
 and `numpy`.
+
+**Third-party code:** `vendor/comfyui_gguf/` is
+[ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) by city96, Apache-2.0,
+unmodified. See [its licence](vendor/comfyui_gguf/LICENSE) and
+[VENDORED.md](vendor/comfyui_gguf/VENDORED.md).

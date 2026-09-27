@@ -20,13 +20,17 @@ license = { file = "LICENSE" }
 #     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 # ]
 
-dependencies = ["requests>=2.28.0", "Pillow>=9.0.0"]
+dependencies = ["requests>=2.28.0", "Pillow>=9.0.0", "gguf>=0.13.0"]
 
 [project.urls]
 Repository = "https://github.com/Pikselkroken/ComfyUI-PixlStash"
 #  Used by Comfy Registry https://registry.comfy.org
 Documentation = "https://pixlstash.dev"
 "Bug Tracker" = "https://github.com/Pikselkroken/ComfyUI-PixlStash/issues"
+
+[tool.ruff]
+# Upstream's files, kept byte-identical (vendor/comfyui_gguf/VENDORED.md).
+extend-exclude = ["vendor/comfyui_gguf"]
 
 [tool.comfy]
 PublisherId = "pikselkroken"
