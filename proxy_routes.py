@@ -53,6 +53,11 @@ log = logging.getLogger(__name__)
 # a row that does exist.  Refusing beats guessing which row the caller meant.
 _ID_RE = re.compile(r"[1-9][0-9]*\Z")
 
+# A PixlStash workflow id: ``auto:`` and the core hash of an automatic group,
+# or the uuid hex a merge or split minted. ASCII classes, so ``fullmatch``
+# cannot be satisfied by a trailing newline or a non-ASCII digit.
+_WORKFLOW_ID_RE = re.compile(r"auto:[0-9a-f]{64}|[0-9a-f]{32}")
+
 
 def _positive_id(raw: str) -> int | None:
     """``raw`` as a positive row id, or ``None`` if it is not written as one."""
@@ -325,15 +330,16 @@ async def proxy_entity_thumbnail(request: web.Request) -> web.Response:
 async def proxy_workflow_graph(request: web.Request) -> web.Response:
     """Proxy one PixlStash workflow's runnable graph, for *Open in ComfyUI*.
 
-    PixlStash's Workflow tab opens ComfyUI with ``?pixlstash_workflow=<key>``;
-    ``open_workflow.js`` reads it and fetches the graph through here. A key is
-    a 64-character lowercase hex digest and is interpolated into the upstream
-    path, so anything else is refused before a client is built.
+    PixlStash's Workflow tab opens ComfyUI with ``?pixlstash_workflow=<id>``;
+    ``open_workflow.js`` reads it and fetches the graph through here. The id
+    (``auto:`` and a core hash, or a 32-character uuid hex) is interpolated
+    into the upstream path, so anything else is refused before a client is
+    built.
     """
     workflow_key = request.rel_url.query.get("workflow_key", "")
-    if not _SHA256_RE.match(workflow_key):
+    if not _WORKFLOW_ID_RE.fullmatch(workflow_key):
         return _err(
-            "workflow_key query param must be a 64-character lowercase hex digest.",
+            "workflow_key query param must be a PixlStash workflow id.",
             status=400,
         )
     return await _proxy_get(request, f"/api/v1/workflows/{workflow_key}/graph")

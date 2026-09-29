@@ -1,8 +1,8 @@
 /**
  * Open a PixlStash workflow in ComfyUI.
  *
- * PixlStash's Workflow tab opens ComfyUI at `?pixlstash_workflow=<key>`.
- * ComfyUI takes no workflow from a URL, so this reads the key, fetches the
+ * PixlStash's Workflow tab opens ComfyUI at `?pixlstash_workflow=<id>`.
+ * ComfyUI takes no workflow from a URL, so this reads the id, fetches the
  * graph through the `/pixlstash/workflow_graph` proxy and hands it to
  * ComfyUI's own API-format loader (`app.loadApiJson`), which rebuilds it as an
  * editor graph in a new tab.
@@ -14,7 +14,8 @@
 import { app } from "../../scripts/app.js";
 
 const PARAM = "pixlstash_workflow";
-const KEY_RE = /^[0-9a-f]{64}$/;
+// A workflow id: `auto:` and the core hash, or the uuid hex a merge minted.
+const KEY_RE = /^(?:auto:[0-9a-f]{64}|[0-9a-f]{32})$/;
 
 // How long to wait for ComfyUI to finish restoring its own tabs.
 const STARTUP_TIMEOUT_MS = 30000;
