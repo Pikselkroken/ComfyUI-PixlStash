@@ -54,9 +54,9 @@ log = logging.getLogger(__name__)
 _ID_RE = re.compile(r"[1-9][0-9]*\Z")
 
 # A PixlStash workflow id: ``auto:`` and the core hash of an automatic group,
-# or the uuid hex a merge or split minted. ASCII classes, so ``fullmatch``
+# or ``manual:`` and the uuid hex of a manual workflow. ASCII classes, so ``fullmatch``
 # cannot be satisfied by a trailing newline or a non-ASCII digit.
-_WORKFLOW_ID_RE = re.compile(r"auto:[0-9a-f]{64}|[0-9a-f]{32}")
+_WORKFLOW_ID_RE = re.compile(r"auto:[0-9a-f]{64}|manual:[0-9a-f]{32}")
 
 
 def _positive_id(raw: str) -> int | None:
@@ -332,7 +332,7 @@ async def proxy_workflow_graph(request: web.Request) -> web.Response:
 
     PixlStash's Workflow tab opens ComfyUI with ``?pixlstash_workflow=<id>``;
     ``open_workflow.js`` reads it and fetches the graph through here. The id
-    (``auto:`` and a core hash, or a 32-character uuid hex) is interpolated
+    (``auto:`` and a core hash, or ``manual:`` and a 32-character uuid hex) is interpolated
     into the upstream path, so anything else is refused before a client is
     built.
     """

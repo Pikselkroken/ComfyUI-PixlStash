@@ -254,7 +254,7 @@ class WorkflowGraphProxyTests(unittest.TestCase):
         return client, resp
 
     AUTO = f"auto:{GOOD}"
-    MINTED = "b" * 32
+    MINTED = "manual:" + "b" * 32
 
     def test_rejects_anything_but_a_workflow_id(self):
         for bad in (
@@ -264,11 +264,16 @@ class WorkflowGraphProxyTests(unittest.TestCase):
             "a" * 31,
             "a" * 33,
             f"auto:{'a' * 63}",
-            f"auto:{self.MINTED}",
+            "b" * 32,  # bare uuid hex no longer exists
+            f"auto:{'b' * 32}",
+            f"manual:{GOOD}",
+            f"manual:{'b' * 31}",
+            f"MANUAL:{'b' * 32}",
             f"AUTO:{GOOD}",
             self.AUTO + "\n",
             self.MINTED + "\n",
             "../" + "a" * 29,
+            "manual:" + "../" + "a" * 28,
             f"{self.AUTO}/x",
             f"{self.MINTED}/../x",
         ):
