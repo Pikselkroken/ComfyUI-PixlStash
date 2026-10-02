@@ -14,8 +14,8 @@
 import { app } from "../../scripts/app.js";
 
 const PARAM = "pixlstash_workflow";
-// A workflow id: `auto:` and the core hash, or the uuid hex a merge minted.
-const KEY_RE = /^(?:auto:[0-9a-f]{64}|[0-9a-f]{32})$/;
+// A workflow id: `auto:` and the core hash, or `manual:` and a uuid hex.
+const KEY_RE = /^(?:auto:[0-9a-f]{64}|manual:[0-9a-f]{32})$/;
 
 // How long to wait for ComfyUI to finish restoring its own tabs.
 const STARTUP_TIMEOUT_MS = 30000;
@@ -85,6 +85,12 @@ async function openFromUrl(key) {
     }
     await startupFinished();
     app.loadApiJson(body.workflow, `${body.name || "PixlStash workflow"}.json`);
+    // Tag the canvas so pictures this graph saves are filed on the manual
+    // workflow (PixlStash reads it from the saved `workflow` PNG chunk).
+    if (key.startsWith("manual:")) {
+        app.graph.extra ??= {};
+        app.graph.extra.pixlstash_workflow_id = key;
+    }
     // A graph rebuilt from a stored recipe keeps no seed, and can name models
     // PixlStash has forgotten: say so, or the first queue fails unexplained.
     if (body.seedless || body.forgotten) {
