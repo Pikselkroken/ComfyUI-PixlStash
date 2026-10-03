@@ -196,26 +196,68 @@ class VendoredErrorTests(unittest.TestCase):
             with self.assertRaises(ModuleNotFoundError):
                 gguf_support.load_clip(["/m/t5.gguf"], "FLUX", label="X")
 
-    def test_an_upstream_error_comes_back_labelled(self):
+    def _load_clip(self, paths, torch_sd=None, gguf_error=None):
+        """``load_clip`` against a stub vendored pack; the readers each path hit."""
+        read = []
+
+        def gguf_clip_loader(p):
+            read.append(("gguf", p))
+            if gguf_error:
+                raise gguf_error
+            return {"gguf": p}
+
+        def load_torch_file(p, safe_load=False):
+            read.append(("torch", p))
+            return dict(torch_sd or {"st": p})
+
         class Loader:
-            def load_data(self, paths):
-                raise NotImplementedError(
-                    "Mixing scaled FP8 with GGUF is not supported!"
-                )
-
             def load_patcher(self, paths, clip_type, data):
-                raise AssertionError("load_data raised; nothing to patch")
+                return ("CLIP", clip_type, data)
 
-        vendored = types.SimpleNamespace(CLIPLoaderGGUF=Loader)
-        with mock.patch.object(
-            gguf_support.importlib, "import_module", lambda *a: vendored
+        vendored = types.SimpleNamespace(
+            CLIPLoaderGGUF=Loader, gguf_clip_loader=gguf_clip_loader
+        )
+        utils = types.ModuleType("comfy.utils")
+        utils.load_torch_file = load_torch_file
+        patcher, _ = _comfy()
+        with (
+            patcher,
+            mock.patch.dict(sys.modules, {"comfy.utils": utils}),
+            mock.patch.object(
+                gguf_support.importlib, "import_module", lambda *a: vendored
+            ),
         ):
-            with self.assertRaises(RuntimeError) as ctx:
-                gguf_support.load_clip(["/m/t5.gguf"], "FLUX", label="My Node")
+            sys.modules["comfy"].utils = utils
+            out = gguf_support.load_clip(paths, "FLUX", label="My Node")
+        return out, read
+
+    def test_an_uppercase_gguf_is_read_as_gguf_beside_a_safetensors(self):
+        out, read = self._load_clip(["/m/T5.GGUF", "/m/clip_l.safetensors"])
         self.assertEqual(
-            str(ctx.exception), "My Node: Mixing scaled FP8 with GGUF is not supported!"
+            read, [("gguf", "/m/T5.GGUF"), ("torch", "/m/clip_l.safetensors")]
+        )
+        self.assertEqual(
+            out,
+            ("CLIP", "FLUX", [{"gguf": "/m/T5.GGUF"}, {"st": "/m/clip_l.safetensors"}]),
+        )
+
+    def test_scaled_fp8_beside_gguf_is_refused_with_the_label(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            self._load_clip(
+                ["/m/t5.gguf", "/m/clip_l.safetensors"], torch_sd={"scaled_fp8": 1}
+            )
+        self.assertTrue(
+            str(ctx.exception).startswith(
+                "My Node: Mixing scaled FP8 with GGUF is not supported!"
+            )
         )
         self.assertIsInstance(ctx.exception.__cause__, NotImplementedError)
+
+    def test_an_upstream_error_comes_back_labelled(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            self._load_clip(["/m/t5.gguf"], gguf_error=ValueError("bad arch 'pig'"))
+        self.assertEqual(str(ctx.exception), "My Node: bad arch 'pig'")
+        self.assertIsInstance(ctx.exception.__cause__, ValueError)
 
 
 class SuffixTests(unittest.TestCase):

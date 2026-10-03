@@ -36,13 +36,31 @@ def _vendored(label: str):
 def load_clip(paths: list[str], clip_type, *, label: str):
     """One CLIP from encoder files, any of them GGUF; ``clip_type`` a ``CLIPType``.
 
-    Upstream's ``load_data`` picks the reader per file by extension, so a GGUF
-    T5 beside a safetensors clip-l loads as one CLIP.
+    The reader is picked per file by extension, so a GGUF T5 beside a
+    safetensors clip-l loads as one CLIP.
     """
     nodes = _vendored(label)
+    import comfy.utils  # noqa: PLC0415 — only available inside ComfyUI
+
     loader = nodes.CLIPLoaderGGUF()
     try:
-        return loader.load_patcher(paths, clip_type, loader.load_data(paths))
+        # Mirrors ``CLIPLoaderGGUF.load_data`` in upstream ``nodes.py`` at
+        # commit 6ea2651, but with our case-insensitive ``is_gguf``: upstream's
+        # ``p.endswith(".gguf")`` sends a ``T5.GGUF`` to the torch loader.
+        # Re-diff it on every vendored refresh.
+        data = []
+        for p in paths:
+            if is_gguf(p):
+                sd = nodes.gguf_clip_loader(p)
+            else:
+                sd = comfy.utils.load_torch_file(p, safe_load=True)
+                if "scaled_fp8" in sd:
+                    raise NotImplementedError(
+                        "Mixing scaled FP8 with GGUF is not supported! Use "
+                        f"regular CLIP loader or switch model(s)\n({p})"
+                    )
+            data.append(sd)
+        return loader.load_patcher(paths, clip_type, data)
     except Exception as exc:
         # Upstream's own errors, such as its NotImplementedError for a
         # scaled-FP8 encoder beside a GGUF one, named after our node.

@@ -19,7 +19,11 @@ UPSTREAM=/path/to/ComfyUI-GGUF   # a checkout of the commit you want
 for f in nodes.py loader.py ops.py dequant.py tools/convert.py LICENSE; do cp "$UPSTREAM/$f" "vendor/comfyui_gguf/$f"; done
 ```
 
-Then update the commit above, and diff upstream's `UnetLoaderGGUF.load_unet`
-against the previous pin: `gguf_support.load_unet` copies its body (upstream
-takes a filename, we have a path), so any change there has to be carried
-across by hand.
+Then update the commit above, and diff two upstream methods against the
+previous pin, because `gguf_support` copies their bodies and any change there
+has to be carried across by hand:
+
+- `UnetLoaderGGUF.load_unet`, copied by `gguf_support.load_unet` (upstream
+  takes a filename, we have a path);
+- `CLIPLoaderGGUF.load_data`, copied by `gguf_support.load_clip` (upstream
+  matches `.gguf` case-sensitively, and a `T5.GGUF` must load too).
