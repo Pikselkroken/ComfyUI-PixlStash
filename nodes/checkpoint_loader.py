@@ -37,16 +37,20 @@ from __future__ import annotations
 
 import logging
 
-from . import lock, shelf_file
+from . import gguf_support, lock, shelf_file
 
 log = logging.getLogger(__name__)
 
 LABEL = "PixlStash Checkpoint Loader"
 
+# What this node and the Workflow Set Loader read as a checkpoint. A GGUF is a
+# diffusion model only, loaded through ``gguf_support``.
+SUFFIXES = (".safetensors", ".gguf")
+
 
 def local_copy(record: dict, *, label: str) -> str:
     """The checkpoint's path on this machine, or an error saying why not."""
-    path = shelf_file.local_path(record, label=label)
+    path = shelf_file.local_path(record, label=label, suffixes=SUFFIXES)
     if path is None:
         raise RuntimeError(
             f"{label}: no usable copy of “"
@@ -60,13 +64,18 @@ def local_copy(record: dict, *, label: str) -> str:
     return path
 
 
-def load_file(path: str, *, output_clip: bool = True, output_vae: bool = True):
+def load_file(
+    path: str, *, output_clip: bool = True, output_vae: bool = True, label: str = LABEL
+):
     """``(model, clip, vae)`` out of one checkpoint file on this machine.
 
     Shared with the Workflow Set Loader, whose checkpoint slot is this same
     file and which turns off the outputs its set replaces. A bare diffusion
-    model comes back as ``(model, None, None)``.
+    model, and every GGUF, comes back as ``(model, None, None)``.
     """
+    if gguf_support.is_gguf(path):
+        return gguf_support.load_unet(path, label=label), None, None
+
     import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
     import folder_paths  # noqa: PLC0415
 
@@ -117,14 +126,17 @@ class PixlStashCheckpointLoader:
         "share a filesystem, and never the case when they do not.\n\n"
         "A bare diffusion model (a Flux UNET, say) lands on the shelf as a "
         "checkpoint too; it loads here as a MODEL with the CLIP and VAE "
-        "outputs empty, so wire those from their own loaders."
+        "outputs empty, so wire those from their own loaders. A GGUF is a "
+        "diffusion model only, in the same way."
     )
     OUTPUT_TOOLTIPS = (
         "The diffusion model, for a KSampler.",
         "The CLIP for encoding prompts. Empty for a checkpoint that carries "
-        "no text encoder — wire a PixlStash CLIP Loader instead.",
+        "no text encoder, and for a GGUF, which is a diffusion model only — "
+        "wire a PixlStash CLIP Loader instead.",
         "The VAE for encoding and decoding images. Empty for a checkpoint that "
-        "carries none — wire a PixlStash VAE Loader instead.",
+        "carries none, and for a GGUF, which is a diffusion model only — wire "
+        "a PixlStash VAE Loader instead.",
     )
 
     @classmethod

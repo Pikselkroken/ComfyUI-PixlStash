@@ -105,9 +105,16 @@ checkpoint's own. It does not apply the set's LoRAs, since a set records no
 order or strengths. Wire its `pixlstash_workflow_set` output into an Adapter
 Loader instead, and that loader's Browse grid shows only the set's LoRAs.
 
+The CLIP, Checkpoint and Workflow Set loaders also read `.gguf` files, through
+a bundled copy of [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF), so
+you do not need that pack installed. A GGUF text encoder can be paired with a
+safetensors one. A GGUF checkpoint is a diffusion model only: its CLIP and VAE
+outputs are empty, so wire those from their own loaders. The VAE and Adapter
+loaders take `.safetensors` only.
+
 Files are used in place when ComfyUI and PixlStash share a filesystem. Adapters,
 VAEs and text encoders are otherwise fetched once and cached under
-`pixlstash/<sha256>.safetensors` in the matching models directory, verified
+`pixlstash/<sha256>.safetensors` (or `.gguf`) in the matching models directory, verified
 against the digest. **Checkpoints cannot be fetched** and must be readable
 locally.
 
@@ -235,6 +242,12 @@ cd custom_nodes
 git clone https://github.com/Pikselkroken/ComfyUI-PixlStash.git
 ```
 
+Loading `.gguf` models needs the `gguf` Python package, which is not installed
+with this pack. Run `pip install -U "gguf>=0.13.0"` in ComfyUI's environment if
+you use GGUF models; the loader says so if it is missing or too old. A few GGUF text encoders (a Wan
+UMT5, Gemma 3) also need `sentencepiece` and `protobuf` to rebuild their
+tokenizer, and the error names them too.
+
 Restart ComfyUI, then set your URL and API token under **Settings > PixlStash**.
 
 ## Configuration
@@ -274,7 +287,12 @@ plus LiteGraph for the frontend. The loaders mirror the *shape* of the built-ins
 (inputs, outputs, widget names) so they drop into existing graphs, but none of
 their code is reproduced here.
 
-Runtime dependencies come from PyPI, never vendored:
-[requests](https://pypi.org/project/requests/) (Apache-2.0) and
-[Pillow](https://pypi.org/project/Pillow/) (MIT-CMU). ComfyUI supplies `torch`
-and `numpy`.
+Runtime dependencies come from PyPI:
+[requests](https://pypi.org/project/requests/) (Apache-2.0),
+[Pillow](https://pypi.org/project/Pillow/) (MIT-CMU), and optionally
+[gguf](https://pypi.org/project/gguf/) (MIT) for GGUF models. ComfyUI supplies
+`torch` and `numpy`.
+
+**Third-party code:** `vendor/comfyui_gguf/` is
+[ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) by city96, Apache-2.0,
+unmodified. See [vendor/comfyui_gguf/LICENSE](vendor/comfyui_gguf/LICENSE).

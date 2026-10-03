@@ -182,10 +182,13 @@ class PixlStashWorkflowSetLoader:
             # Wan diffusion model usually lands — is hash-addressed like any
             # support file, so it can be fetched.
             record, path = shelf_file.resolve(
-                ckpt["sha256"], label=LABEL, folder_key="diffusion_models"
+                ckpt["sha256"],
+                label=LABEL,
+                folder_key="diffusion_models",
+                suffixes=checkpoint_loader.SUFFIXES,
             )
         model, clip, vae = checkpoint_loader.load_file(
-            path, output_clip=not encoders, output_vae=not vaes
+            path, output_clip=not encoders, output_vae=not vaes, label=LABEL
         )
         models.append(
             lock.shelf_model(
@@ -205,10 +208,17 @@ class PixlStashWorkflowSetLoader:
         if encoders:
             folder = clip_loader._encoder_folder()
             resolved = [
-                shelf_file.resolve(m["sha256"], label=LABEL, folder_key=folder)
+                shelf_file.resolve(
+                    m["sha256"],
+                    label=LABEL,
+                    folder_key=folder,
+                    suffixes=clip_loader.SUFFIXES,
+                )
                 for m in encoders
             ]
-            clip = clip_loader.load_files([p for _r, p in resolved], clip_type)
+            clip = clip_loader.load_files(
+                [p for _r, p in resolved], clip_type, label=LABEL
+            )
             models += [
                 lock.shelf_model("clip", sha256=r.get("sha256") or m["sha256"])
                 for m, (r, _p) in zip(encoders, resolved)
