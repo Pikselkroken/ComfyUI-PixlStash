@@ -13,7 +13,17 @@ one code path and it is the tested one.
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import inspect
+import re
+
+# The oldest ``gguf`` the pinned upstream works with (its requirements.txt).
+# An older one fails importing the vendored code on a missing quant type, and a
+# plain ``pip install gguf`` does not upgrade it, hence ``-U`` in the message.
+MIN_GGUF = (0, 13)
+_INSTALL = (
+    'run `pip install -U "gguf>=0.13.0"` in ComfyUI\'s environment and restart ComfyUI.'
+)
 
 
 def is_gguf(path: str) -> bool:
@@ -23,14 +33,36 @@ def is_gguf(path: str) -> bool:
 def _vendored(label: str):
     """The vendored ``nodes`` module, or a message naming what to install."""
     try:
+        version = importlib.metadata.version("gguf")
+    except importlib.metadata.PackageNotFoundError:
+        version = None  # the import below says so, or finds an unpackaged copy
+    if version and tuple(int(n) for n in re.findall(r"\d+", version)[:2]) < MIN_GGUF:
+        raise RuntimeError(
+            f"{label}: loading a GGUF needs `gguf` 0.13.0 or newer, and this "
+            f"environment has {version} — {_INSTALL}"
+        )
+    try:
         return importlib.import_module("..vendor.comfyui_gguf.nodes", __package__)
     except ModuleNotFoundError as exc:
         if exc.name != "gguf":
             raise
         raise RuntimeError(
-            f"{label}: loading a GGUF needs the `gguf` Python package — run "
-            "`pip install gguf` in ComfyUI's environment and restart ComfyUI."
+            f"{label}: loading a GGUF needs the `gguf` Python package — {_INSTALL}"
         ) from exc
+
+
+def _is_oom(exc: Exception) -> bool:
+    """Whether ComfyUI's executor would treat ``exc`` as out-of-memory.
+
+    Such an error must reach it unwrapped: the executor unloads models and
+    reports the OOM only for an exception ``is_oom`` recognises. (Interruption
+    needs nothing here: ``InterruptProcessingException`` is a ``BaseException``
+    and no ``except Exception`` catches it.)
+    """
+    import comfy.model_management as mm  # noqa: PLC0415 — only inside ComfyUI
+
+    is_oom = getattr(mm, "is_oom", None)
+    return is_oom(exc) if is_oom else isinstance(exc, mm.OOM_EXCEPTION)
 
 
 def load_clip(paths: list[str], clip_type, *, label: str):
@@ -62,6 +94,8 @@ def load_clip(paths: list[str], clip_type, *, label: str):
             data.append(sd)
         return loader.load_patcher(paths, clip_type, data)
     except Exception as exc:
+        if _is_oom(exc):
+            raise
         # Upstream's own errors, such as its NotImplementedError for a
         # scaled-FP8 encoder beside a GGUF one, named after our node.
         raise RuntimeError(f"{label}: {exc}") from exc
@@ -93,6 +127,8 @@ def load_unet(path: str, *, label: str):
             sd, model_options={"custom_operations": ops}, **kwargs
         )
     except Exception as exc:
+        if _is_oom(exc):
+            raise
         raise RuntimeError(f"{label}: {exc}") from exc
     if model is None:
         raise RuntimeError(

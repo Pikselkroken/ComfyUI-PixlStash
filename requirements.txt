@@ -13,4 +13,4 @@ Pillow>=9.0.0
 
 # Optional, and deliberately not listed: `gguf` (>=0.13.0), needed only to load
 # a .gguf model (via vendor/comfyui_gguf). It is imported on the first GGUF
-# load, and its absence then gives a "pip install gguf" message.
+# load, and its absence, or a version too old, then gives a "pip install -U" message.

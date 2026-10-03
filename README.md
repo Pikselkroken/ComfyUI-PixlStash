@@ -243,8 +243,8 @@ git clone https://github.com/Pikselkroken/ComfyUI-PixlStash.git
 ```
 
 Loading `.gguf` models needs the `gguf` Python package, which is not installed
-with this pack. Run `pip install gguf` in ComfyUI's environment if you use GGUF
-models; the loader says so if it is missing. A few GGUF text encoders (a Wan
+with this pack. Run `pip install -U "gguf>=0.13.0"` in ComfyUI's environment if
+you use GGUF models; the loader says so if it is missing or too old. A few GGUF text encoders (a Wan
 UMT5, Gemma 3) also need `sentencepiece` and `protobuf` to rebuild their
 tokenizer, and the error names them too.
 

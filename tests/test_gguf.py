@@ -25,6 +25,10 @@ checkpoint_loader = boot.load("nodes.checkpoint_loader")
 SHA = "c" * 64
 
 
+class FakeOOM(RuntimeError):
+    """What ``comfy.model_management.is_oom`` recognises in these stubs."""
+
+
 def _comfy():
     """Stub ``comfy.sd`` / ``folder_paths`` modules, and the core load calls made."""
     calls = []
@@ -36,7 +40,15 @@ def _comfy():
     comfy.sd = sd
     fp = types.ModuleType("folder_paths")
     fp.get_folder_paths = lambda kind: []
-    modules = {"comfy": comfy, "comfy.sd": sd, "folder_paths": fp}
+    mm = types.ModuleType("comfy.model_management")
+    mm.is_oom = lambda e: isinstance(e, FakeOOM)
+    comfy.model_management = mm
+    modules = {
+        "comfy": comfy,
+        "comfy.sd": sd,
+        "comfy.model_management": mm,
+        "folder_paths": fp,
+    }
     return mock.patch.dict(sys.modules, modules), calls
 
 
@@ -174,6 +186,34 @@ class LoadUnetTests(unittest.TestCase):
         self.assertIsNone(ops.Linear.dequant_dtype)
         self.assertIsNone(ops.Linear.patch_dtype)
 
+    def test_load_errors_are_labelled_but_out_of_memory_is_not(self):
+        class Ops:
+            Linear = type("Linear", (), {})
+
+        for error, expected in (
+            (ValueError("unknown arch"), RuntimeError),
+            (FakeOOM("CUDA out of memory"), FakeOOM),
+        ):
+            with self.subTest(error=type(error).__name__):
+
+                def loader(p, error=error):
+                    raise error
+
+                vendored = types.SimpleNamespace(GGMLOps=Ops, gguf_sd_loader=loader)
+                patcher, _ = _comfy()
+                with (
+                    patcher,
+                    mock.patch.object(
+                        gguf_support.importlib, "import_module", lambda *a: vendored
+                    ),
+                ):
+                    with self.assertRaises(expected) as ctx:
+                        gguf_support.load_unet("/m/flux.gguf", label="X")
+                if expected is FakeOOM:
+                    self.assertIs(ctx.exception, error)
+                else:
+                    self.assertEqual(str(ctx.exception), "X: unknown arch")
+
 
 class VendoredErrorTests(unittest.TestCase):
     def test_a_missing_gguf_package_names_what_to_install(self):
@@ -186,7 +226,36 @@ class VendoredErrorTests(unittest.TestCase):
                     ["/m/t5.gguf"], "FLUX", label="PixlStash CLIP Loader"
                 )
         self.assertIn("PixlStash CLIP Loader:", str(ctx.exception))
-        self.assertIn("pip install gguf", str(ctx.exception))
+        self.assertIn('pip install -U "gguf>=0.13.0"', str(ctx.exception))
+
+    def test_a_too_old_gguf_is_named_before_the_vendored_import(self):
+        def explode(*a, **k):
+            raise AssertionError("imported the vendored pack on an old gguf")
+
+        with (
+            mock.patch.object(
+                gguf_support.importlib.metadata, "version", lambda name: "0.10.0"
+            ),
+            mock.patch.object(gguf_support.importlib, "import_module", explode),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                gguf_support.load_clip(["/m/t5.gguf"], "FLUX", label="My Node")
+        self.assertIn("this environment has 0.10.0", str(ctx.exception))
+        self.assertIn('pip install -U "gguf>=0.13.0"', str(ctx.exception))
+
+    def test_a_new_enough_gguf_is_let_through(self):
+        with mock.patch.object(
+            gguf_support.importlib.metadata, "version", lambda name: "0.17.1"
+        ):
+            out, _read = self._load_clip(["/m/t5.gguf"])
+        self.assertEqual(out[0], "CLIP")
+
+    def test_an_out_of_memory_error_reaches_comfyui_unwrapped(self):
+        # ComfyUI's executor unloads models only for an error is_oom knows.
+        oom = FakeOOM("CUDA out of memory")
+        with self.assertRaises(FakeOOM) as ctx:
+            self._load_clip(["/m/t5.gguf"], gguf_error=oom)
+        self.assertIs(ctx.exception, oom)
 
     def test_some_other_missing_module_is_not_blamed_on_gguf(self):
         def missing(name, package=None):
