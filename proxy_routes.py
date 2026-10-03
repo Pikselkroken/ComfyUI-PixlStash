@@ -345,6 +345,40 @@ async def proxy_workflow_graph(request: web.Request) -> web.Response:
     return await _proxy_get(request, f"/api/v1/workflows/{workflow_key}/graph")
 
 
+async def proxy_workflow_convert(request: web.Request) -> web.Response:
+    """Forward *Convert for PixlStash*'s ``{name, workflow, output}`` to PixlStash.
+
+    A thin pass-through: PixlStash validates the documents, and its status and
+    ``detail`` come back as they are, so a 400, 403 or 413 reaches the toast
+    word for word.
+    """
+    try:
+        client = _build_client(request)
+    except web.HTTPBadRequest as exc:
+        return _err(exc.reason, status=400)
+
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    if not (
+        isinstance(body, dict)
+        and isinstance(body.get("workflow"), dict)
+        and isinstance(body.get("output"), dict)
+    ):
+        return _err("workflow and output must both be JSON objects.", status=400)
+
+    path = "/api/v1/comfyui/workflows/convert"
+    try:
+        resp = await asyncio.to_thread(client.post, path, is_write=True, json=body)
+        return _ok(resp.json())
+    except RuntimeError as exc:
+        log.warning("[PixlStash proxy] %s: %s", path, exc)
+        return _err(
+            getattr(exc, "detail", "") or str(exc), status=getattr(exc, "status", 502)
+        )
+
+
 async def proxy_version(request: web.Request) -> web.Response:
     try:
         client = _build_client(request)
@@ -402,6 +436,7 @@ def register_routes() -> None:
         r.get("/pixlstash/entity_thumbnail")(proxy_entity_thumbnail)
         r.get("/pixlstash/version")(proxy_version)
         r.get("/pixlstash/workflow_graph")(proxy_workflow_graph)
+        r.post("/pixlstash/workflows/convert")(proxy_workflow_convert)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:
         log.warning("[PixlStash] Could not register proxy routes: %s", exc)
