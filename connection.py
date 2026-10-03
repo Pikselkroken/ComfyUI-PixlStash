@@ -14,7 +14,7 @@ from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
 )
 
-VERSION = "1.5.1"  # kept equal to pyproject.toml by tests/test_server_version.py
+VERSION = "1.6.0"  # kept equal to pyproject.toml by tests/test_server_version.py
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
 
 # The oldest PixlStash this package runs against at all. A node that needs a
@@ -316,7 +316,13 @@ class PixlStashClient:
             raise RuntimeError(f"PixlStash: request timed out for {url}.")
         except RequestsConnectionError as exc:
             raise RuntimeError(f"PixlStash: connection error for {url}: {exc}") from exc
-        self._check(response, url, is_write=is_write)
+        try:
+            self._check(response, url, is_write=is_write)
+        except RuntimeError as exc:
+            # What the server answered, for a proxy that passes it on as is.
+            exc.status = response.status_code
+            exc.detail = self._detail(response)
+            raise
         return response
 
     # ------------------------------------------------------------------
