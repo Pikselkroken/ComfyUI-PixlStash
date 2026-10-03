@@ -20,7 +20,7 @@ license = { file = "LICENSE" }
 #     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 # ]
 
-dependencies = ["requests>=2.28.0", "Pillow>=9.0.0"]
+dependencies = ["requests>=2.28.0", "Pillow>=9.0.0", "gguf>=0.13.0"]
 
 [project.urls]
 Repository = "https://github.com/Pikselkroken/ComfyUI-PixlStash"

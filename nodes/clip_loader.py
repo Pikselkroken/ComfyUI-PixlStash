@@ -20,11 +20,14 @@ from __future__ import annotations
 
 import logging
 
-from . import lock, shelf_file
+from . import gguf_support, lock, shelf_file
 
 log = logging.getLogger(__name__)
 
 LABEL = "PixlStash CLIP Loader"
+
+# What this node and the Workflow Set Loader read as a text encoder.
+SUFFIXES = (".safetensors", ".gguf")
 
 # Used only when ``comfy`` cannot be imported (outside ComfyUI, i.e. the tests).
 # Not a maintained mirror of the enum — the point is that INPUT_TYPES returns
@@ -59,11 +62,13 @@ def _encoder_folder() -> str:
     return "text_encoders" if folder_paths.get_folder_paths("text_encoders") else "clip"
 
 
-def load_files(paths: list[str], clip_type: str):
+def load_files(paths: list[str], clip_type: str, *, label: str = LABEL):
     """One CLIP out of the encoder files on this machine, for a ``type`` name.
 
     Shared with the Workflow Set Loader. ``comfy.sd.load_clip`` takes any
-    number of files, so a set's three encoders load as readily as one.
+    number of files, so a set's three encoders load as readily as one. Any
+    GGUF among them sends the whole set through ``gguf_support``, which reads
+    GGUF and safetensors side by side; core ComfyUI reads no GGUF at all.
     """
     import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
     import folder_paths  # noqa: PLC0415
@@ -71,12 +76,15 @@ def load_files(paths: list[str], clip_type: str):
     # getattr rather than a lookup table, exactly as the built-in does it:
     # the widget list came from this enum, so a miss means the enum changed
     # under a saved workflow, and stable_diffusion is the safe landing.
+    member = getattr(
+        comfy.sd.CLIPType, clip_type.upper(), comfy.sd.CLIPType.STABLE_DIFFUSION
+    )
+    if any(gguf_support.is_gguf(p) for p in paths):
+        return gguf_support.load_clip(paths, member, label=label)
     return comfy.sd.load_clip(
         ckpt_paths=paths,
         embedding_directory=folder_paths.get_folder_paths("embeddings"),
-        clip_type=getattr(
-            comfy.sd.CLIPType, clip_type.upper(), comfy.sd.CLIPType.STABLE_DIFFUSION
-        ),
+        clip_type=member,
     )
 
 
@@ -95,6 +103,7 @@ class PixlStashCLIPLoader:
         "for the models that need a pair (Flux, SD3, HiDream — clip-l beside "
         "a T5 or a Llama). Set `type` to the model family you are building "
         "for; the list comes from ComfyUI itself.\n\n"
+        "GGUF encoders load too, alone or paired with a safetensors one.\n\n"
         "Each file is used where it lies when PixlStash is on this machine, "
         "and otherwise fetched once and cached under your text_encoders "
         "folder, verified against its SHA-256 before anything is written."
@@ -154,7 +163,8 @@ class PixlStashCLIPLoader:
                 "encoders…” on the node and pick one."
             )
         resolved = [
-            shelf_file.resolve(sha, label=LABEL, folder_key=folder) for sha in shas
+            shelf_file.resolve(sha, label=LABEL, folder_key=folder, suffixes=SUFFIXES)
+            for sha in shas
         ]
         clip = load_files([path for _record, path in resolved], type)
         # Both files, in widget order — a pair is two locks, not one, and which

@@ -297,7 +297,7 @@ class CheckpointLockTests(unittest.TestCase):
             mock.patch.object(
                 checkpoint_loader.shelf_file,
                 "local_path",
-                lambda record, label="": "/m/c.st",
+                lambda record, label="", suffixes=(): "/m/c.st",
             ),
         ):
             return node.load_checkpoint("7")
