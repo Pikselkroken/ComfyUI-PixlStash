@@ -240,13 +240,13 @@ Or manually:
 ```bash
 cd custom_nodes
 git clone https://github.com/Pikselkroken/ComfyUI-PixlStash.git
-pip install -r ComfyUI-PixlStash/requirements.txt   # in ComfyUI's environment
 ```
 
-The only package here that ComfyUI does not already have is `gguf`, which only
-GGUF loads use. A few GGUF text encoders (a Wan UMT5, Gemma 3) also need
-`sentencepiece` and `protobuf` to rebuild their tokenizer; the error names them
-if they are missing.
+Loading `.gguf` models needs the `gguf` Python package, which is not installed
+with this pack. Run `pip install gguf` in ComfyUI's environment if you use GGUF
+models; the loader says so if it is missing. A few GGUF text encoders (a Wan
+UMT5, Gemma 3) also need `sentencepiece` and `protobuf` to rebuild their
+tokenizer, and the error names them too.
 
 Restart ComfyUI, then set your URL and API token under **Settings > PixlStash**.
 
@@ -289,9 +289,9 @@ their code is reproduced here.
 
 Runtime dependencies come from PyPI:
 [requests](https://pypi.org/project/requests/) (Apache-2.0),
-[Pillow](https://pypi.org/project/Pillow/) (MIT-CMU) and
-[gguf](https://pypi.org/project/gguf/) (MIT). ComfyUI supplies `torch` and
-`numpy`.
+[Pillow](https://pypi.org/project/Pillow/) (MIT-CMU), and optionally
+[gguf](https://pypi.org/project/gguf/) (MIT) for GGUF models. ComfyUI supplies
+`torch` and `numpy`.
 
 **Third-party code:** `vendor/comfyui_gguf/` is
 [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) by city96, Apache-2.0,
