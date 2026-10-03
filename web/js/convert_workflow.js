@@ -37,14 +37,22 @@ async function convertActiveWorkflow() {
         return;
     }
     const name = wf.filename;
+    const saved = wf.originalContent;
     try {
         // Throws on a node with no definition (a pack not installed here):
         // that error is the answer, so it goes to the toast as is.
         const { output } = await app.graphToPrompt();
+        // An edit, save or tab switch while that ran would pair this output
+        // with a different document.
+        const now = app.extensionManager?.workflow?.activeWorkflow;
+        if (now !== wf || wf.isTemporary || wf.isModified || wf.originalContent !== saved) {
+            notify("warn", "The workflow changed while converting. Save it, then convert again.");
+            return;
+        }
         const resp = await fetch("/pixlstash/workflows/convert", {
             method: "POST",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ name, workflow: JSON.parse(wf.originalContent), output }),
+            body: JSON.stringify({ name, workflow: JSON.parse(saved), output }),
         });
         const body = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(body.error || `HTTP ${resp.status}`);
