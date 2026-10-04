@@ -84,5 +84,9 @@ class PixlStashVAELoader:
         record, path = shelf_file.resolve(vae_sha256, label=LABEL, folder_key="vae")
         return lock.report(
             (load_file(path),),
-            models=[lock.shelf_model("vae", sha256=record.get("sha256") or vae_sha256)],
+            models=[
+                lock.shelf_model(
+                    "vae", sha256=record.get("sha256") or vae_sha256, record=record
+                )
+            ],
         )

@@ -25,7 +25,8 @@ The payload, under the ``pixlstash_lock`` key, is a list (the shape every
 ComfyUI UI value has) whose entries look like::
 
     {"pictures": [12, 15],
-     "models": [{"kind": "adapter", "sha256": "…", "id": None}]}
+     "models": [{"kind": "adapter", "sha256": "…", "id": None,
+                 "filename": "…", "display_name": None}]}
 
 **One entry per execution of the node, and usually that means one.**  It is not
 reliably one: wire something with ``OUTPUT_IS_LIST`` into a loader's widget and
@@ -40,6 +41,14 @@ are always present and either may be null: adapters, VAEs and text encoders are
 hash-addressed and have no row id here, and a checkpoint is addressed by id
 precisely because its ``sha256`` stays null until the shelf's background hasher
 reaches the file.
+
+``filename`` and ``display_name`` are the shelf's readable names for the file,
+either null.  They are not identifiers and nothing resolves by them: they are
+there so a run still says which model it loaded after the shelf row behind the
+id or digest has been merged, forgotten or deleted.  The browser writes the
+same names into the saved workflow (``pixlstash_models`` in the node's
+``properties``); this is the copy a run submitted as a bare API ``prompt``,
+which has no editor graph, still carries.
 """
 
 from __future__ import annotations
@@ -74,7 +83,12 @@ def _row_id(value):
     return int(value) if _ID_RE.match(str(value).strip()) else None
 
 
-def shelf_model(kind: str, *, sha256=None, row_id=None) -> dict:
+def _name(value):
+    """A readable name off the shelf record, or ``None`` for anything else."""
+    return (value.strip() or None) if isinstance(value, str) else None
+
+
+def shelf_model(kind: str, *, sha256=None, row_id=None, record=None) -> dict:
     """One ``models`` entry: both ways the shelf addresses a file, either null.
 
     The digest is normalised **here** and not at the four call sites, which is
@@ -91,15 +105,21 @@ def shelf_model(kind: str, *, sha256=None, row_id=None) -> dict:
     worse than saying nothing.
 
     ``row_id`` gets the same treatment, for the same reason — see ``_row_id``.
+
+    ``record`` is the shelf record the file was resolved from, read for its
+    ``filename`` and ``display_name`` only.
     It is named that rather than ``id`` because the key on the wire is ``id``
     and the keyword is not: shadowing the builtin in every loader's call to save
     four characters is a poor trade.
     """
     digest = str(sha256 or "").strip().lower()
+    record = record if isinstance(record, dict) else {}
     return {
         "kind": kind,
         "sha256": digest if SHA256_RE.match(digest) else None,
         "id": _row_id(row_id),
+        "filename": _name(record.get("filename")),
+        "display_name": _name(record.get("display_name")),
     }
 
 

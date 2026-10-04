@@ -143,12 +143,37 @@ The lock lands under a `pixlstash_lock` key on the node, as a list of entries:
 
 ```json
 [{"pictures": [12, 15],
-  "models": [{"kind": "adapter", "sha256": "…", "id": null}]}]
+  "models": [{"kind": "adapter", "sha256": "…", "id": null,
+              "filename": "…", "display_name": null}]}]
 ```
 
 `kind` is `adapter`, `checkpoint`, `vae` or `clip`. Both identifiers are always
 present and either may be null: hash-addressed files have no row id, and a
-checkpoint's `sha256` stays null until the shelf has hashed it.
+checkpoint's `sha256` stays null until the shelf has hashed it. `filename` and
+`display_name` are the shelf's names for the file, either null — for showing,
+and for finding the model again once its shelf row is gone, never for loading.
+
+### The model's name in the saved workflow
+
+The shelf loaders address their file by id or digest, which names nothing once
+the shelf row is merged, forgotten or deleted. So when a loader picks a file,
+and again when it shows the file's name on load, it records the file in the
+node's `properties` (the editor workflow, which a picture saved from ComfyUI
+embeds):
+
+```json
+"properties": {"pixlstash_models": [
+  {"input": "checkpoint_id", "kind": "checkpoint", "id": 7, "sha256": "…",
+   "filename": "…", "display_name": "…"}]}
+```
+
+`input` is the widget the entry describes — the CLIP Loader writes one per
+slot, and the Workflow Set Loader one per file it loads (the set's first
+checkpoint, its encoders and its first VAE). `properties` never reach the API
+`prompt`, so this changes neither what runs nor PixlStash's structural hash of
+it. They are part of the editor document, so a workflow saved before this
+shows as modified the first time it opens; save it once. A run submitted as a
+bare `prompt` has no editor graph; its lock carries the same names.
 
 **Fold every entry, don't take the first.** One entry per execution of the
 node, which is normally one — but a node fed from something with

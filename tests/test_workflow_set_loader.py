@@ -118,7 +118,13 @@ class LoadTests(unittest.TestCase):
             (
                 checkpoint_loader.PixlStashCheckpointLoader,
                 "_fetch_record",
-                staticmethod(lambda i, label: {"id": int(i), "sha256": CKPT_SHA}),
+                staticmethod(
+                    lambda i, label: {
+                        "id": int(i),
+                        "sha256": CKPT_SHA,
+                        "filename": "ckpt.safetensors",
+                    }
+                ),
             ),
             (clip_loader, "load_files", load_clip),
             (clip_loader, "_encoder_folder", lambda: "text_encoders"),
@@ -138,7 +144,18 @@ class LoadTests(unittest.TestCase):
         self.assertEqual(out["result"], ("MODEL", "CKPT_CLIP", "CKPT_VAE", "3"))
         self.assertEqual(self.ckpt_flags, [(True, True)])
         models = out["ui"]["pixlstash_lock"][0]["models"]
-        self.assertEqual(models, [{"kind": "checkpoint", "sha256": CKPT_SHA, "id": 9}])
+        self.assertEqual(
+            models,
+            [
+                {
+                    "kind": "checkpoint",
+                    "sha256": CKPT_SHA,
+                    "id": 9,
+                    "filename": "ckpt.safetensors",
+                    "display_name": None,
+                }
+            ],
+        )
 
     def test_the_sets_encoders_and_vae_replace_the_checkpoints(self):
         out = self._run(

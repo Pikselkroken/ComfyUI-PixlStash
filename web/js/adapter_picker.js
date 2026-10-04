@@ -233,7 +233,9 @@ export async function shelfRecordFor(rawValue, credentials, fileKind) {
     const usable = shelf.byId ? /^[1-9]\d*$/.test(value) : /^[0-9a-f]{64}$/.test(value);
     if (!usable) return null;
 
-    const key = `${fileKind}:${value}`;
+    // Per server: a checkpoint id names a different file on another one, and
+    // even a digest's display name is that shelf's own.
+    const key = `${credentials.url}|${fileKind}:${value}`;
     if (_recordCache.has(key)) return _recordCache.get(key);
 
     let record = null;
