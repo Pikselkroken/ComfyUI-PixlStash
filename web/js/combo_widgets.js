@@ -541,7 +541,14 @@ function recordedModels(node) {
 function rememberModels(node, input, entries) {
     node.properties ??= {};
     const before = recordedModels(node);
-    const after = [...before.filter(e => e?.input !== input), ...entries];
+    // In place, not re-appended: the CLIP Loader's two lookups land in either
+    // order, and moving whichever came back last would reorder an unchanged
+    // list and mark the workflow modified for nothing.
+    const at = before.findIndex(e => e?.input === input);
+    const rest = before.filter(e => e?.input !== input);
+    const after = at < 0
+        ? [...rest, ...entries]
+        : [...rest.slice(0, at), ...entries, ...rest.slice(at)];
     if (JSON.stringify(after) === JSON.stringify(node.properties[MODELS_PROPERTY])) return;
     if (after.length) node.properties[MODELS_PROPERTY] = after;
     else delete node.properties[MODELS_PROPERTY];
@@ -763,6 +770,9 @@ function addShelfBrowseButton(node, valueWidget, opts) {
             // flight; labelling with the old file's name would be a lie, and
             // drawing its face doubly so.
             if (String(valueWidget.value ?? "").trim() !== v) return;
+            // Nor if the server changed while it was in flight: this is the
+            // old one's record.
+            if (getSettingsCredentials().url !== creds.url) return;
             const name = nameOf(record);
             if (name) setLabel(name);
             if (record) remember(record);
@@ -888,6 +898,9 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         if (!creds.url || !creds.token) return;
         shelfRecordFor(v, creds, fileKind).then(record => {
             if (String(valueWidget.value ?? "").trim() !== v) return;
+            // Nor if the server changed while it was in flight: this is the
+            // old one's record.
+            if (getSettingsCredentials().url !== creds.url) return;
             const name = nameOf(record);
             if (name) setLabel(name);
             if (record) remember(record);
