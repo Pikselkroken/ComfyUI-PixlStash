@@ -492,6 +492,126 @@ function resetDownstreamFilters(node) {
 }
 
 // ---------------------------------------------------------------------------
+// The loaded model's readable name, kept in the saved workflow
+// ---------------------------------------------------------------------------
+//
+// A shelf loader's widget holds an id or a digest, which names nothing once the
+// shelf row behind it is merged, forgotten or deleted. So whenever a loader
+// knows its file — on a pick, and when the label resolves on load — it writes
+// the file's readable identity into `node.properties.pixlstash_models`:
+//
+//     [{ input, kind, id, sha256, filename, display_name }, …]
+//
+// `input` is the widget the entry describes (the CLIP Loader has two, and a
+// Workflow Set Loader writes one entry per file in its set); `kind` is the
+// lock's (`checkpoint` / `vae` / `clip` / `adapter`). Metadata only: nothing
+// loads by it, and `properties` never reach the API `prompt`, so a rename
+// cannot change what runs or PixlStash's structural hash of it. It is part of
+// the editor document, though: a workflow saved before this existed is marked
+// modified the first time it opens and records its names. The run's lock
+// carries the same names for runs that have no editor graph (nodes/lock.py).
+
+const MODELS_PROPERTY = "pixlstash_models";
+
+/** One `pixlstash_models` entry, out of a shelf record or a workflow-set member. */
+function modelEntry(input, kind, record) {
+    const text = (v) => (typeof v === "string" && v.trim()) || null;
+    return {
+        input,
+        kind,
+        id:           record?.id ?? null,
+        sha256:       text(record?.sha256)?.toLowerCase() ?? null,
+        filename:     text(record?.filename),
+        display_name: text(record?.display_name),
+    };
+}
+
+/** The node's entries, or `[]` for anything a hand edit left that is not a list. */
+function recordedModels(node) {
+    const list = node.properties?.[MODELS_PROPERTY];
+    return Array.isArray(list) ? list : [];
+}
+
+/**
+ * Replace what `node` records for `input` with `entries` (`[]` forgets it).
+ *
+ * Written only on a real change: an async write after load that changed nothing
+ * would still have ComfyUI mark the freshly opened workflow as modified.
+ */
+function rememberModels(node, input, entries) {
+    node.properties ??= {};
+    const before = recordedModels(node);
+    const after = [...before.filter(e => e?.input !== input), ...entries];
+    if (JSON.stringify(after) === JSON.stringify(node.properties[MODELS_PROPERTY])) return;
+    if (after.length) node.properties[MODELS_PROPERTY] = after;
+    else delete node.properties[MODELS_PROPERTY];
+    node.setDirtyCanvas?.(true, true);
+}
+
+/**
+ * Keep `input`'s entry only while it still describes the widget's value.
+ *
+ * The lookup failing is the case this whole property exists for — the row is
+ * gone and the saved name is all that is left — so a failed lookup keeps an
+ * entry. One describing some *other* file, though (the value was changed
+ * without the Browse button), would name the wrong model, and goes.
+ */
+function forgetStaleModel(node, input, kind, value) {
+    const entry = recordedModels(node).find(e => e?.input === input);
+    if (!entry) return;
+    const v = String(value ?? "").trim().toLowerCase();
+    const matches = kind === "checkpoint" ? String(entry.id) === v : entry.sha256 === v;
+    if (!matches) rememberModels(node, input, []);
+}
+
+/** The lock's kind for a shelf `fileKind` — the two differ for text encoders only. */
+const lockKind = (fileKind) => (fileKind === "text_encoder" ? "clip" : fileKind);
+
+/**
+ * The Workflow Set Loader's files, recorded the same way.
+ *
+ * The set's own name is already in its combo value; what is not is which
+ * checkpoint, encoders and VAE it held — and a set's members change on the
+ * shelf. These are the files the node loads — the first checkpoint, every
+ * encoder, the first VAE (nodes/workflow_set_loader.py) — not its LoRAs or
+ * `other` files.
+ * Left alone if the set cannot be read: the names saved last time are the
+ * only ones there are.
+ */
+async function rememberWorkflowSetModels(node, widget) {
+    const input = widget.name;
+    const setId = extractId(widget.value);
+    if (!setId) {
+        rememberModels(node, input, []);
+        return;
+    }
+    const creds = getSettingsCredentials();
+    if (!creds.url || !creds.token) return;
+    let set;
+    try {
+        const data = await proxyFetch("/pixlstash/workflow_sets", creds);
+        set = (data?.hand_made ?? []).find(s => String(s.id) === setId);
+    } catch {
+        return;
+    }
+    // Picked something else while this was in flight.
+    if (!set || extractId(widget.value) !== setId) return;
+    const members = (set.members ?? []).filter(Boolean);
+    const inSlot = (slot) => members.filter(m => m.slot === slot);
+    const loaded = [
+        ...inSlot("checkpoint").slice(0, 1).map(m => ["checkpoint", m]),
+        ...inSlot("text_encoder").map(m => ["clip", m]),
+        ...inSlot("vae").slice(0, 1).map(m => ["vae", m]),
+    ];
+    rememberModels(node, input, loaded.map(([kind, m]) => modelEntry(input, kind, {
+        ...m,
+        // A member's `name` is the shelf's display name, else its filename
+        // (else the owner's label, for a member gone off the shelf).
+        display_name: m.name !== m.filename ? m.name : null,
+    })));
+}
+
+// ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
 
@@ -564,6 +684,9 @@ function addShelfFaceWidget(node, name) {
  */
 function addShelfBrowseButton(node, valueWidget, opts) {
     const { fileKind, browse, picked, filters = () => ({}) } = opts;
+    const remember = (record) => rememberModels(node, valueWidget.name, record
+        ? [modelEntry(valueWidget.name, lockKind(fileKind), record)]
+        : []);
 
     valueWidget.hidden = true;
     valueWidget.computeSize = () => [0, -4];
@@ -629,8 +752,10 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         setLabel(v ? (v.length > 12 ? `${v.slice(0, 10)}…` : `#${v}`) : "");
         if (!v) {
             showFace(null);
+            remember(null);
             return;
         }
+        forgetStaleModel(node, valueWidget.name, lockKind(fileKind), v);
         const creds = getSettingsCredentials();
         if (!creds.url || !creds.token) return;
         shelfRecordFor(v, creds, fileKind).then(record => {
@@ -640,6 +765,7 @@ function addShelfBrowseButton(node, valueWidget, opts) {
             if (String(valueWidget.value ?? "").trim() !== v) return;
             const name = nameOf(record);
             if (name) setLabel(name);
+            if (record) remember(record);
             showFace(record);
         });
     };
@@ -663,6 +789,7 @@ function addShelfBrowseButton(node, valueWidget, opts) {
             openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record) => {
                 setLabel(nameOf(record)
                          || String(record.sha256 ?? record.id ?? "").slice(0, 10));
+                remember(record);
                 showFace(record);
             }).catch(err => alert(`PixlStash picker error: ${err.message}`));
         },
@@ -691,6 +818,9 @@ function addShelfBrowseButton(node, valueWidget, opts) {
  */
 function addShelfBrowseButtonInline(node, valueWidget, opts) {
     const { fileKind, browse, picked, filters = () => ({}) } = opts;
+    const remember = (record) => rememberModels(node, valueWidget.name, record
+        ? [modelEntry(valueWidget.name, lockKind(fileKind), record)]
+        : []);
 
     valueWidget.hidden = true;
     valueWidget.computeSize = () => [0, -4];
@@ -750,14 +880,17 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         setLabel(v ? (v.length > 12 ? `${v.slice(0, 10)}…` : `#${v}`) : "");
         if (!v) {
             showFace(null);
+            remember(null);
             return;
         }
+        forgetStaleModel(node, valueWidget.name, lockKind(fileKind), v);
         const creds = getSettingsCredentials();
         if (!creds.url || !creds.token) return;
         shelfRecordFor(v, creds, fileKind).then(record => {
             if (String(valueWidget.value ?? "").trim() !== v) return;
             const name = nameOf(record);
             if (name) setLabel(name);
+            if (record) remember(record);
             showFace(record);
         });
     };
@@ -778,6 +911,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         }
         openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record) => {
             setLabel(nameOf(record) || String(record.sha256 ?? record.id ?? "").slice(0, 10));
+            remember(record);
             showFace(record);
         }).catch(err => alert(`PixlStash picker error: ${err.message}`));
     });
@@ -904,7 +1038,22 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 orig?.call(this);
                 const w = this.widgets?.find(x => x.name === "pixlstash_workflow_set");
-                if (w) bindDynamicValues(this, w, "workflow_sets", () => null);
+                if (!w) return;
+                bindDynamicValues(this, w, "workflow_sets", () => null);
+
+                const prevCb = w.callback;
+                w.callback = (...args) => {
+                    prevCb?.(...args);
+                    // The old set's files are not this one's, even if the
+                    // new set cannot be read.
+                    rememberModels(this, w.name, []);
+                    rememberWorkflowSetModels(this, w);
+                };
+                const prevConfigure = this.onConfigure;
+                this.onConfigure = function (data) {
+                    prevConfigure?.call(this, data);
+                    rememberWorkflowSetModels(this, w);
+                };
             };
         }
 

@@ -172,7 +172,9 @@ class PixlStashCLIPLoader:
         return lock.report(
             (clip,),
             models=[
-                lock.shelf_model("clip", sha256=record.get("sha256") or sha)
+                lock.shelf_model(
+                    "clip", sha256=record.get("sha256") or sha, record=record
+                )
                 for sha, (record, _path) in zip(shas, resolved)
             ],
         )

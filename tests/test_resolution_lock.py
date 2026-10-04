@@ -116,12 +116,40 @@ class PayloadShapeTests(unittest.TestCase):
         # ever missing.
         self.assertEqual(
             lock.shelf_model("adapter", sha256=SHA_A),
-            {"kind": "adapter", "sha256": SHA_A, "id": None},
+            {
+                "kind": "adapter",
+                "sha256": SHA_A,
+                "id": None,
+                "filename": None,
+                "display_name": None,
+            },
         )
         self.assertEqual(
             lock.shelf_model("checkpoint", sha256=None, row_id=7),
-            {"kind": "checkpoint", "sha256": None, "id": 7},
+            {
+                "kind": "checkpoint",
+                "sha256": None,
+                "id": 7,
+                "filename": None,
+                "display_name": None,
+            },
         )
+
+    def test_the_readable_names_come_off_the_record(self):
+        # What still names the model once the shelf row behind the id or
+        # digest is gone — so a blank or non-string name is null, not "".
+        entry = lock.shelf_model(
+            "checkpoint",
+            row_id=7,
+            record={"filename": " juggernaut.safetensors ", "display_name": "Juggernaut"},
+        )
+        self.assertEqual(entry["filename"], "juggernaut.safetensors")
+        self.assertEqual(entry["display_name"], "Juggernaut")
+        for record in (None, {}, {"filename": "  ", "display_name": 5}):
+            with self.subTest(record=record):
+                entry = lock.shelf_model("vae", sha256=SHA_A, record=record)
+                self.assertIsNone(entry["filename"])
+                self.assertIsNone(entry["display_name"])
 
     def test_the_digest_is_normalised_here_and_not_at_four_call_sites(self):
         # PixlStash matches these against its own rows, which are lowercase
@@ -229,7 +257,10 @@ class ClipLockTests(unittest.TestCase):
 
     def _models(self, first, second, shelf_digest=None):
         def fake_resolve(sha, **kwargs):
-            return ({"sha256": shelf_digest} if shelf_digest else {}, f"/m/{sha}.st")
+            record = {"filename": f"{sha[:4]}.safetensors"}
+            if shelf_digest:
+                record["sha256"] = shelf_digest
+            return (record, f"/m/{sha}.st")
 
         with mock.patch.object(shelf_file, "resolve", fake_resolve):
             out = clip_loader.PixlStashCLIPLoader().load_clip(first, "flux", second)
@@ -238,14 +269,25 @@ class ClipLockTests(unittest.TestCase):
     def test_one_encoder_locks_one_file(self):
         self.assertEqual(
             self._models(SHA_A, ""),
-            [{"kind": "clip", "sha256": SHA_A, "id": None}],
+            [
+                {
+                    "kind": "clip",
+                    "sha256": SHA_A,
+                    "id": None,
+                    "filename": "aaaa.safetensors",
+                    "display_name": None,
+                }
+            ],
         )
 
     def test_two_encoders_lock_in_widget_order(self):
         # Swapping the pair is a different (and usually broken) model, so the
         # order is part of the report.
+        models = self._models(SHA_A, SHA_B)
+        self.assertEqual([m["sha256"] for m in models], [SHA_A, SHA_B])
+        # Each slot's name is its own file's, not the first one's twice.
         self.assertEqual(
-            [m["sha256"] for m in self._models(SHA_A, SHA_B)], [SHA_A, SHA_B]
+            [m["filename"] for m in models], ["aaaa.safetensors", "bbbb.safetensors"]
         )
 
     def test_an_uppercase_selection_is_locked_in_lowercase_hex(self):
@@ -309,14 +351,37 @@ class CheckpointLockTests(unittest.TestCase):
         self.assertEqual(out["result"], ("MODEL", "CLIP", "VAE"))
         self.assertEqual(
             out["ui"][lock.UI_KEY][0]["models"],
-            [{"kind": "checkpoint", "sha256": None, "id": 7}],
+            [
+                {
+                    "kind": "checkpoint",
+                    "sha256": None,
+                    "id": 7,
+                    "filename": None,
+                    "display_name": None,
+                }
+            ],
         )
 
     def test_a_hashed_checkpoint_locks_both_identifiers(self):
-        models = self._load({"id": 7, "sha256": SHA_A.upper()})["ui"][lock.UI_KEY][0][
-            "models"
-        ]
-        self.assertEqual(models, [{"kind": "checkpoint", "sha256": SHA_A, "id": 7}])
+        row = {
+            "id": 7,
+            "sha256": SHA_A.upper(),
+            "filename": "juggernaut.safetensors",
+            "display_name": "Juggernaut",
+        }
+        models = self._load(row)["ui"][lock.UI_KEY][0]["models"]
+        self.assertEqual(
+            models,
+            [
+                {
+                    "kind": "checkpoint",
+                    "sha256": SHA_A,
+                    "id": 7,
+                    "filename": "juggernaut.safetensors",
+                    "display_name": "Juggernaut",
+                }
+            ],
+        )
 
     def test_a_bare_diffusion_model_still_reports_its_lock(self):
         # load_checkpoint_guess_config raises for a Flux UNET; the node falls

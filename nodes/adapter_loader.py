@@ -300,7 +300,9 @@ class PixlStashAdapterLoader:
             (model, clip, triggers),
             models=[
                 lock.shelf_model(
-                    "adapter", sha256=record.get("sha256") or adapter_sha256
+                    "adapter",
+                    sha256=record.get("sha256") or adapter_sha256,
+                    record=record,
                 )
             ],
         )

@@ -170,6 +170,7 @@ class PixlStashCheckpointLoader:
                     "checkpoint",
                     sha256=record.get("sha256"),
                     row_id=record.get("id"),
+                    record=record,
                 )
             ],
         )

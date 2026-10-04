@@ -195,6 +195,7 @@ class PixlStashWorkflowSetLoader:
                 "checkpoint",
                 sha256=record.get("sha256") or ckpt["sha256"],
                 row_id=record.get("id"),
+                record=record,
             )
         )
 
@@ -220,7 +221,9 @@ class PixlStashWorkflowSetLoader:
                 [p for _r, p in resolved], clip_type, label=LABEL
             )
             models += [
-                lock.shelf_model("clip", sha256=r.get("sha256") or m["sha256"])
+                lock.shelf_model(
+                    "clip", sha256=r.get("sha256") or m["sha256"], record=r
+                )
                 for m, (r, _p) in zip(encoders, resolved)
             ]
 
@@ -236,7 +239,9 @@ class PixlStashWorkflowSetLoader:
             r, p = shelf_file.resolve(vaes[0]["sha256"], label=LABEL, folder_key="vae")
             vae = vae_loader.load_file(p)
             models.append(
-                lock.shelf_model("vae", sha256=r.get("sha256") or vaes[0]["sha256"])
+                lock.shelf_model(
+                    "vae", sha256=r.get("sha256") or vaes[0]["sha256"], record=r
+                )
             )
 
         return lock.report((model, clip, vae, set_id), models=models)
