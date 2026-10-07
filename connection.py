@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import stat
 import tempfile
 
 import requests
@@ -137,9 +138,27 @@ def _ca_folder() -> str | None:
     )
     try:
         os.makedirs(folder, mode=0o700, exist_ok=True)
-        if getuid and os.stat(folder).st_uid != getuid():
-            return None
-    except OSError:
+        # lstat, not stat: a symlink planted under this name must not pass as
+        # the folder it points at (root-owned /tmp passes for a root ComfyUI).
+        st = os.lstat(folder)
+    except OSError as exc:
+        log.warning(
+            "No private folder for PixlStash's certificate at %s: %s", folder, exc
+        )
+        return None
+    if not stat.S_ISDIR(st.st_mode) or (st.st_mode & 0o077):
+        log.warning(
+            "Refusing %s for PixlStash's certificate: not a private directory (mode %o)",
+            folder,
+            st.st_mode,
+        )
+        return None
+    if getuid and st.st_uid != getuid():
+        log.warning(
+            "Refusing %s for PixlStash's certificate: owned by uid %d",
+            folder,
+            st.st_uid,
+        )
         return None
     return folder
 
@@ -167,10 +186,19 @@ def _ca_bundle(pem: str) -> str | None:
     except OSError:
         pass
     os.makedirs(folder, exist_ok=True)
-    partial = f"{path}.{os.getpid()}.tmp"
-    with open(partial, "w", encoding="utf-8") as fh:
-        fh.write(pem + "\n")
-    os.replace(partial, path)
+    # A fresh file per call: two threads writing the same new certificate must
+    # not share one temp name, or the second os.replace finds it already gone.
+    fd, partial = tempfile.mkstemp(dir=folder, prefix="pixlstash-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(pem + "\n")
+        os.replace(partial, path)
+    except BaseException:
+        try:
+            os.unlink(partial)
+        except OSError as exc:
+            log.warning("Could not remove partial certificate %s: %s", partial, exc)
+        raise
     return path
 
 
