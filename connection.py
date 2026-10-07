@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import re
+import stat
+import tempfile
 
 import requests
 import urllib3
@@ -13,6 +17,8 @@ from requests.exceptions import (
     Timeout,
     ConnectionError as RequestsConnectionError,
 )
+
+log = logging.getLogger(__name__)
 
 VERSION = "1.6.0"  # kept equal to pyproject.toml by tests/test_server_version.py
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
@@ -27,6 +33,10 @@ _server_versions: dict[str, str] = {}
 _SETTING_URL = "PixlStash.ServerURL"
 _SETTING_TOKEN = "PixlStash.APIToken"
 _SETTING_SSL = "PixlStash.VerifySSL"
+# PixlStash's own HTTPS certificate (PEM text), written by PixlStash when it
+# links this ComfyUI over the network, so Verify SSL can stay on against a
+# self-signed certificate.
+_SETTING_CA = "PixlStash.CACertificate"
 
 # Shown when a node or the proxy refuses to run under ComfyUI multi-user mode.
 MULTI_USER_MESSAGE = (
@@ -38,7 +48,7 @@ MULTI_USER_MESSAGE = (
 def make_client(
     url: str,
     token: str,
-    verify_ssl: bool = True,
+    verify_ssl: bool | str = True,
     min_server_version: str = MIN_SERVER_VERSION,
 ) -> "PixlStashClient":
     """Build a PixlStashClient from individual credential arguments."""
@@ -105,6 +115,94 @@ def _comfy_settings() -> dict:
     return {}
 
 
+def _ca_folder() -> str | None:
+    """A folder only this user can write, for PixlStash's certificate.
+
+    ComfyUI's own user folder, beside the settings the certificate came from:
+    whoever can write there can rewrite the settings anyway. Outside ComfyUI, a
+    per-user folder in the temp directory, created 0700 and refused unless
+    this user owns it, because a shared temp directory lets another local user
+    plant a certificate of their own under a predictable name.
+    """
+    try:
+        import folder_paths  # noqa: PLC0415 — only available inside ComfyUI
+
+        return os.path.join(folder_paths.get_user_directory(), "default", "pixlstash")
+    except Exception as exc:
+        # Expected outside ComfyUI (tests, tools): fall back to a private
+        # per-user folder below.
+        log.debug("ComfyUI user folder unavailable for the certificate: %s", exc)
+    getuid = getattr(os, "getuid", None)
+    folder = os.path.join(
+        tempfile.gettempdir(), f"comfyui-pixlstash-{getuid() if getuid else 'user'}"
+    )
+    try:
+        os.makedirs(folder, mode=0o700, exist_ok=True)
+        # lstat, not stat: a symlink planted under this name must not pass as
+        # the folder it points at (root-owned /tmp passes for a root ComfyUI).
+        st = os.lstat(folder)
+    except OSError as exc:
+        log.warning(
+            "No private folder for PixlStash's certificate at %s: %s", folder, exc
+        )
+        return None
+    # Mode bits only mean anything on POSIX; Windows reports every folder 0o777.
+    if not stat.S_ISDIR(st.st_mode) or (getuid and st.st_mode & 0o077):
+        log.warning(
+            "Refusing %s for PixlStash's certificate: not a private directory (mode %o)",
+            folder,
+            st.st_mode,
+        )
+        return None
+    if getuid and st.st_uid != getuid():
+        log.warning(
+            "Refusing %s for PixlStash's certificate: owned by uid %d",
+            folder,
+            st.st_uid,
+        )
+        return None
+    return folder
+
+
+def _ca_bundle(pem: str) -> str | None:
+    """A file holding *pem*, for ``requests``' ``verify``; ``None`` if empty.
+
+    Named by the content's hash, and an existing file is used only if it still
+    holds exactly *pem*; anything else is rewritten. ``None`` when no private
+    folder is available, so verification falls back to the system trust store
+    and a self-signed PixlStash is refused rather than trusted blindly.
+    """
+    pem = (pem or "").strip()
+    if not pem:
+        return None
+    folder = _ca_folder()
+    if folder is None:
+        return None
+    digest = hashlib.sha256(pem.encode("utf-8")).hexdigest()[:16]
+    path = os.path.join(folder, f"pixlstash-{digest}.pem")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            if fh.read().strip() == pem:
+                return path
+    except OSError:
+        pass
+    os.makedirs(folder, exist_ok=True)
+    # A fresh file per call: two threads writing the same new certificate must
+    # not share one temp name, or the second os.replace finds it already gone.
+    fd, partial = tempfile.mkstemp(dir=folder, prefix="pixlstash-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(pem + "\n")
+        os.replace(partial, path)
+    except BaseException:
+        try:
+            os.unlink(partial)
+        except OSError as exc:
+            log.warning("Could not remove partial certificate %s: %s", partial, exc)
+        raise
+    return path
+
+
 def multi_user_active() -> bool:
     """True if ComfyUI was started with --multi-user.
 
@@ -123,7 +221,7 @@ def read_credentials(
     url: str = "",
     token: str = "",
     verify_ssl: bool = True,
-) -> tuple[str, str, bool]:
+) -> tuple[str, str, bool | str]:
     """Resolve PixlStash credentials for server-side node execution.
 
     Resolution order (first non-empty wins): explicit arguments →
@@ -132,6 +230,10 @@ def read_credentials(
     Credentials are configured in ComfyUI Settings -> PixlStash, which ComfyUI
     persists server-side, so the token never travels through the prompt or the
     saved workflow JSON.
+
+    The third value is ``requests``' ``verify``: ``False``, ``True``, or the
+    path of PixlStash's own certificate when one is set
+    (``PixlStash.CACertificate``) and Verify SSL is on.
 
     Raises ``RuntimeError`` under ComfyUI multi-user mode, which PixlStash
     can't support safely (a node has no way to know which user is running it).
@@ -151,6 +253,8 @@ def read_credentials(
 
     if _SETTING_SSL in settings:
         verify_ssl = _as_bool(settings.get(_SETTING_SSL))
+    if verify_ssl:
+        verify_ssl = _ca_bundle(str(settings.get(_SETTING_CA) or "")) or verify_ssl
 
     return url, token, verify_ssl
 
@@ -171,7 +275,7 @@ class PixlStashClient:
         self,
         base_url: str,
         api_token: str,
-        verify_ssl: bool = True,
+        verify_ssl: bool | str = True,
         min_server_version: str = MIN_SERVER_VERSION,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -309,8 +413,9 @@ class PixlStashClient:
             )
         except SSLError as exc:
             raise RuntimeError(
-                "PixlStash: SSL certificate verification failed. "
-                "Set verify_ssl=false if using a self-signed certificate."
+                "PixlStash: SSL certificate verification failed. Link ComfyUI "
+                "again from PixlStash's settings, or turn Verify SSL off if you "
+                "use your own self-signed certificate."
             ) from exc
         except Timeout:
             raise RuntimeError(f"PixlStash: request timed out for {url}.")

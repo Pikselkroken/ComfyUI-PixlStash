@@ -12,6 +12,7 @@
  */
 
 import { app } from "../../scripts/app.js";
+import { convertActiveWorkflow } from "./convert_workflow.js";
 
 const PARAM = "pixlstash_workflow";
 // A workflow id: `auto:` and the core hash, or `manual:` and a uuid hex.
@@ -48,6 +49,61 @@ async function startupFinished() {
     }
 }
 
+/**
+ * True for a path relative to ComfyUI's `workflows/` directory: no leading
+ * slash or backslash, no drive letter, no `..` segment, ends in `.json`.
+ */
+export function isSafeWorkflowFile(path) {
+    if (typeof path !== "string" || !path.toLowerCase().endsWith(".json")) return false;
+    if (/^[\\/]/.test(path) || /^[a-zA-Z]:/.test(path) || path.includes("\0")) return false;
+    return !path.split(/[\\/]/).some((seg) => seg === ".." || seg === "");
+}
+
+/**
+ * Open the workflow's own ComfyUI file, bound as ComfyUI's saved workflow so
+ * Save writes back. Returns true when opened; false (with the reason logged)
+ * means the caller must fall back to the stored graph.
+ *
+ * The graph is deliberately left untouched: tagging it would mark the user's
+ * file modified and write PixlStash data into it on Save.
+ */
+async function openComfyFile(path) {
+    if (!isSafeWorkflowFile(path)) {
+        console.info("[PixlStash] comfyui_file is not a safe relative .json path; using stored graph:", path);
+        return false;
+    }
+    try {
+        const store = app.extensionManager?.workflow;
+        if (!store?.getWorkflowByPath || !store.syncWorkflows || typeof app.loadGraphData !== "function") {
+            console.info("[PixlStash] this ComfyUI frontend has no workflow store API; using stored graph");
+            return false;
+        }
+        const full = `workflows/${path}`;
+        let wf = store.getWorkflowByPath(full);
+        if (!wf) {
+            await store.syncWorkflows();
+            wf = store.getWorkflowByPath(full);
+        }
+        if (!wf) {
+            console.info("[PixlStash] ComfyUI has no workflow file", full, "; using stored graph");
+            return false;
+        }
+        // Already the visible tab: nothing to do. Otherwise loadGraphData with
+        // the workflow object opens (or switches to) that one tab by path.
+        if (store.isActive?.(wf)) return true;
+        await wf.load();
+        const loaded = await app.loadGraphData(wf.activeState, true, true, wf);
+        if (loaded === false) {
+            console.info("[PixlStash] ComfyUI refused to load", full, "; using stored graph");
+            return false;
+        }
+        return true;
+    } catch (err) {
+        console.info("[PixlStash] could not open the ComfyUI file; using stored graph:", err);
+        return false;
+    }
+}
+
 function notify(severity, detail) {
     const toast = app.extensionManager?.toast;
     if (toast?.add) {
@@ -77,13 +133,24 @@ async function openFromUrl(key) {
             { headers: { Authorization: `Bearer ${token}` } },
         );
         body = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(body.error || `HTTP ${resp.status}`);
+        if (!resp.ok) throw new Error(body.detail || body.error || `HTTP ${resp.status}`);
     } catch (err) {
         console.error("[PixlStash] could not fetch workflow", key, err);
         notify("error", `Could not open that workflow from PixlStash: ${err.message}`);
         return;
     }
     await startupFinished();
+    if (body.comfyui_file && (await openComfyFile(body.comfyui_file))) {
+        // PixlStash has no runnable graph for this file: convert the tab just
+        // opened (unmodified by construction) with the menu command's code.
+        // Not awaited into the open: failures toast and never block the tab.
+        if (body.needs_conversion) await convertActiveWorkflow();
+        return;
+    }
+    if (!body.workflow) {
+        notify("error", body.detail || "PixlStash could not open that workflow.");
+        return;
+    }
     app.loadApiJson(body.workflow, `${body.name || "PixlStash workflow"}.json`);
     // Tag the canvas so pictures this graph saves are filed on the manual
     // workflow (PixlStash reads it from the saved `workflow` PNG chunk).

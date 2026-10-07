@@ -25,7 +25,12 @@ function notify(severity, detail) {
     }
 }
 
-async function convertActiveWorkflow() {
+/**
+ * Convert the active (saved, unmodified) workflow and post it to PixlStash,
+ * toasting the outcome. Shared by the menu command and the opener, which
+ * calls it on a file it has just opened.
+ */
+export async function convertActiveWorkflow() {
     const token = (app.ui.settings.getSettingValue("PixlStash.APIToken", "") ?? "").trim();
     if (!token) {
         notify("error", "Set your PixlStash API token in Settings › PixlStash, then convert again.");
@@ -55,7 +60,7 @@ async function convertActiveWorkflow() {
             body: JSON.stringify({ name, workflow: JSON.parse(saved), output }),
         });
         const body = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(body.error || `HTTP ${resp.status}`);
+        if (!resp.ok) throw new Error(body.detail || body.error || `HTTP ${resp.status}`);
         // Not matched means PixlStash stored it as a new workflow beside
         // whatever card the reader meant to convert: say so.
         notify(
