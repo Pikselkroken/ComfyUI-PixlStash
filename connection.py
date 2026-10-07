@@ -146,7 +146,8 @@ def _ca_folder() -> str | None:
             "No private folder for PixlStash's certificate at %s: %s", folder, exc
         )
         return None
-    if not stat.S_ISDIR(st.st_mode) or (st.st_mode & 0o077):
+    # Mode bits only mean anything on POSIX; Windows reports every folder 0o777.
+    if not stat.S_ISDIR(st.st_mode) or (getuid and st.st_mode & 0o077):
         log.warning(
             "Refusing %s for PixlStash's certificate: not a private directory (mode %o)",
             folder,
