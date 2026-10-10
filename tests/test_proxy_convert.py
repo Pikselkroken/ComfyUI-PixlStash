@@ -1,4 +1,4 @@
-"""``/pixlstash/workflows/convert``: *Convert for PixlStash*'s pass-through.
+"""``/pixlstash/workflows/convert``: *Export to PixlStash*'s pass-through.
 
 What is pinned: the body reaches PixlStash's convert route as a write, a body
 that isn't two JSON objects never leaves ComfyUI, and PixlStash's own status
