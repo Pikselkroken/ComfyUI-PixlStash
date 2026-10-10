@@ -29,7 +29,12 @@ function notify(severity, detail) {
     }
 }
 
-/** The file's content when `wf` is a saved file with no changes, else null. */
+/**
+ * The file's content when `wf` is a saved file ComfyUI reports as unmodified,
+ * else null. That report is ComfyUI's change tracker's, not a comparison with
+ * the file: it is the best the store offers, and can be wrong after a draft
+ * is restored or a file is dropped onto its own tab.
+ */
 function savedContent(wf) {
     return (wf && !wf.isTemporary && !wf.isModified && wf.originalContent) || null;
 }
@@ -70,7 +75,7 @@ export async function exportActiveWorkflow({ savedOnly = false } = {}) {
             return;
         }
         // An edit or a save while that ran: the file's content no longer
-        // pairs with `output`, the canvas document always does.
+        // pairs with `output`; the canvas document came from the same call.
         const unchanged = saved !== null && savedContent(wf) === saved;
         if (savedOnly && !unchanged) return unsaved();
         const resp = await fetch("/pixlstash/workflows/convert", {

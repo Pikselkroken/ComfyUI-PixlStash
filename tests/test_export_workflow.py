@@ -3,8 +3,9 @@
 What is pinned: a workflow never saved, or changed since its save, is exported
 as the canvas stands rather than refused; a saved file with no changes goes as
 the file's own content, which is what PixlStash matches on; a tab switch while
-ComfyUI converts sends nothing; and the opener's ``savedOnly`` never sends
-unsaved changes.
+ComfyUI converts sends nothing; the menu command is the plain export under
+its new name; and a link opened from PixlStash (``open_workflow.js``) converts
+a saved file but never sends a tab ComfyUI reports as modified.
 
 The command is run in Node against a stand-in for ComfyUI's ``app``, so this
 is skipped where there is no ``node``.
@@ -61,6 +62,48 @@ for (const [name, s] of Object.entries(scenarios)) {
     await exportActiveWorkflow(options);
     results[name] = { sent, toasts };
 }
+
+// The menu command, called as ComfyUI calls it: with its own argument.
+const command = app.extensions[0].commands[0];
+results.command = { label: command.label, menu: app.extensions[0].menuCommands, sent: null };
+app.extensionManager = { workflow: { activeWorkflow: { ...saved(), isModified: true } } };
+globalThis.fetch = async (url, init) => {
+    results.command.sent = JSON.parse(init.body).workflow;
+    return { ok: true, json: async () => ({}) };
+};
+await command.function({ savedOnly: true });
+
+// A link from PixlStash, through the opener's own start-up.
+const { setup } = await import("./open_workflow.js").then(() => app.extensions[1]);
+const links = {
+    link_needing_conversion: { wf: saved(), graph: { needs_conversion: true } },
+    link_onto_unsaved_changes: { wf: { ...saved(), isModified: true }, graph: { needs_conversion: true } },
+    link_needing_nothing: { wf: saved(), graph: {} },
+};
+for (const [name, { wf, graph }] of Object.entries(links)) {
+    const toasts = [];
+    let sent = null;
+    globalThis.window = {
+        location: { href: `http://comfy.test/?pixlstash_workflow=manual:${"a".repeat(32)}` },
+        history: { replaceState() {} },
+    };
+    app.loadGraphData = async () => true;
+    app.extensionManager = {
+        toast: { add: (t) => toasts.push([t.severity, t.detail]) },
+        workflow: { activeWorkflow: wf, getWorkflowByPath: () => wf, syncWorkflows: async () => {}, isActive: () => true },
+    };
+    globalThis.fetch = async (url, init) => {
+        if (String(url).startsWith("/pixlstash/workflow_graph")) {
+            return { ok: true, json: async () => ({ comfyui_file: "wf.json", ...graph }) };
+        }
+        sent = { url, method: init.method, auth: init.headers.Authorization, body: JSON.parse(init.body) };
+        return { ok: true, json: async () => ({ matched: true }) };
+    };
+    await setup();
+    // `setup` does not wait for the open: give it the turns it needs.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    results[name] = { sent, toasts };
+}
 console.log(JSON.stringify(results));
 """
 
@@ -75,9 +118,13 @@ class ExportWorkflowTests(unittest.TestCase):
             pathlib.Path(tmp, "package.json").write_text('{"type": "module"}')
             pathlib.Path(tmp, "scripts").mkdir()
             pathlib.Path(tmp, "scripts", "app.js").write_text(
-                "export const app = { registerExtension() {} };\n"
+                "export const app = {\n"
+                "    extensions: [],\n"
+                "    registerExtension(extension) { this.extensions.push(extension); },\n"
+                "};\n"
             )
-            shutil.copy(ROOT / "web" / "js" / "convert_workflow.js", js)
+            for name in ("convert_workflow.js", "open_workflow.js"):
+                shutil.copy(ROOT / "web" / "js" / name, js)
             (js / "driver.js").write_text(DRIVER)
             done = subprocess.run(
                 ["node", str(js / "driver.js"), json.dumps([CANVAS, FILE, OUTPUT])],
@@ -145,6 +192,28 @@ class ExportWorkflowTests(unittest.TestCase):
         [(severity, detail)] = self.results["refused_by_pixlstash"]["toasts"]
         self.assertEqual(severity, "error")
         self.assertIn("Owner token required", detail)
+
+    def test_the_menu_command_is_the_plain_export(self):
+        command = self.results["command"]
+        self.assertEqual(command["label"], "Export to PixlStash")
+        self.assertEqual(
+            command["menu"],
+            [{"path": ["PixlStash"], "commands": ["PixlStash.ConvertWorkflow"]}],
+        )
+        # Unsaved changes go, whatever ComfyUI hands the command.
+        self.assertEqual(command["sent"], CANVAS)
+
+    def test_an_opened_link_converts_a_saved_file(self):
+        body = self._sent("link_needing_conversion", says="PixlStash can now run wf.")
+        self.assertEqual(body["workflow"], FILE)
+
+    def test_an_opened_link_never_sends_unsaved_changes(self):
+        self._nothing_sent("link_onto_unsaved_changes", "warn", "Save it, then")
+
+    def test_an_opened_link_that_needs_no_conversion_sends_nothing(self):
+        self.assertEqual(
+            self.results["link_needing_nothing"], {"sent": None, "toasts": []}
+        )
 
     def test_a_link_exports_a_saved_file(self):
         body = self._sent("link_to_a_saved_file", says="PixlStash can now run wf.")
