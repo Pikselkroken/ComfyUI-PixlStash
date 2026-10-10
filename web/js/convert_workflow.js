@@ -38,8 +38,12 @@ function savedContent(wf) {
  * Convert the active workflow, saved or not, and post it to PixlStash,
  * toasting the outcome. Shared by the menu command and the opener, which
  * calls it on a file it has just opened.
+ *
+ * `savedOnly` is the opener's: only a saved file with no changes is sent,
+ * since a link must not send work the reader has not chosen to send, and
+ * only the file's own content turns the workflow the link named runnable.
  */
-export async function exportActiveWorkflow() {
+export async function exportActiveWorkflow({ savedOnly = false } = {}) {
     const token = (app.ui.settings.getSettingValue("PixlStash.APIToken", "") ?? "").trim();
     if (!token) {
         notify("error", "Set your PixlStash API token in Settings › PixlStash, then export again.");
@@ -48,6 +52,13 @@ export async function exportActiveWorkflow() {
     const wf = app.extensionManager?.workflow?.activeWorkflow;
     const name = wf?.filename || "workflow";
     const saved = savedContent(wf);
+    const unsaved = () =>
+        notify(
+            "warn",
+            "PixlStash cannot run this workflow yet, and it has unsaved changes here. " +
+                "Save it, then pick PixlStash › Export to PixlStash.",
+        );
+    if (savedOnly && saved === null) return unsaved();
     try {
         // Throws on a node with no definition (a pack not installed here):
         // that error is the answer, so it goes to the toast as is.
@@ -61,6 +72,7 @@ export async function exportActiveWorkflow() {
         // An edit or a save while that ran: the file's content no longer
         // pairs with `output`, the canvas document always does.
         const unchanged = saved !== null && savedContent(wf) === saved;
+        if (savedOnly && !unchanged) return unsaved();
         const resp = await fetch("/pixlstash/workflows/convert", {
             method: "POST",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -69,9 +81,10 @@ export async function exportActiveWorkflow() {
         const body = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(body.detail || body.error || `HTTP ${resp.status}`);
         // Not matched means PixlStash holds it beside whatever workflow the
-        // reader had in mind, not over it: say so.
+        // reader had in mind, not over it: say so. For the canvas that is
+        // the expected end; for a file PixlStash was thought to hold, a warning.
         notify(
-            "success",
+            body.matched || !unchanged ? "success" : "warn",
             body.matched
                 ? `PixlStash can now run ${body.name || name}.`
                 : `Exported ${body.name || name} to PixlStash as a new workflow.`,
@@ -89,7 +102,8 @@ app.registerExtension({
             id: COMMAND_ID,
             label: "Export to PixlStash",
             icon: "pi pi-upload",
-            function: exportActiveWorkflow,
+            // ComfyUI may pass the command its own arguments.
+            function: () => exportActiveWorkflow(),
         },
     ],
     menuCommands: [{ path: ["PixlStash"], commands: [COMMAND_ID] }],

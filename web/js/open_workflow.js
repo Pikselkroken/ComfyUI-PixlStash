@@ -142,21 +142,10 @@ async function openFromUrl(key) {
     await startupFinished();
     if (body.comfyui_file && (await openComfyFile(body.comfyui_file))) {
         // PixlStash has no runnable graph for this file: convert the tab just
-        // opened with the menu command's code. Failures toast and never
-        // block the tab.
-        if (!body.needs_conversion) return;
-        // A tab that was already open can hold unsaved changes, and the
-        // command would export those: opening a link must not send work the
-        // reader has not chosen to send.
-        if (app.extensionManager?.workflow?.activeWorkflow?.isModified) {
-            notify(
-                "warn",
-                "PixlStash cannot run this workflow yet, and it has unsaved changes here. " +
-                    "Pick PixlStash › Export to PixlStash when it is ready.",
-            );
-            return;
-        }
-        await exportActiveWorkflow();
+        // opened with the menu command's code. A tab that was already open
+        // can hold unsaved changes, which `savedOnly` refuses with a toast.
+        // Failures toast and never block the tab.
+        if (body.needs_conversion) await exportActiveWorkflow({ savedOnly: true });
         return;
     }
     if (!body.workflow) {
