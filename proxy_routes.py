@@ -346,7 +346,7 @@ async def proxy_workflow_graph(request: web.Request) -> web.Response:
 
 
 async def proxy_workflow_convert(request: web.Request) -> web.Response:
-    """Forward *Convert for PixlStash*'s ``{name, workflow, output}`` to PixlStash.
+    """Forward *Export to PixlStash*'s ``{name, workflow, output}`` to PixlStash.
 
     A thin pass-through: PixlStash validates the documents, and its status and
     ``detail`` come back as they are, so a 400, 403 or 413 reaches the toast

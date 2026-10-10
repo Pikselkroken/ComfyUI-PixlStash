@@ -12,7 +12,7 @@
  */
 
 import { app } from "../../scripts/app.js";
-import { convertActiveWorkflow } from "./convert_workflow.js";
+import { exportActiveWorkflow } from "./convert_workflow.js";
 
 const PARAM = "pixlstash_workflow";
 // A workflow id: `auto:` and the core hash, or `manual:` and a uuid hex.
@@ -142,9 +142,10 @@ async function openFromUrl(key) {
     await startupFinished();
     if (body.comfyui_file && (await openComfyFile(body.comfyui_file))) {
         // PixlStash has no runnable graph for this file: convert the tab just
-        // opened (unmodified by construction) with the menu command's code.
-        // Not awaited into the open: failures toast and never block the tab.
-        if (body.needs_conversion) await convertActiveWorkflow();
+        // opened with the menu command's code. A tab that was already open
+        // can hold unsaved changes, which `savedOnly` refuses with a toast.
+        // Failures toast and never block the tab.
+        if (body.needs_conversion) await exportActiveWorkflow({ savedOnly: true });
         return;
     }
     if (!body.workflow) {

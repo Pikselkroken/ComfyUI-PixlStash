@@ -181,14 +181,19 @@ node, which is normally one — but a node fed from something with
 so the list can hold several and indexing `[0]` would record one resolution out
 of N.
 
-### Convert for PixlStash
+### Export to PixlStash
 
-PixlStash pulls the workflows ComfyUI has saved, but a saved workflow is an
-editor document and only ComfyUI can turn it into a graph PixlStash can run.
-Open the workflow, then pick **PixlStash > Convert for PixlStash** from the
-menu: ComfyUI converts it and sends the result to PixlStash, which can then
-run it and offer its parameters. Save first; a workflow with unsaved changes
-is refused. One that uses a node pack this ComfyUI lacks can't be converted.
+A workflow in ComfyUI is an editor document, and only ComfyUI can turn it into
+a graph PixlStash can run. Open the workflow, then pick **PixlStash > Export
+to PixlStash** from the menu: ComfyUI converts it and sends both to PixlStash,
+which can then run it and offer its parameters.
+
+Nothing has to be saved first. What is sent is the workflow as it stands on
+the canvas, unsaved changes included, and ComfyUI's own file is left alone.
+PixlStash recognises a workflow it already holds and makes that one runnable;
+anything else arrives there as a new workflow. To make a workflow PixlStash
+pulled from ComfyUI runnable, export it saved and unchanged. One that uses a
+node pack this ComfyUI lacks can't be converted, so it can't be exported.
 
 Needs PixlStash 1.12 or newer and an owner token in **Settings > PixlStash**.
 
