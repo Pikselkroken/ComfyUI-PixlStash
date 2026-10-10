@@ -11,8 +11,9 @@ examples/
 # Dev-only tooling
 venv/
 .ruff_cache/
+.github/
 
-# Security-regression tests — run in dev/CI, not needed by ComfyUI users at
+# Security-regression tests — run in dev, not needed by ComfyUI users at
 # runtime. Keeping them out of the artifact also stops the registry yara_scan
 # from flagging the deliberately-hostile test fixtures (injection payloads).
 tests/
