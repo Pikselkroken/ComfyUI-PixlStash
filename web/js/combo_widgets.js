@@ -17,8 +17,12 @@
 
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
-import { fetchFaceUrl, nameOf, openAdapterPicker, shelfRecordFor } from "./adapter_picker.js";
-import { fitLabel } from "./modal_dom.js";
+import {
+    collapseStacks, fetchFaceUrl, initialsOf, nameOf, openAdapterPicker, personOf,
+    shelfRecordFor, triggerText,
+} from "./adapter_picker.js";
+import { ROWS, readRows, rowField, withPicks, writeRows } from "./adapter_rows.js";
+import { el, fitLabel } from "./modal_dom.js";
 
 // ---------------------------------------------------------------------------
 // Setting IDs
@@ -46,6 +50,7 @@ const NODE_MIN_VERSION = {
     "PixlStashPictureLikenessGate": "1.4.0",
     // The model shelf (GET /adapters, GET /model-icons) first ships in 1.10.0.
     "PixlStashAdapterLoader":    "1.10.0",
+    "PixlStashMultiAdapterLoader": "1.10.0",
     "PixlStashCheckpointLoader": "1.10.0",
     "PixlStashVAELoader":        "1.10.0",
     "PixlStashCLIPLoader":       "1.10.0",
@@ -415,7 +420,8 @@ function _invalidateKind(kind) {
 }
 
 /**
- * Drop every cached dropdown, and the cached server version with it.
+ * Drop every cached dropdown, the cached server version, and what was looked
+ * up about the people on a Multi Adapter Loader's rows.
  *
  * Called when the connection settings change. Without this, a failed fetch is
  * cached for the life of the page: drop a node before configuring a token and
@@ -425,6 +431,7 @@ function _invalidateKind(kind) {
 function _invalidateAll() {
     _optsCache.clear();
     _versionCache.clear();
+    _rowLookups.clear();
     app.graph?.setDirtyCanvas?.(true, true);
 }
 
@@ -626,7 +633,9 @@ async function rememberWorkflowSetModels(node, widget) {
 // The picked file's face
 // ---------------------------------------------------------------------------
 //
-// Two treatments, both via `node.addDOMWidget` rather than `node.imgs`:
+// Two treatments for the loaders that hold one file each (the Multi Adapter
+// Loader draws a row per file instead — see `addAdapterRows` further down),
+// both via `node.addDOMWidget` rather than `node.imgs`:
 // ComfyUI's own per-node image preview is a canvas-only widget whose
 // `computeLayoutSize()` hard-codes a 220px floor on the node — baked into
 // ComfyUI core, not something a caller can shrink — which is what made a
@@ -938,6 +947,435 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     labelFromValue();
 }
 
+// ---------------------------------------------------------------------------
+// The Multi Adapter Loader's rows
+// ---------------------------------------------------------------------------
+//
+// The node's state is twenty-four flat widgets (adapter_rows.js says why they
+// are flat), all hidden. What is drawn instead is one DOM widget over them: a
+// row per picked adapter with its picture, its person, its trigger word, both
+// strengths and Remove, then the Browse button and Add row.
+//
+// Nothing here is state of its own except how many *empty* rows Add row has
+// put on show, which is not saved: a reloaded graph shows its filled rows and
+// no others.
+
+const ROW_HEIGHT     = 56;
+const ROW_GAP        = 4;
+const ROWS_GAP       = 8;    // between the widget's blocks
+const ROWS_MIN_WIDTH = 380;  // two strength fields beside a name that is still a name
+
+const ROWS_INPUT_CSS = "background:var(--comfy-input-bg,#222); color:var(--input-text,#ddd); "
+    + "border:1px solid var(--border-color,#4e4e4e); font:inherit; box-sizing:border-box;";
+const ROWS_MUTED = "color:var(--descrip-text,#999);";
+
+// Who is on a row, and what else of theirs could be: asked for once per
+// server and kept, like the dropdowns, until the connection settings change.
+const _rowLookups = new Map();
+
+function rowLookup(key, path, extraParams) {
+    const creds = getSettingsCredentials();
+    const full = `${creds.url}|${key}`;
+    if (!_rowLookups.has(full)) {
+        _rowLookups.set(full, proxyFetch(path, creds, extraParams).catch(() => {
+            _rowLookups.delete(full);   // a failure is not an answer worth keeping
+            return null;
+        }));
+    }
+    return _rowLookups.get(full);
+}
+
+/**
+ * Put `text` on the clipboard. `navigator.clipboard` exists only on a secure
+ * origin, and a ComfyUI reached over plain http on a LAN is not one, so there
+ * the old selection-based copy does it.
+ */
+async function copyText(text) {
+    if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+    const field = el("textarea", { value: text, style: "position:fixed; opacity:0;" });
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand("copy");
+    field.remove();
+    if (!copied) throw new Error("copy refused");
+}
+
+async function characterName(id) {
+    const list = await rowLookup("characters", "/pixlstash/characters");
+    return (Array.isArray(list) ? list : []).find(c => String(c?.id) === id)?.name ?? null;
+}
+
+/**
+ * What a row's adapter can be swapped for without the grid: the same person's
+ * adapters for the same base model, one per stack — the choice a people card
+ * carries. Always holds `record` itself, so a row whose file is one epoch of a
+ * run, not its cover, is still offered as what it is.
+ */
+async function alternativesFor(record, personId) {
+    const data = await rowLookup(`adapters|${personId}`, "/pixlstash/adapters", {
+        file_kind:    "adapter",
+        character_id: personId,
+    });
+    const base = (r) => r.base_model_canonical ?? r.base_model ?? null;
+    // Stacks first, then the person, as the grid folds them: what a row
+    // offers is what a people card would.
+    const same = collapseStacks((data?.adapters ?? []).filter(r => r?.sha256))
+        .filter(r => base(r) === base(record) && personOf(r) === personId);
+    return same.some(r => r.sha256 === record.sha256) ? same : [record, ...same];
+}
+
+function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
+    const widgets = new Map((node.widgets ?? []).map(w => [w.name, w]));
+    for (let row = 1; row <= ROWS; row++) {
+        for (const field of ["adapter_sha256", "strength_model", "strength_clip"]) {
+            const w = widgets.get(rowField(field, row));
+            if (!w) return;
+            w.hidden = true;
+            w.computeSize = () => [0, -4];
+        }
+    }
+
+    // `show` is the Python combo's two values, read off the widget rather than
+    // spelled again here: the second is the people view.
+    const isPeople = () => showWidget.value === showWidget.options?.values?.[1];
+    const gridFilters = () => ({
+        fileKind:  "adapter",
+        kind:      adapterKindFilter(kindWidget.value),
+        baseModel: isRealComboValue(baseWidget.value) ? baseWidget.value : "",
+    });
+
+    const box = el("div", {
+        style: `display:flex; flex-direction:column; gap:${ROWS_GAP}px; width:100%; `
+            + "box-sizing:border-box; font:12px sans-serif; color:var(--input-text,#ddd); overflow:hidden;",
+    });
+    let height = 0;
+    const rowsWidget = node.addDOMWidget("adapter_rows", "custom", box, { serialize: false, hideOnZoom: false });
+    rowsWidget.computeLayoutSize = () => ({ minHeight: height, maxHeight: height, minWidth: ROWS_MIN_WIDTH });
+
+    let shown = 0;       // rows drawn: the filled ones, plus any Add row has shown
+    let generation = 0;  // bumped per redraw, so a late lookup knows its row is gone
+
+    // digest → its picture, kept across redraws so a strength edit or a row
+    // moving up does not ask for the same face again.
+    const faces = new Map();
+    const faceFor = (record, creds) => {
+        const key = `${creds.url}|${record.sha256}`;
+        if (!faces.has(key)) faces.set(key, fetchFaceUrl(record, creds).catch(() => null));
+        return faces.get(key);
+    };
+    const dropFaces = (keep) => {
+        for (const [key, pending] of faces) {
+            if (keep.has(key)) continue;
+            faces.delete(key);
+            pending.then(url => { if (url) URL.revokeObjectURL(url); });
+        }
+    };
+
+    const needCredentials = () => {
+        const creds = getSettingsCredentials();
+        if (creds.url && creds.token) return creds;
+        alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
+        return null;
+    };
+
+    /** A button inside the widget; the canvas never sees its click. */
+    const button = (label, css, onClick) => {
+        const b = el("button", { type: "button", textContent: label, style: ROWS_INPUT_CSS + "cursor:pointer; " + css });
+        b.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onClick();
+        });
+        return b;
+    };
+
+    function strengthInput(field, rowNumber, label) {
+        const w = widgets.get(rowField(field, rowNumber));
+        const input = el("input", {
+            type:  "number",
+            step:  "0.05",
+            title: `Row ${rowNumber}: how strongly it patches ${label}. Can be negative.`,
+            style: ROWS_INPUT_CSS + "flex:none; width:58px; height:24px; border-radius:12px; text-align:center; padding:0 2px;",
+        });
+        input.value = Number(w.value).toFixed(2);
+        input.addEventListener("change", () => {
+            const typed = Number(input.value);
+            // The Python range. An emptied field is not a strength: put back
+            // what the row had.
+            if (input.value !== "" && Number.isFinite(typed)) {
+                w.value = Math.min(100, Math.max(-100, typed));
+                w.callback?.(w.value);
+            }
+            input.value = Number(w.value).toFixed(2);
+            node.setDirtyCanvas?.(true, true);
+        });
+        return input;
+    }
+
+    function removeButton(index) {
+        return button("✕", "flex:none; width:22px; height:22px; padding:0; border-color:transparent; "
+            + "background:transparent; border-radius:5px; " + ROWS_MUTED, () => {
+            const rows = readRows(widgets);
+            // Past the filled rows it is an empty one, and only the count goes.
+            if (index < rows.length) {
+                rows.splice(index, 1);
+                writeRows(widgets, rows);
+            }
+            shown = Math.max(0, shown - 1);
+            render();
+        });
+    }
+
+    const rowShell = (index, css) => {
+        const line = el("div", {
+            style: `flex:none; height:${ROW_HEIGHT}px; display:flex; align-items:center; gap:8px; `
+                + "padding:0 6px 0 8px; border-radius:7px; box-sizing:border-box; " + css,
+        });
+        line.appendChild(el("span", {
+            textContent: String(index + 1),
+            style:       "flex:none; width:12px; text-align:center; font-size:11px; " + ROWS_MUTED,
+        }));
+        return line;
+    };
+
+    function filledRow(row, index, mine) {
+        const input = rowField("adapter_sha256", index + 1);
+        const digest = row.adapter_sha256;
+        const line = rowShell(index, "background:var(--comfy-input-bg,#292b30);");
+
+        // Until the shelf answers, and for good if it never does, the row is
+        // the name saved with the workflow, or failing that the digest.
+        const saved = recordedModels(node).find(e => e?.input === input && e.sha256 === digest);
+        const face = el("div", {
+            textContent: "…",
+            style: "flex:none; width:44px; height:44px; border-radius:6px; overflow:hidden; display:flex; "
+                + "align-items:center; justify-content:center; font-weight:700; font-size:15px; "
+                + "background:var(--comfy-menu-bg,#25272b); " + ROWS_MUTED,
+        });
+        const nameCss = "font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;";
+        const name = el("div", {
+            textContent: saved?.display_name || saved?.filename || `${digest.slice(0, 10)}…`,
+            style:       nameCss,
+        });
+        const person = el("span", { style: "overflow:hidden; text-overflow:ellipsis;" });
+        const trigger = el("span", {
+            title: "Click to copy. The prompt has to say it; this node does not touch the prompt.",
+            style: "flex:none; max-width:60%; overflow:hidden; text-overflow:ellipsis; cursor:copy; display:none; "
+                + "font:11px/1.5 monospace; background:var(--comfy-menu-bg,#1a1c1f); color:#cfe38a; "
+                + "border-radius:4px; padding:0 6px;",
+        });
+        const sub = el("div", {
+            style: "display:flex; gap:8px; align-items:center; font-size:11px; white-space:nowrap; overflow:hidden; " + ROWS_MUTED,
+        });
+        sub.append(person, trigger);
+        const body = el("div", { style: "flex:1; min-width:0; display:flex; flex-direction:column; gap:4px;" });
+        body.append(name, sub);
+        line.append(
+            face, body,
+            strengthInput("strength_model", index + 1, "the model"),
+            strengthInput("strength_clip", index + 1, "CLIP"),
+            removeButton(index),
+        );
+
+        const creds = getSettingsCredentials();
+        if (!creds.url || !creds.token) return line;
+
+        shelfRecordFor(digest, creds, "adapter").then(record => {
+            if (!record || mine !== generation) return;
+            if (getSettingsCredentials().url !== creds.url) return;
+            rememberModels(node, input, [modelEntry(input, "adapter", record)]);
+
+            name.textContent = nameOf(record) || name.textContent;
+            name.title       = record.filename || "";
+            face.textContent = initialsOf(record);
+            faceFor(record, creds).then(url => {
+                if (!url || mine !== generation) return;
+                face.replaceChildren(el("img", { src: url, style: "width:100%; height:100%; object-fit:cover; display:block;" }));
+            });
+
+            const words = triggerText(record);
+            if (words) {
+                trigger.textContent   = words;
+                trigger.style.display = "";
+                trigger.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    copyText(words).then(() => {
+                        trigger.textContent = "copied";
+                        setTimeout(() => { trigger.textContent = words; }, 900);
+                    }).catch(() => {});
+                });
+            }
+
+            const personId = personOf(record);
+            person.textContent = personId ? `Character #${personId}` : "no person";
+            if (!personId) return;
+            characterName(personId).then(known => {
+                if (known && mine === generation) person.textContent = known;
+            });
+            // The choice a people card carries, kept on the row: swapping one
+            // of this person's adapters for another does not need the grid.
+            alternativesFor(record, personId).then(options => {
+                if (mine !== generation || options.length < 2) return;
+                const select = el("select", {
+                    title: `${options.length} of this person's adapters fit`,
+                    style: ROWS_INPUT_CSS + nameCss + "max-width:100%; border-radius:4px; padding:1px 2px;",
+                });
+                for (const option of options) {
+                    select.appendChild(el("option", {
+                        value:       option.sha256,
+                        textContent: nameOf(option) || option.sha256.slice(0, 12),
+                    }));
+                }
+                select.value = record.sha256;
+                select.addEventListener("change", () => {
+                    // The digest alone: the row keeps its place and strengths.
+                    const w = widgets.get(input);
+                    w.value = select.value;
+                    w.callback?.(w.value);
+                    render();
+                });
+                name.replaceWith(select);
+            });
+        });
+        return line;
+    }
+
+    function emptyRow(index) {
+        const line = rowShell(index, "border:1px solid var(--border-color,#4a4d56); " + ROWS_MUTED);
+        line.append(
+            el("span", { textContent: "Empty. Loads nothing.", style: "flex:1;" }),
+            button("Pick…", "flex:none; height:22px; padding:0 9px; border-radius:4px;", () => {
+                const creds = needCredentials();
+                if (!creds) return;
+                // The rows are packed, so the first empty widget is the one
+                // after the last filled row, whichever empty row was clicked.
+                const target = widgets.get(rowField("adapter_sha256", readRows(widgets).length + 1));
+                openAdapterPicker(target, creds, gridFilters(), render)
+                    .catch(err => alert(`PixlStash picker error: ${err.message}`));
+            }),
+            removeButton(index),
+        );
+        return line;
+    }
+
+    function browse() {
+        const creds = needCredentials();
+        if (!creds) return;
+        openAdapterPicker(null, creds, {
+            ...gridFilters(),
+            several: {
+                picked: readRows(widgets).map(r => r.adapter_sha256),
+                limit:  ROWS,
+                people: isPeople(),
+                // The switch in the grid is this node's `show` setting. It
+                // arrives on confirm only, with the rows.
+                onView: (people) => {
+                    showWidget.value = showWidget.options?.values?.[people ? 1 : 0] ?? showWidget.value;
+                    showWidget.callback?.(showWidget.value);
+                },
+            },
+        }, (digests, replaced) => {
+            writeRows(widgets, withPicks(readRows(widgets), digests, replaced));
+            shown = 0;   // an empty row left on show is not one of the picks
+            render();
+        }).catch(err => alert(`PixlStash picker error: ${err.message}`));
+    }
+
+    function render() {
+        const mine = ++generation;
+        const rows = readRows(widgets);
+        // Packs the rows: a gap that something other than this widget wrote
+        // closes here, so the canvas never draws one.
+        writeRows(widgets, rows);
+        shown = Math.min(ROWS, Math.max(shown, rows.length));
+        const people = isPeople();
+        const creds = getSettingsCredentials();
+        dropFaces(new Set(rows.map(r => `${creds.url}|${r.adapter_sha256}`)));
+        // A saved name follows its adapter to whichever row that is on now:
+        // for one the shelf no longer has, it is all there is to show.
+        const saved = recordedModels(node);
+        for (let row = 1; row <= ROWS; row++) {
+            const input = rowField("adapter_sha256", row);
+            const digest = rows[row - 1]?.adapter_sha256;
+            const entry = digest && saved.find(e => e?.sha256 === digest);
+            rememberModels(node, input, entry ? [{ ...entry, input }] : []);
+        }
+
+        const blocks = [];   // [element, height]
+        if (rows.length) {
+            const head = el("div", {
+                style: "flex:none; height:12px; display:flex; justify-content:flex-end; gap:8px; padding-right:36px; "
+                    + "font-size:10px; line-height:12px; letter-spacing:.07em; text-transform:uppercase; " + ROWS_MUTED,
+            });
+            for (const label of ["model", "clip"]) {
+                head.appendChild(el("span", { textContent: label, style: "width:58px; text-align:center;" }));
+            }
+            blocks.push([head, 12]);
+        } else if (!shown) {
+            blocks.push([el("div", {
+                textContent: `${people ? "Nobody" : "Nothing"} picked. Queued like this, the workflow runs as it is.`,
+                style:       "flex:none; height:30px; line-height:15px; overflow:hidden; " + ROWS_MUTED,
+            }), 30]);
+        }
+        if (shown) {
+            const list = el("div", { style: `flex:none; display:flex; flex-direction:column; gap:${ROW_GAP}px;` });
+            for (let index = 0; index < shown; index++) {
+                list.appendChild(index < rows.length ? filledRow(rows[index], index, mine) : emptyRow(index));
+            }
+            blocks.push([list, shown * ROW_HEIGHT + (shown - 1) * ROW_GAP]);
+        }
+        // The button says what the grid holds.
+        blocks.push([button(people ? "Browse people…" : "Browse adapters…",
+            "flex:none; height:26px; border-radius:13px;", browse), 26]);
+
+        const foot = el("div", {
+            style: "flex:none; height:18px; display:flex; align-items:center; justify-content:space-between; font-size:11px; " + ROWS_MUTED,
+        });
+        const add = button("+ Add row", "border-color:transparent; background:transparent; padding:0; font-size:12px;", () => {
+            shown = Math.min(ROWS, shown + 1);
+            render();
+        });
+        add.disabled = shown >= ROWS;
+        if (add.disabled) add.style.cssText += "opacity:.4; cursor:default;";
+        foot.append(add, el("span", { textContent: `${shown} of ${ROWS} rows` }));
+        blocks.push([foot, 18]);
+
+        box.replaceChildren(...blocks.map(([element]) => element));
+        // ComfyUI insets a DOM widget's element by the widget's margin on every
+        // side, so the height asked for is the content's plus that, twice.
+        height = blocks.reduce((sum, [, h]) => sum + h, 0) + ROWS_GAP * (blocks.length - 1)
+            + 2 * (rowsWidget.margin ?? 10);
+
+        // The node is as tall as its rows: grown when one is added, and taken
+        // back in when one goes. Its width is the owner's to keep.
+        const size = node.computeSize();
+        node.setSize([Math.max(node.size?.[0] ?? 0, size[0]), size[1]]);
+        node.setDirtyCanvas?.(true, true);
+    }
+
+    const prevShow = showWidget.callback;
+    showWidget.callback = (...args) => {
+        prevShow?.(...args);
+        render();
+    };
+
+    const prevConfigure = node.onConfigure;
+    node.onConfigure = function (data) {
+        prevConfigure?.call(this, data);
+        shown = 0;
+        render();
+    };
+
+    const prevRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        prevRemoved?.call(this);
+        generation++;
+        dropFaces(new Set());
+    };
+
+    render();
+}
+
 app.registerExtension({
     name: "ComfyUI.PixlStash",
 
@@ -1158,6 +1596,24 @@ app.registerExtension({
                         workflowSetId: getWiredValue(this, "pixlstash_workflow_set"),
                     }),
                 });
+            };
+        }
+
+        // ============================================================
+        // PixlStash Multi Adapter Loader — the same grid, several rows
+        // ============================================================
+        if (nodeData.name === "PixlStashMultiAdapterLoader") {
+            const orig = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                orig?.call(this);
+
+                const showWidget = this.widgets?.find(w => w.name === "show");
+                const kindWidget = this.widgets?.find(w => w.name === "adapter_kind");
+                const baseWidget = this.widgets?.find(w => w.name === "base_model");
+                if (!showWidget || !kindWidget || !baseWidget) return;
+
+                bindDynamicValues(this, baseWidget, "base_models", () => null);
+                addAdapterRows(this, { showWidget, kindWidget, baseWidget });
             };
         }
 

@@ -8,8 +8,19 @@
  *   valueWidget — the hidden widget written on confirm (`adapter_sha256`,
  *                 `vae_sha256`, `clip_sha256`, `checkpoint_id`)
  *   credentials — { url, token, verifySsl }
- *   filters     — { fileKind, kind, baseModel, characterId, setId, workflowSetId }
+ *   filters     — { fileKind, kind, baseModel, characterId, setId, workflowSetId,
+ *                   several? }
  *   onPicked    — called with the chosen shelf record after confirm
+ *
+ * With `filters.several` the same grid ticks several adapters, for the
+ * Multi Adapter Loader: `{ picked, limit, people, onView }`, where `picked` is
+ * the digests already on the node, in row order. Nothing is written to a
+ * widget then (`valueWidget` is null); `onPicked` gets the ticked digests, in
+ * the order they will fill the rows, and a Map from any of them that a people
+ * card's choice swapped in to the digest it replaced. `people` opens it on the people view —
+ * one card per person who has an adapter that passes the filters — and
+ * `onView(people)` is told on confirm if the switch in the modal was left on
+ * the other view. Cancelling changes nothing on the node, the view included.
  *
  * One modal for every kind of file on the shelf, because they differ in three
  * strings and one identity field (see SHELF_KINDS) and in nothing else — the
@@ -27,6 +38,7 @@
  * part that costs a request each.
  */
 
+import { swapTick, toggleTick } from "./adapter_rows.js";
 import { el, mkBtn, mkRow, selStyle } from "./modal_dom.js";
 
 const PAGE_SIZE = 48;
@@ -174,10 +186,11 @@ function isPresent(record) {
  * unpositioned row is never drawn as the face of a run.
  *
  * Members are kept on the cover as `_members` for the count badge only. There
- * is no expand-the-strip here: this picker exists to choose one file to load,
- * and the cover is that file by definition.
+ * is no expand-the-strip here: this picker exists to choose files to load, and
+ * the cover is the file of a run by definition. The Multi Adapter Loader's rows
+ * fold the same way, so a row offers what the grid would.
  */
-function collapseStacks(rows) {
+export function collapseStacks(rows) {
     const covers = new Map();   // stack_id → the member with the lowest position
     const counts = new Map();
     for (const row of rows) {
@@ -193,14 +206,64 @@ function collapseStacks(rows) {
         .map(row => row.stack_id == null ? row : { ...row, _members: counts.get(row.stack_id) });
 }
 
+/** The character a record is attached to first, as an id, or `null`. */
+export function personOf(record) {
+    const attachment = (record?.attachments || []).find(
+        a => a && a.entity_type === "character" && a.entity_id != null);
+    return attachment ? String(attachment.entity_id) : null;
+}
+
+/**
+ * One entry per person, each with the adapters of theirs in `rows`.
+ *
+ * The same shape of fold as `collapseStacks`, by first character attachment,
+ * so an adapter attached to two people is offered under the first and not
+ * twice. `names` maps a character id
+ * to a name; a person the list has no name for is still a person.
+ */
+export function foldPeople(rows, names = new Map()) {
+    const people = new Map();
+    for (const row of rows) {
+        const id = personOf(row);
+        if (id == null) continue;
+        if (!people.has(id)) {
+            people.set(id, { id, name: names.get(id) || `Character #${id}`, adapters: [] });
+        }
+        people.get(id).adapters.push(row);
+    }
+    return [...people.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * A record's trigger words as text for a prompt, or "".
+ *
+ * The same unwrapping as `_trigger_words` in nodes/adapter_loader.py, so the
+ * chip on a row reads as the `trigger_words` output will: the field arrives as
+ * a list, as a JSON list in a string, or as plain words.
+ */
+export function triggerText(record) {
+    let value = record?.trigger_words;
+    if (typeof value === "string" && value.trim().startsWith("[")) {
+        try {
+            const decoded = JSON.parse(value);
+            if (Array.isArray(decoded)) value = decoded;
+        } catch { /* not JSON: plain words that happen to start with a bracket */ }
+    }
+    if (Array.isArray(value)) {
+        return value.filter(v => v != null).map(v => String(v).trim()).filter(Boolean).join(", ");
+    }
+    return value ? String(value).trim() : "";
+}
+
 /** What a card (and the Browse button) calls a record. */
 export function nameOf(record) {
     return record?.display_name || record?.filename || null;
 }
 
 // value → shelf record, for the button labels and the node's thumbnail. Held
-// for the life of the page, which is right for the two things read off it here
-// — a name and a face, neither of which changes while a graph is open — and
+// for the life of the page, which is right for the things read off it here — a
+// name, a face and, on the Multi Adapter Loader's rows, a person and a trigger
+// word, none of which changes while a graph is open in the ordinary way — and
 // would not be for `locations`: the grid re-fetches those rather than reading
 // them from here, because a drive can come back mid-session.
 const _recordCache = new Map();
@@ -254,10 +317,17 @@ export async function shelfRecordFor(rawValue, credentials, fileKind) {
     return record;
 }
 
+/** The people view's search: the person, or anything about their adapters. */
+function matchesPerson(person, needle) {
+    if (!needle) return true;
+    return person.name.toLowerCase().includes(needle)
+        || person.adapters.some(a => matchesSearch(a, needle));
+}
+
 /** Fields the in-modal search box matches against. */
 function matchesSearch(record, needle) {
     if (!needle) return true;
-    const hay = [record.display_name, record.filename, record.trigger_words, record.base_model]
+    const hay = [record.display_name, record.filename, triggerText(record), record.base_model]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -273,17 +343,33 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     /** The value written into the widget: a hash, or an id for checkpoints. */
     const idOf = (record) => (shelf.byId ? String(record.id ?? "") : String(record.sha256 ?? ""));
 
-    let selectedValue = String(valueWidget.value ?? "").trim() || null;
+    // Several-selectable (the Multi Adapter Loader): the ticked digests in the
+    // order they will fill the rows, and which of the two views is drawn.
+    const several = filters?.several ?? null;
+    const ticked  = several ? [...several.picked] : [];
+    let people    = !!several?.people;
+    // A ticked digest that a people card's choice put in place of another →
+    // the one it replaced, so the row can keep its strengths.
+    const replaced = new Map();
+
+    let selectedValue = String(valueWidget?.value ?? "").trim() || null;
     let selectedRecord = null;
 
     const itemElements = [];
-    let records   = [];   // the filtered shelf, fetched once
+    let records   = [];   // what the grid draws: shelf records, or people
     let rendered  = 0;    // how much of it is on screen
     // Bumped whenever the grid is torn down, so in-flight icon fetches can
     // tell that the card they were destined for is gone.
     let gridGeneration = 0;
     let dismissed = false;
     let searchTimer = null;
+
+    let all = [];             // the filtered shelf, fetched once
+    // Several-selectable only:
+    let loaded    = false;
+    let shelfRows = [];       // every adapter, whatever the filters say
+    let persons   = [];       // `all`, folded by person
+    const byDigest = new Map();
 
     // -----------------------------------------------------------------------
     // Build DOM
@@ -311,15 +397,13 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     const closeBtn = mkBtn("✕");
     const header   = mkRow(titleEl, countEl, closeBtn);
 
-    const searchInput = el("input", {
-        type: "text",
-        placeholder: "Search name, filename or trigger words…",
-        style: selStyle() + "flex:1;",
-    });
-    const filterRow = mkRow(
-        el("span", { textContent: describeFilters(filters, shelf), style: "color:#aaa; font-size:.85em; flex-shrink:0;" }),
-        searchInput,
-    );
+    const searchInput = el("input", { type: "text", style: selStyle() + "flex:1;" });
+    // The switch between the two views: the node's `show` setting, drawn where
+    // the grid it changes is, and written back when the grid is confirmed.
+    const peopleBtn = mkBtn("People who fit");
+    const allBtn    = mkBtn("All adapters");
+    const filterText = el("span", { style: "color:#aaa; font-size:.85em; flex-shrink:0;" });
+    const filterRow = mkRow(...(several ? [peopleBtn, allBtn] : []), filterText, searchInput);
 
     const grid = el("div", {
         style: `
@@ -331,10 +415,15 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         `,
     });
 
-    const confirmBtn = mkBtn(`Use this ${shelf.noun}`, "#2a7a2a");
+    const confirmBtn = mkBtn(several ? "Use" : `Use this ${shelf.noun}`, "#2a7a2a");
     const cancelBtn  = mkBtn("Cancel");
-    const footer = el("div", { style: "display:flex; justify-content:flex-end; gap:10px; flex-shrink:0;" });
-    footer.append(cancelBtn, confirmBtn);
+    // Says what confirming will do to the rows. Empty when one file is picked.
+    const sayEl  = el("span", { style: "flex:1; font-size:.85em; color:#aaa;" });
+    const footer = el("div", { style: "display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-shrink:0;" });
+    footer.append(sayEl, cancelBtn, confirmBtn);
+    // Nothing to confirm until the shelf is here: confirming an unloaded grid
+    // would be confirming a list nobody has seen.
+    confirmBtn.disabled = !!several;
 
     modal.append(header, filterRow, grid, footer);
     overlay.appendChild(modal);
@@ -345,9 +434,15 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     // -----------------------------------------------------------------------
 
     function highlight(itemEl) {
-        const sel = itemEl._value === selectedValue;
+        const at  = several ? ticked.indexOf(itemEl._value()) : -1;
+        const sel = several ? at >= 0 : itemEl._value() === selectedValue;
         itemEl.style.outline       = sel ? "3px solid #4caf50" : "none";
         itemEl.style.outlineOffset = sel ? "2px" : "0";
+        if (itemEl._badge) {
+            // The number is the row the card will fill.
+            itemEl._badge.textContent   = sel ? String(at + 1) : "";
+            itemEl._badge.style.display = sel ? "" : "none";
+        }
     }
 
     function close() {
@@ -370,17 +465,67 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     }
 
     function updateCount() {
-        countEl.textContent = `${records.length} ${shelf.noun}${records.length === 1 ? "" : "s"}`;
+        const n = records.length;
+        countEl.textContent = people
+            ? `${n} ${n === 1 ? "person" : "people"}`
+            : `${n} ${shelf.noun}${n === 1 ? "" : "s"}`;
     }
 
-    function makeCard(record) {
+    /** Tick or untick one digest, then redraw every card's number. */
+    function toggle(value) {
+        toggleTick(ticked, replaced, value, several.limit);
+        refreshTicks();
+    }
+
+    /**
+     * Redraw the ticks, and say in the footer what confirming will do.
+     *
+     * A tick whose card is not in this view — an adapter with no person, under
+     * the people view; one the filters hide, under either — is not dropped by
+     * confirming: it stays on the node, and the footer names it.
+     */
+    function refreshTicks() {
+        for (const item of itemElements) highlight(item);
+        if (!several || !loaded) return;
+
+        const inView = new Set(people
+            ? persons.flatMap(p => p.adapters.map(idOf))
+            : all.map(idOf));
+        const here   = ticked.filter(d => inView.has(d));
+        const hidden = ticked.filter(d => !inView.has(d));
+        const n = people
+            ? new Set(here.map(d => personOf(byDigest.get(d)))).size
+            : here.length;
+        const noun = people ? (n === 1 ? "person" : "people") : `adapter${n === 1 ? "" : "s"}`;
+
+        let say = n
+            ? `${n} ${noun} picked, applied in the order picked.`
+            : (people ? "Nobody picked." : "Nothing picked.");
+        if (hidden.length) {
+            const one = hidden.length === 1;
+            const names = hidden.map(d => nameOf(byDigest.get(d)) || `${d.slice(0, 10)}…`);
+            const notPeople = people
+                && hidden.every(d => byDigest.has(d) && personOf(byDigest.get(d)) == null);
+            const why = notPeople
+                ? (one ? "is not a person" : "are not people")
+                : (one ? "is not in this view" : "are not in this view");
+            say += ` ${new Intl.ListFormat("en").format(names)} ${why} and `
+                + `${one ? "stays" : "stay"} on the node.`;
+        }
+        if (ticked.length >= several.limit) say += ` All ${several.limit} rows are in use.`;
+        sayEl.textContent = say;
+        // With nothing ticked here, confirming still leaves the hidden rows.
+        confirmBtn.textContent = n ? `Use ${n} ${noun}` : (hidden.length ? "Keep the rows" : "Use none");
+    }
+
+    /** The parts every card has: the square, its initials, and its tick number. */
+    function cardShell(initials) {
         const item = el("div", {
             style: `
                 cursor:pointer; background:#252525; border-radius:6px;
                 padding:6px; display:flex; flex-direction:column; gap:4px;
             `,
         });
-        item._value     = idOf(record);
         item._objectUrl = null;
 
         // Square icon box. padding-top:100% forces height = width.
@@ -395,9 +540,50 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             `,
         });
         // A record with no icon draws a generated mark, not a broken image.
-        iconInner.textContent = initialsOf(record);
+        iconInner.textContent = initials;
         iconBox.appendChild(iconInner);
+        if (several) {
+            item._badge = el("div", {
+                style: `
+                    position:absolute; top:4px; left:4px; min-width:20px; height:20px;
+                    padding:0 5px; box-sizing:border-box; border-radius:10px;
+                    background:#5cbf62; color:#0d1a0e; font-size:12px; font-weight:700;
+                    line-height:20px; text-align:center; display:none;
+                `,
+            });
+            iconBox.appendChild(item._badge);
+        }
         item.appendChild(iconBox);
+        return { item, iconInner };
+    }
+
+    /** Fetch a card's picture and put it in its square, if the card is still there. */
+    function loadFace(item, iconInner, fetchUrl) {
+        // The grid may be rebuilt (or the modal closed) while this is in
+        // flight. An icon that lands on a card no longer in itemElements
+        // would never be revoked by close()/resetGrid(), so revoke it here
+        // instead — that is the leak, and typing in the search box is the
+        // way to hit it.
+        const generation = gridGeneration;
+        fetchUrl()
+            .then(url => {
+                if (!url) return;
+                if (generation !== gridGeneration || !item.isConnected) {
+                    URL.revokeObjectURL(url);
+                    return;
+                }
+                item._objectUrl = url;
+                iconInner.replaceChildren(el("img", {
+                    src:   url,
+                    style: "width:100%; height:100%; object-fit:contain; display:block;",
+                }));
+            })
+            .catch(() => {});
+    }
+
+    function makeCard(record) {
+        const { item, iconInner } = cardShell(initialsOf(record));
+        item._value = () => idOf(record);
 
         item.appendChild(el("div", {
             textContent: nameOf(record) || idOf(record).slice(0, 12),
@@ -435,34 +621,22 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         }
 
         if (record.icon_sha256 || (record.attachments || []).length) {
-            // The grid may be rebuilt (or the modal closed) while this is in
-            // flight. An icon that lands on a card no longer in itemElements
-            // would never be revoked by close()/resetGrid(), so revoke it here
-            // instead — that is the leak, and typing in the search box is the
-            // way to hit it.
-            const generation = gridGeneration;
-            fetchFaceUrl(record, credentials)
-                .then(url => {
-                    if (!url) return;
-                    if (generation !== gridGeneration || !item.isConnected) {
-                        URL.revokeObjectURL(url);
-                        return;
-                    }
-                    item._objectUrl = url;
-                    iconInner.replaceChildren(el("img", {
-                        src:   url,
-                        style: "width:100%; height:100%; object-fit:contain; display:block;",
-                    }));
-                })
-                .catch(() => {});
+            loadFace(item, iconInner, () => fetchFaceUrl(record, credentials));
         }
 
         item.addEventListener("click", () => {
+            if (several) {
+                toggle(idOf(record));
+                return;
+            }
             selectedValue  = idOf(record);
             selectedRecord = record;
             for (const other of itemElements) highlight(other);
         });
         item.addEventListener("dblclick", () => {
+            // Several-selectable has no "this one and done": the second click
+            // of a double click has already unticked what the first ticked.
+            if (several) return;
             selectedValue  = idOf(record);
             selectedRecord = record;
             confirmSelection();
@@ -472,11 +646,97 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         return item;
     }
 
+    /**
+     * One person: their face, and the adapter of theirs a tick stands for.
+     *
+     * With more than one that fits, the card carries the choice. Changing it on
+     * a ticked card swaps the digest where it stands, so the row keeps its
+     * place.
+     */
+    function makePersonCard(person) {
+        const { item, iconInner } = cardShell(initialsOf({ display_name: person.name }));
+        person.chosen = person.adapters.find(a => ticked.includes(idOf(a)))
+            ?? person.chosen ?? person.adapters[0];
+        item._value = () => idOf(person.chosen);
+
+        item.appendChild(el("div", {
+            textContent: person.name,
+            style:       "font-size:.8em; font-weight:600; line-height:1.25; overflow-wrap:anywhere;",
+        }));
+
+        const meta = el("div", { style: "font-size:.72em; color:#999; overflow-wrap:anywhere;" });
+        const trigger = el("div", {
+            style: `
+                align-self:flex-start; max-width:100%; box-sizing:border-box;
+                font:11px/1.5 monospace; background:#1a1c1f; color:#cfe38a;
+                border-radius:4px; padding:0 6px; overflow-wrap:anywhere;
+            `,
+        });
+        const describe = () => {
+            const adapter = person.chosen;
+            meta.textContent = [
+                person.adapters.length > 1
+                    ? `${person.adapters.length} of their adapters fit`
+                    : [nameOf(adapter), adapter.kind].filter(Boolean).join(" · "),
+                isPresent(adapter) ? null : "no copy on disk",
+            ].filter(Boolean).join(" · ");
+            const words = triggerText(adapter);
+            trigger.textContent   = words;
+            trigger.style.display = words ? "" : "none";
+        };
+
+        let select = null;
+        if (person.adapters.length > 1) {
+            select = el("select", { style: selStyle() + "width:100%; min-width:0;" });
+            for (const adapter of person.adapters) {
+                select.appendChild(el("option", {
+                    value:       idOf(adapter),
+                    textContent: nameOf(adapter) || idOf(adapter).slice(0, 12),
+                }));
+            }
+            select.value = idOf(person.chosen);
+            // Choosing between their adapters is not ticking the person.
+            select.addEventListener("click", e => e.stopPropagation());
+            select.addEventListener("change", () => {
+                const was = idOf(person.chosen);
+                person.chosen = person.adapters.find(a => idOf(a) === select.value) ?? person.chosen;
+                swapTick(ticked, replaced, was, idOf(person.chosen));
+                describe();
+                refreshTicks();
+            });
+            item.appendChild(select);
+        }
+        item.append(meta, trigger);
+        describe();
+
+        // By face: the person's own, not the icon somebody gave one of their
+        // files. No reference face leaves the initials, as on an adapter card.
+        loadFace(item, iconInner, () => fetchBlobUrl("/pixlstash/entity_thumbnail", credentials, {
+            entity_type: "character",
+            entity_id:   person.id,
+        }));
+
+        item.addEventListener("click", () => {
+            toggle(idOf(person.chosen));
+            // Two of their adapters can be ticked (from the other view). With
+            // the shown one unticked the card is still a ticked person, and
+            // has to show the one that is left.
+            const other = person.adapters.find(a => ticked.includes(idOf(a)));
+            if (!other || ticked.includes(idOf(person.chosen))) return;
+            person.chosen = other;
+            if (select) select.value = idOf(other);
+            describe();
+            highlight(item);
+        });
+        highlight(item);
+        return item;
+    }
+
     /** Append the next slice of the already-fetched list. */
     function renderMore() {
         const slice = records.slice(rendered, rendered + PAGE_SIZE);
         for (const record of slice) {
-            const item = makeCard(record);
+            const item = people ? makePersonCard(record) : makeCard(record);
             itemElements.push(item);
             grid.appendChild(item);
         }
@@ -502,12 +762,21 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         grid.replaceChildren();
         rendered = 0;
         if (!records.length) {
+            if (people) {
+                if (persons.length) showNotice("Nobody matches this search.");
+                else showNobodyFits();
+                return;
+            }
             // "No VAEs match these filters" over an empty shelf reads as a
             // broken node. The two cases are worth telling apart: a search that
             // matched nothing, and a shelf that holds none of this kind at all
             // — which is nearly always a folder PixlStash was never pointed at.
             showNotice(all.length
                 ? `No ${shelf.noun}s match this search.`
+                // The several-selectable grid has the whole shelf beside the
+                // filtered one, so it can tell a filter from an empty shelf.
+                : shelfRows.length
+                ? `No ${shelf.noun}s match the node's filters (${describeFilters(filters, shelf).replace("Filtered: ", "")}).`
                 : `Your shelf holds no ${shelf.noun}s. PixlStash only catalogues `
                   + `the folders registered under Settings › Model folders — add `
                   + `the folder your ${shelf.noun}s live in, then rescan it.`);
@@ -523,7 +792,93 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         }));
     }
 
+    /**
+     * The people view with nobody in it.
+     *
+     * An empty grid would read as a shelf with no people on it. What is nearly
+     * always true instead is that people have adapters and none passes the
+     * filters, so it says how many there are and for which base models, and
+     * offers the other view.
+     */
+    function showNobodyFits() {
+        // Folded as the people list is — stacks first, then by person — so
+        // the count is of the same things the grid would have drawn.
+        const attached = collapseStacks(shelfRows).filter(r => personOf(r) != null);
+        const lines = [];
+        if (!attached.length) {
+            lines.push(
+                "No adapter on your shelf is attached to a person.",
+                "Attach one to a character in PixlStash and that person is offered here.",
+            );
+        } else {
+            const { kind, baseModel } = filters;
+            const what = kind ? `a ${kind}` : "an adapter";
+            lines.push(baseModel ? `Nobody has ${what} for ${baseModel}.` : `Nobody has ${what}.`);
+
+            const counts = new Map();
+            for (const r of attached) {
+                const key = r.base_model || "no base model";
+                counts.set(key, (counts.get(key) ?? 0) + 1);
+            }
+            const breakdown = [...counts]
+                .sort((a, b) => b[1] - a[1])
+                .map(([name, count]) => `${name} ${count}`)
+                .join(", ");
+            const n = attached.length;
+            const are = `${n} adapter${n === 1 ? " is" : "s are"} attached to people`;
+            lines.push(kind
+                ? `${are}, but ${n === 1 ? "it does not fit" : "none fits"}: ${breakdown}.`
+                : `${are}, for other base models: ${breakdown}.`);
+        }
+
+        const notice = el("div", {
+            style: `
+                grid-column:1/-1; display:flex; flex-direction:column; align-items:center;
+                gap:10px; padding:24px 12px; text-align:center; font-size:.9em; color:#bbb;
+            `,
+        });
+        notice.append(
+            el("div", { textContent: lines[0], style: "color:#e8e8e8; font-weight:600;" }),
+            el("div", { textContent: lines[1] }),
+        );
+        const showAll = mkBtn("Show all adapters");
+        showAll.addEventListener("click", () => setView(false));
+        notice.appendChild(showAll);
+        grid.replaceChildren(notice);
+    }
+
+    /** Draw which view is on: the switch, what the grid is narrowed to, the search hint. */
+    function paintView() {
+        peopleBtn.style.background = people ? "#555" : "#2d2d2d";
+        allBtn.style.background    = people ? "#2d2d2d" : "#555";
+        searchInput.placeholder = people
+            ? "Search a person, adapter or trigger word…"
+            : "Search name, filename or trigger words…";
+        const narrowed = !!(filters?.kind || filters?.baseModel);
+        filterText.textContent = people
+            ? [filters.baseModel ? `Fits ${filters.baseModel}` : "Any base model", filters.kind]
+                .filter(Boolean).join(" · ")
+            // Beside a switch that already reads "All adapters", saying it
+            // again is noise.
+            : (several && !narrowed ? "" : describeFilters(filters, shelf));
+    }
+
+    function setView(toPeople) {
+        if (people === toPeople) return;
+        people = toPeople;
+        paintView();
+        if (loaded) applySearch();
+    }
+
     function confirmSelection() {
+        if (several) {
+            close();
+            // The view is the node's `show` setting, which is an input like any
+            // other: written with the rows, on confirm, and not at all on Cancel.
+            if (people !== !!several.people) several.onView?.(people);
+            onPicked?.([...ticked], replaced);
+            return;
+        }
         const picked = selectedRecord ?? records.find(r => idOf(r) === selectedValue) ?? null;
         // Nothing new was chosen (the list failed to load, or the pre-seeded
         // value isn't in it) — close without touching the widget or the label,
@@ -540,6 +895,19 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         onPicked?.(picked);
     }
 
+    // The search box filters the fetched array rather than re-querying — the
+    // whole filtered shelf is already here.
+    function applySearch() {
+        if (dismissed) return;
+        const needle = searchInput.value.trim().toLowerCase();
+        records = people
+            ? persons.filter(p => matchesPerson(p, needle))
+            : all.filter(r => matchesSearch(r, needle));
+        updateCount();
+        resetGrid();
+        refreshTicks();
+    }
+
     // -----------------------------------------------------------------------
     // Wire up + load
     // -----------------------------------------------------------------------
@@ -550,12 +918,14 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     closeBtn.addEventListener("click",  close);
     cancelBtn.addEventListener("click", close);
     confirmBtn.addEventListener("click", confirmSelection);
+    peopleBtn.addEventListener("click", () => setView(true));
+    allBtn.addEventListener("click",    () => setView(false));
     overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
     document.addEventListener("keydown", onKeyDown, true);
 
+    paintView();
     showNotice("Loading…");
 
-    let all = [];
     try {
         const data = await proxyFetch(shelf.path, credentials, buildAdapterQuery(filters));
         let rows = data?.[shelf.listKey];
@@ -570,6 +940,26 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         // For a checkpoint that is the not-yet-hashed case, which is ordinary —
         // it has an id, so it is only the hash-addressed kinds that lose rows.
         all = collapseStacks(rows.filter(r => r && idOf(r)));
+
+        if (several) {
+            // Beside the filtered shelf, the whole of it: the people view says
+            // who does NOT fit, and the footer names a pick the filters hide.
+            // Asked for rather than filtered here, because what "fits" a base
+            // model is the server's rule (it matches the identified model as
+            // well as the string) and a copy of it would drift.
+            const narrowed = !!(filters.kind || filters.baseModel);
+            const [whole, characters] = await Promise.all([
+                narrowed ? proxyFetch(shelf.path, credentials, { file_kind: "adapter" }) : data,
+                // Names only: without them a person is still a face and a number.
+                proxyFetch("/pixlstash/characters", credentials).catch(() => []),
+            ]);
+            const wholeRows = whole?.[shelf.listKey];
+            shelfRows = (Array.isArray(wholeRows) ? wholeRows : []).filter(r => r && idOf(r));
+            for (const r of [...shelfRows, ...all]) byDigest.set(idOf(r), r);
+            persons = foldPeople(all, new Map(
+                (Array.isArray(characters) ? characters : []).map(c => [String(c.id), c.name]),
+            ));
+        }
     } catch (err) {
         if (!dismissed) showNotice(`⚠ ${err.message}`, "#f88");
         return;
@@ -580,15 +970,8 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     // looking at, and focus a detached input.
     if (dismissed) return;
 
-    // The search box filters the fetched array rather than re-querying — the
-    // whole filtered shelf is already here.
-    function applySearch() {
-        if (dismissed) return;
-        const needle = searchInput.value.trim().toLowerCase();
-        records = all.filter(r => matchesSearch(r, needle));
-        updateCount();
-        resetGrid();
-    }
+    loaded = true;
+    confirmBtn.disabled = false;
     searchInput.addEventListener("input", () => {
         if (searchTimer) clearTimeout(searchTimer);
         searchTimer = setTimeout(applySearch, SEARCH_DEBOUNCE_MS);
@@ -613,7 +996,7 @@ function describeFilters({ kind, baseModel, characterId, setId, workflowSetId } 
 }
 
 /** Two letters for the generated mark shown when a record has no icon. */
-function initialsOf(record) {
+export function initialsOf(record) {
     const name = String(record.display_name || record.filename || "?");
     const words = name.replace(/[_\-.]+/g, " ").split(/\s+/).filter(Boolean);
     return (words.slice(0, 2).map(w => w[0]).join("") || "?").toUpperCase();

@@ -43,6 +43,7 @@ read them at runtime, so they never end up in saved workflow JSON.
 | Face Likeness Gate | Splits a batch into `accepted` and `rejected` by how well each face matches a character. | 1.2 | 1.6 |
 | Picture Likeness Gate | Same, judged on whole-image likeness to a reference picture set. | 1.3.1 | 1.4 |
 | Adapter (LoRA) Loader | Applies a LoRA from the model shelf. | 1.5 | 1.10 |
+| Multi Adapter (LoRA) Loader | Applies several LoRAs from the model shelf, one row each, in one node. Can list people instead of files. | 1.7 | 1.10 |
 | Checkpoint Loader | Loads a checkpoint from the model shelf. | 1.5 | 1.10 |
 | VAE Loader | Loads a VAE from the model shelf. | 1.5 | 1.10 |
 | CLIP Loader | Loads one or two text encoders from the model shelf. | 1.5 | 1.10 |
@@ -91,13 +92,28 @@ so it drops straight into an existing graph. The Adapter Loader adds a
 
 Once picked, the node shows the model's name and its face: a resizable
 thumbnail on the Adapter (LoRA) Loader, where seeing the face is the point,
-and a small favicon on the others — so a graph with four loaders stays
-readable without any of them ballooning in size.
+a row per adapter on the Multi Adapter (LoRA) Loader, and a small favicon on
+the others — so a graph with four loaders stays readable without any of them
+ballooning in size.
 
 [![Adapter (LoRA) Loader wearing the picked adapter's name and thumbnail](screenshots/PixlStashFaceLikenessGateModels.jpg)](examples/PixlStash-FaceLikenessGateUpscaleModels.json)
 
 Wire a Set or Character Loader into the Adapter Loader to see only that
 character's or set's adapters.
+
+The Multi Adapter (LoRA) Loader is the same loader for several adapters at
+once, with the same model, clip and `trigger_words` wires; it does not take a
+Set, Character or Workflow Set Loader. Each picked adapter is a row with its
+picture, the person it is attached to, its trigger word (click it to copy) and
+its own two strengths. The rows are applied top to bottom, exactly as that many chained
+Adapter Loaders would be, and `trigger_words` carries every row's words in row
+order. Browse opens the same grid with several cards tickable; the number
+on a card is the row it will fill. Set `show` to *People who fit* and the grid
+lists people instead of files: everyone with an adapter for the chosen
+`base_model`, with a choice between their adapters when more than one fits. A
+node with no rows passes the model and clip through untouched. It holds up to
+eight rows, stored in the workflow as `adapter_sha256`, `strength_model`,
+`strength_clip`, then `adapter_sha256_2` and so on.
 
 The Workflow Set Loader loads one of the workflow sets you made on the shelf:
 its checkpoint, with the set's text encoders and VAE in place of the
