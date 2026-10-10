@@ -5,7 +5,8 @@ and ``comfy.sd.load_lora_for_models`` — which is deliberate: ComfyUI is GPL-3.
 and this package is MIT, so nothing is copied out of its ``nodes.py``; this is
 written against the same public API every custom-node pack calls.
 
-Used by the Adapter Loader, which resolves a file off the shelf first.  There
+Used by the Adapter Loader and the Multi Adapter Loader, which resolve a file
+off the shelf first.  There
 is no separate "apply" *node*: one that takes a path off a wire is a node
 nothing in the ecosystem can feed, since every LoRA loader takes a name off a
 combo widget.

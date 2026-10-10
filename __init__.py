@@ -26,6 +26,7 @@ from .nodes.face_likeness_gate import PixlStashFaceLikenessGate
 from .nodes.picture_likeness_gate import PixlStashPictureLikenessGate
 from .nodes.semantic_search import PixlStashSemanticSearch
 from .nodes.adapter_loader import PixlStashAdapterLoader
+from .nodes.multi_adapter_loader import PixlStashMultiAdapterLoader
 from .nodes.checkpoint_loader import PixlStashCheckpointLoader
 from .nodes.clip_loader import PixlStashCLIPLoader
 from .nodes.vae_loader import PixlStashVAELoader
@@ -49,6 +50,7 @@ NODE_CLASS_MAPPINGS = {
     "PixlStashPictureLikenessGate": PixlStashPictureLikenessGate,
     "PixlStashSemanticSearch": PixlStashSemanticSearch,
     "PixlStashAdapterLoader": PixlStashAdapterLoader,
+    "PixlStashMultiAdapterLoader": PixlStashMultiAdapterLoader,
     "PixlStashCheckpointLoader": PixlStashCheckpointLoader,
     "PixlStashVAELoader": PixlStashVAELoader,
     "PixlStashCLIPLoader": PixlStashCLIPLoader,
@@ -70,6 +72,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # LoRA, and that is the word people type into the node search; "adapter"
     # is the shelf's word, not the ecosystem's.
     "PixlStashAdapterLoader": "PixlStash Adapter (LoRA) Loader",
+    "PixlStashMultiAdapterLoader": "PixlStash Multi Adapter (LoRA) Loader",
     "PixlStashCheckpointLoader": "PixlStash Checkpoint Loader",
     "PixlStashVAELoader": "PixlStash VAE Loader",
     "PixlStashCLIPLoader": "PixlStash CLIP Loader",
