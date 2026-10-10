@@ -316,6 +316,10 @@ the multi-user guard, the proxy SSRF and auth checks, the token check and
 filename containment on the two served endpoints, loader id extraction, and
 path containment and digest verification in the savers and loaders.
 
+Pull requests are reviewed by an AI reviewer (`.github/workflows/ai-review.yml`)
+when the maintainer opens or pushes to one, or comments `/review`, `/improve`
+or `/ask ...` on it. The rules it checks are in `.github/review-context.md`.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
