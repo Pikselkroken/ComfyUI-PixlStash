@@ -94,12 +94,16 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
         return;
     }
     const failed = (reason) => {
-        markUnsent(path, true);
+        // Only a save of that file is unsent. A by-hand send made no ComfyUI
+        // save, so marking the file would refuse opening it later for nothing.
+        if (!byHand) markUnsent(path, true);
         sayOnce(
             path,
             "error",
             `Could not save ${name} to PixlStash: ${reason} ` +
-                "It is saved in ComfyUI, and the next save tries again.",
+                (byHand
+                    ? "Nothing was sent; pick PixlStash › Save to PixlStash to try again."
+                    : "It is saved in ComfyUI, and the next save tries again."),
         );
     };
     const token = apiToken();

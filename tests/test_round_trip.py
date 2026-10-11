@@ -343,6 +343,9 @@ results.new_workflow_after_a_switch = await save({
 });
 results.replaced_newer = await save({ reply: { version: 6, replaced_newer: true } });
 results.offline = await save({ offline: true, times: 2 });
+// A by-hand send that fails made no ComfyUI save, so the file must not be
+// left looking like one PixlStash never got.
+results.offline_by_hand = await save({ offline: true, byHand: true });
 results.will_not_convert = await save({ prompt: async () => { throw new Error("no node Foo"); } });
 results.unknown_workflow = await save({ status: 404, reply: { error: "Unknown workflow." } });
 results.refused = await save({ status: 413, reply: { error: "Too large" } });
@@ -663,6 +666,14 @@ class RoundTripTests(unittest.TestCase):
         detail = self._one_toast("offline", "error", "cannot be reached")
         self.assertIn("the next save tries again", detail)
         self.assertTrue(self.results["offline"]["unsent"])
+
+    def test_a_by_hand_failure_is_not_a_comfyui_save_left_unsent(self):
+        """The menu command saves nothing to ComfyUI, so a failure must not
+        mark the file, or opening it later is refused for nothing."""
+        detail = self._one_toast("offline_by_hand", "error", "cannot be reached")
+        self.assertIn("try again", detail)
+        self.assertNotIn("It is saved in ComfyUI", detail)
+        self.assertFalse(self.results["offline_by_hand"]["unsent"])
 
     def test_a_node_that_will_not_convert_is_said(self):
         self._one_toast("will_not_convert", "error", "no node Foo")
