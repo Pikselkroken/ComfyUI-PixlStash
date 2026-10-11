@@ -297,8 +297,20 @@ const tagged = (path, key) => ({ path, content: JSON.stringify({ extra: { [TAG]:
     await openLink(AUTO, { name: "Old", workflow: API });
     results.no_file = { toasts, loads: app.loads, saved: store.saved, file: app.rootGraph.extra[FILE_TAG] ?? null };
 }
-results.stems = ["a/b: c?", " . ", "Fine name"].map(fileStem);
-results.differs = {
+{
+    // ComfyUI will not load the canvas into the file's tab: nothing is
+    // written, and the built tab is left untagged rather than pointing at a
+    // file that was never written.
+    const mine = tagged("workflows/pixlstash/Bad.json", AUTO);
+    const { toasts, store } = comfy({ files: { [mine.path]: mine }, open: [mine] });
+    app.loadGraphData = async () => false;
+    await openLink(AUTO, { name: "Bad", workflow: API });
+    results.load_refused = {
+        toasts, saved: store.saved.map(([path]) => path),
+        file: app.rootGraph.extra[FILE_TAG] ?? null,
+    };
+}
+results.stems = ["a/b: c?", " . ", "Fine name"].map(fileStem);results.differs = {
     same: differsFrom(convert(makeGraph(chain().map((n) => { n.widgets.forEach((w) => { if (w.name in API[n.id].inputs) w.value = API[n.id].inputs[w.name]; }); return n; }))), API),
     rewired: differsFrom({ ...API, 6: { class_type: "CLIPTextEncode", inputs: { text: "new words", clip: ["3", 1] } } }, API),
     extra_link: differsFrom({ ...API, 6: { class_type: "CLIPTextEncode", inputs: { text: ["1", 2], clip: ["1", 1] } } }, API),
@@ -594,6 +606,14 @@ class RoundTripTests(unittest.TestCase):
         self._one_toast("no_file", "info", "Save to PixlStash")
         self.assertEqual((result["loads"], result["saved"]), ([["api", "Old"]], []))
         # No file, so no file to send saves from.
+        self.assertIsNone(result["file"])
+
+    def test_a_tab_that_could_not_be_made_the_file_is_left_untagged(self):
+        """The file's path is written only once the tab is that file, so a
+        failed load does not leave it pointing at a file never written."""
+        result = self.results["load_refused"]
+        self._one_toast("load_refused", "info", "Save to PixlStash")
+        self.assertEqual(result["saved"], [])
         self.assertIsNone(result["file"])
 
     def test_a_name_becomes_a_file_name(self):

@@ -304,14 +304,14 @@ const loadName = (path) => path.slice("workflows/".length, -".json".length);
  * own tab, which is the one way ComfyUI replaces a file whatever state its
  * tab is in, and the tab it was built in is closed.
  *
- * The file's path is written into the graph first: a save is sent back to
- * PixlStash from that file and from no other (`workflow_link.js`).
+ * The file's path is written into the graph once the tab is that file: a save
+ * is sent back to PixlStash from that file and from no other
+ * (`workflow_link.js`), and a tab that is not it is left untagged.
  */
 async function saveOpened(mine) {
     const store = app.extensionManager?.workflow;
     const path = mine?.path ?? store?.activeWorkflow?.path;
     if (!path?.startsWith(FOLDER)) return null;
-    rootGraph().extra[FILE_TAG] = path;
     if (mine) {
         const built = store.activeWorkflow;
         if ((await app.loadGraphData(rootGraph().serialize(), true, true, mine)) === false) return null;
@@ -319,6 +319,11 @@ async function saveOpened(mine) {
     }
     const opened = store.activeWorkflow;
     if (opened?.path !== path) return null;
+    // Only now is the tab this file, so only now is the file's path written
+    // into the graph: a save is sent back to PixlStash from that file and from
+    // no other (`workflow_link.js`), and a tab that turned out not to be it
+    // must not be left pointing at a file that was never written.
+    rootGraph().extra[FILE_TAG] = path;
     // Quietly: this save is the file being made, not the reader's work.
     await quietly(opened, async () => {
         flushCanvas(opened);
