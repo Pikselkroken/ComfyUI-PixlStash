@@ -113,7 +113,7 @@ class ModelIconGuardTests(unittest.TestCase):
         client = _FakeClient(
             _Response(content=b"PNGDATA", headers={"Content-Type": "image/png"})
         )
-        with mock.patch.object(proxy, "_build_client", lambda request: client):
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
             resp = asyncio.run(proxy.proxy_model_icon(_Request(icon_sha256=GOOD)))
 
         self.assertEqual(client.calls, [(f"/api/v1/model-icons/{GOOD}", {})])
@@ -135,7 +135,7 @@ class EntityThumbnailGuardTests(unittest.TestCase):
         client = client or _FakeClient(
             _Response(content=b"PNG", headers={"Content-Type": "image/png"})
         )
-        with mock.patch.object(proxy, "_build_client", lambda request: client):
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
             resp = asyncio.run(proxy.proxy_entity_thumbnail(_Request(**params)))
         return client, resp
 
@@ -200,7 +200,7 @@ class EntityThumbnailGuardTests(unittest.TestCase):
 class AdapterListProxyTests(unittest.TestCase):
     def _call(self, **params):
         client = _FakeClient(_Response(payload={"adapters": [{"sha256": GOOD}]}))
-        with mock.patch.object(proxy, "_build_client", lambda request: client):
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
             resp = asyncio.run(proxy.proxy_adapters(_Request(**params)))
         return client, resp
 
@@ -249,7 +249,7 @@ class WorkflowGraphProxyTests(unittest.TestCase):
 
     def _call(self, key):
         client = _FakeClient(_Response(payload={"name": "wf", "workflow": {}}))
-        with mock.patch.object(proxy, "_build_client", lambda request: client):
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
             resp = asyncio.run(proxy.proxy_workflow_graph(_Request(workflow_key=key)))
         return client, resp
 

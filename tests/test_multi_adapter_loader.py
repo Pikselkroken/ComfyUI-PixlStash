@@ -130,8 +130,10 @@ class ContractTests(unittest.TestCase):
 
     def test_the_browser_knows_which_server_the_node_needs(self):
         # Every node has an entry; without one the version banner never draws.
+        # The people view asks GET /workflows/{id}/people, which ships in
+        # 1.12.0, so the floor is that, not the shelf's 1.10.0.
         js = pathlib.Path(boot.ROOT, "web", "js", "combo_widgets.js").read_text("utf-8")
-        self.assertRegex(js, r'"PixlStashMultiAdapterLoader":\s*"1\.10\.0"')
+        self.assertRegex(js, r'"PixlStashMultiAdapterLoader":\s*"1\.12\.0"')
 
     def test_it_is_registered_beside_the_adapter_loader(self):
         init = pathlib.Path(boot.ROOT, "__init__.py").read_text("utf-8")

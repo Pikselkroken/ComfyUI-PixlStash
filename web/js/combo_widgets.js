@@ -23,6 +23,7 @@ import {
 } from "./adapter_picker.js";
 import { ROWS, readRows, rowField, withPicks, writeRows } from "./adapter_rows.js";
 import { el, fitLabel } from "./modal_dom.js";
+import { linkedWorkflow } from "./workflow_link.js";
 
 // ---------------------------------------------------------------------------
 // Setting IDs
@@ -50,7 +51,9 @@ const NODE_MIN_VERSION = {
     "PixlStashPictureLikenessGate": "1.4.0",
     // The model shelf (GET /adapters, GET /model-icons) first ships in 1.10.0.
     "PixlStashAdapterLoader":    "1.10.0",
-    "PixlStashMultiAdapterLoader": "1.10.0",
+    // Its people view asks who fits the workflow the canvas was opened from
+    // (GET /workflows/{id}/people): 1.12.0.
+    "PixlStashMultiAdapterLoader": "1.12.0",
     "PixlStashCheckpointLoader": "1.10.0",
     "PixlStashVAELoader":        "1.10.0",
     "PixlStashCLIPLoader":       "1.10.0",
@@ -1267,6 +1270,8 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
                 picked: readRows(widgets).map(r => r.adapter_sha256),
                 limit:  ROWS,
                 people: isPeople(),
+                // Opened from PixlStash: the people are that workflow's.
+                workflowKey: linkedWorkflow(),
                 // The switch in the grid is this node's `show` setting. It
                 // arrives on confirm only, with the rows.
                 onView: (people) => {

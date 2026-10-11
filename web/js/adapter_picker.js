@@ -17,7 +17,8 @@
  * the digests already on the node, in row order. Nothing is written to a
  * widget then (`valueWidget` is null); `onPicked` gets the ticked digests, in
  * the order they will fill the rows, and a Map from any of them that a people
- * card's choice swapped in to the digest it replaced. `people` opens it on the people view —
+ * card's choice swapped in to the digest it replaced. `workflowKey` is the PixlStash workflow
+ * the canvas was opened from, whose people are then the ones offered. `people` opens it on the people view —
  * one card per person who has an adapter that passes the filters — and
  * `onView(people)` is told on confirm if the switch in the modal was left on
  * the other view. Cancelling changes nothing on the node, the view included.
@@ -159,6 +160,29 @@ function buildAdapterQuery({ fileKind, kind, baseModel, characterId, setId } = {
  * The sha256s in one hand-made workflow set's LoRA slot. `GET /adapters` has
  * no workflow-set filter, so the grid is narrowed client-side by these.
  */
+/**
+ * Who a PixlStash workflow can make pictures of: the digests of the LoRAs the
+ * Run popup's Person field offers for it, and why there are none when there
+ * are none. `{ failed }` when PixlStash cannot say (an older server, a
+ * workflow it does not have): the grid then narrows by the node's own
+ * filters, and says so.
+ */
+async function fetchWorkflowPeople(credentials, workflowKey) {
+    try {
+        const data = await proxyFetch("/pixlstash/workflow_people", credentials, { workflow_key: workflowKey });
+        return {
+            // An entry with no digest names no adapter on the shelf.
+            loras: new Set((data?.people ?? []).flatMap(p => (p.loras ?? [])
+                .filter(l => typeof l?.sha256 === "string" && l.sha256)
+                .map(l => l.sha256.toLowerCase()))),
+            note:  data?.note ?? "",
+        };
+    } catch (err) {
+        console.warn("[PixlStash] could not ask who fits workflow", workflowKey, err);
+        return { failed: err.message };
+    }
+}
+
 async function fetchWorkflowSetLoras(credentials, workflowSetId) {
     const data = await proxyFetch("/pixlstash/workflow_sets", credentials);
     const set = (data?.hand_made ?? []).find(s => String(s.id) === String(workflowSetId));
@@ -356,6 +380,9 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     let selectedRecord = null;
 
     const itemElements = [];
+    let workflowNote = ""; // why the canvas's PixlStash workflow offers nobody
+    let fitsFailed = "";   // why PixlStash could not say who fits it
+    let workflowPeople = false; // the people view lists that workflow's people
     let records   = [];   // what the grid draws: shelf records, or people
     let rendered  = 0;    // how much of it is on screen
     // Bumped whenever the grid is torn down, so in-flight icon fetches can
@@ -805,7 +832,10 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         // the count is of the same things the grid would have drawn.
         const attached = collapseStacks(shelfRows).filter(r => personOf(r) != null);
         const lines = [];
-        if (!attached.length) {
+        if (workflowNote) {
+            // PixlStash's own sentence, as its Run popup says it.
+            lines.push(workflowNote, "The people offered here are the ones PixlStash offers for this workflow.");
+        } else if (!attached.length) {
             lines.push(
                 "No adapter on your shelf is attached to a person.",
                 "Attach one to a character in PixlStash and that person is offered here.",
@@ -855,9 +885,14 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             ? "Search a person, adapter or trigger word…"
             : "Search name, filename or trigger words…";
         const narrowed = !!(filters?.kind || filters?.baseModel);
+        const byNode = [filters.baseModel ? `Fits ${filters.baseModel}` : "Any base model", filters.kind]
+            .filter(Boolean).join(" · ");
         filterText.textContent = people
-            ? [filters.baseModel ? `Fits ${filters.baseModel}` : "Any base model", filters.kind]
-                .filter(Boolean).join(" · ")
+            // On a canvas opened from PixlStash the people are that
+            // workflow's; where PixlStash could not say, that is said.
+            ? (fitsFailed
+                ? `PixlStash could not say who fits this workflow (${fitsFailed}). Shown: ${byNode}`
+                : workflowPeople ? "Who PixlStash offers for this workflow" : byNode)
             // Beside a switch that already reads "All adapters", saying it
             // again is noise.
             : (several && !narrowed ? "" : describeFilters(filters, shelf));
@@ -948,15 +983,28 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             // model is the server's rule (it matches the identified model as
             // well as the string) and a copy of it would drift.
             const narrowed = !!(filters.kind || filters.baseModel);
-            const [whole, characters] = await Promise.all([
+            const [whole, characters, fits] = await Promise.all([
                 narrowed ? proxyFetch(shelf.path, credentials, { file_kind: "adapter" }) : data,
                 // Names only: without them a person is still a face and a number.
                 proxyFetch("/pixlstash/characters", credentials).catch(() => []),
+                several.workflowKey ? fetchWorkflowPeople(credentials, several.workflowKey) : null,
             ]);
             const wholeRows = whole?.[shelf.listKey];
             shelfRows = (Array.isArray(wholeRows) ? wholeRows : []).filter(r => r && idOf(r));
             for (const r of [...shelfRows, ...all]) byDigest.set(idOf(r), r);
-            persons = foldPeople(all, new Map(
+            // On a canvas opened from PixlStash the people are that
+            // workflow's: who PixlStash's Run popup offers for it, whatever
+            // this node's own filters say.
+            workflowNote = fits?.note ?? "";
+            // Said in the people view, not passed over: these would not be
+            // the people PixlStash offers for the workflow.
+            fitsFailed = fits?.failed ?? "";
+            workflowPeople = !!fits?.loras;
+            paintView();
+            const offered = fits?.loras
+                ? collapseStacks(shelfRows.filter(r => fits.loras.has(idOf(r).toLowerCase())))
+                : all;
+            persons = foldPeople(offered, new Map(
                 (Array.isArray(characters) ? characters : []).map(c => [String(c.id), c.name]),
             ));
         }
