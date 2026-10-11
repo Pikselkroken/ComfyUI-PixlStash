@@ -213,6 +213,8 @@ const refused = {
     another_graph: () => [...chain(), makeNode(40, "LoraLoader", { lora_name: "x.safetensors" })],
     // A loader for people that still holds somebody: PixlStash stores none.
     somebody_picked: () => [...chain(), makeNode(9, LOADER, { show: "People who fit", adapter_sha256: "f".repeat(64) })],
+    // A layout ComfyUI throws on: it costs the layout, not the open.
+    throws: () => { throw new Error("unsupported document"); },
     // A value this could not write over the layout: the widget is not there.
     value_not_written: () => chain().map((n) => (n.id === 3 ? makeNode(3, "KSampler", { seed: 1 }, ["model", "positive"]) : n)),
 };
@@ -295,6 +297,9 @@ results.differs = {
     extra_link: differsFrom({ ...API, 6: { class_type: "CLIPTextEncode", inputs: { text: ["1", 2], clip: ["1", 1] } } }, API),
     another_class: differsFrom({ ...API, 1: { class_type: "UNETLoader", inputs: { ckpt_name: "a.safetensors" } } }, API),
     float_noise: differsFrom({ 1: { class_type: "x", inputs: { cfg: 0.1 + 0.2 } } }, { 1: { class_type: "x", inputs: { cfg: 0.3 } } }),
+    // A seed is a whole number, however large: a neighbour is another seed.
+    near_seed: differsFrom({ 1: { class_type: "x", inputs: { seed: 1e15 + 1000 } } }, { 1: { class_type: "x", inputs: { seed: 1e15 } } }),
+    same_seed: differsFrom({ 1: { class_type: "x", inputs: { seed: 1e15 } } }, { 1: { class_type: "x", inputs: { seed: 1e15 } } }),
     canvas_only_value: differsFrom({ 1: { class_type: "x", inputs: { cfg: 7, control_after_generate: "fixed" } } }, { 1: { class_type: "x", inputs: { cfg: 7 } } }),
 };
 
@@ -486,7 +491,7 @@ class RoundTripTests(unittest.TestCase):
         """PixlStash stores a layout on the word of whoever saved it. What
         binds it to the graph is this: it is converted on the canvas and used
         only when it comes out as the graph PixlStash sent."""
-        for name in ("another_graph", "somebody_picked", "value_not_written"):
+        for name in ("another_graph", "somebody_picked", "throws", "value_not_written"):
             with self.subTest(name=name):
                 result = self.results[f"layout_{name}"]
                 self.assertEqual(
@@ -502,7 +507,8 @@ class RoundTripTests(unittest.TestCase):
         self.assertIsNone(differs["same"])
         self.assertIsNone(differs["float_noise"])
         self.assertIsNone(differs["canvas_only_value"])
-        for name in ("rewired", "extra_link", "another_class"):
+        self.assertIsNone(differs["same_seed"])
+        for name in ("rewired", "extra_link", "another_class", "near_seed"):
             with self.subTest(name=name):
                 self.assertIsInstance(differs[name], str)
 

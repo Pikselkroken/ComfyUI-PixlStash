@@ -150,10 +150,16 @@ export function withoutEmptyPeopleLoaders(output) {
     return graph;
 }
 
-const sameValue = (a, b) =>
-    typeof a === "number" && typeof b === "number"
-        ? Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b))
-        : JSON.stringify(a) === JSON.stringify(b);
+/**
+ * Whether the canvas holds the value the graph does. Whole numbers exactly:
+ * a seed is one, and a tolerance scaled to its size would pass a seed a
+ * million away. Only a fraction is allowed the noise of float arithmetic.
+ */
+const sameValue = (a, b) => {
+    if (typeof a !== "number" || typeof b !== "number") return JSON.stringify(a) === JSON.stringify(b);
+    if (Number.isInteger(a) && Number.isInteger(b)) return a === b;
+    return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+};
 
 /**
  * Why the canvas is not the graph PixlStash sent, or null when it is.
@@ -390,16 +396,22 @@ async function openFromUrl(key) {
     }
     const loadAs = !file ? name : loadName(file.path) + (file.mine ? " (opening)" : "");
     let arranged = false;
-    if (body.editor && (await app.loadGraphData(body.editor, true, true, loadAs)) !== false) {
-        writeValues(rootGraph(), body.workflow);
+    if (body.editor) {
+        // Whatever goes wrong with a layout costs the layout and nothing
+        // else: one that will not load, will not convert, is of something
+        // else, or holds a value this could not write. The graph itself then
+        // opens, arranged by ComfyUI.
         let differs;
         try {
-            differs = differsFrom((await app.graphToPrompt()).output, body.workflow);
+            if ((await app.loadGraphData(body.editor, true, true, loadAs)) === false) {
+                differs = "ComfyUI would not load it";
+            } else {
+                writeValues(rootGraph(), body.workflow);
+                differs = differsFrom((await app.graphToPrompt()).output, body.workflow);
+            }
         } catch (err) {
-            differs = `it will not convert (${err.message})`;
+            differs = `it will not load or convert (${err.message})`;
         }
-        // Not the graph: the layout is of something else, or holds a value
-        // this could not write. The graph itself opens, arranged by ComfyUI.
         if (differs) console.info("[PixlStash] the layout kept for", name, "is not used:", differs);
         arranged = !differs;
     }
