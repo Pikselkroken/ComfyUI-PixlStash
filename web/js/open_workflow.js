@@ -267,6 +267,14 @@ async function fileFor(name, key) {
         console.info("[PixlStash] this ComfyUI's workflow store cannot save an opened workflow as a file");
         return null;
     }
+    // What the store lists is as old as its last read of the folder. A file
+    // it has not seen would be taken for no file: ComfyUI then refuses the
+    // save rather than write over it, and the tab is left unsaved.
+    try {
+        await store.syncWorkflows?.();
+    } catch (err) {
+        console.info("[PixlStash] could not read ComfyUI's workflows again before looking for the file", err);
+    }
     const stem = fileStem(name);
     for (let n = 1; n < 100; n++) {
         const path = `${FOLDER}${stem}${n === 1 ? "" : ` (${n})`}.json`;

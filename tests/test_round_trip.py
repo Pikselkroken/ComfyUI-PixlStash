@@ -258,6 +258,16 @@ const tagged = (path, key) => ({ path, content: JSON.stringify({ extra: { [TAG]:
     };
 }
 {
+    // A file the store has not listed yet (made since it last read the
+    // folder): the folder is read again before it is taken for no file.
+    const mine = tagged("workflows/pixlstash/Late.json", AUTO);
+    const files = {};
+    const { store } = comfy({ files });
+    store.syncWorkflows = async () => { files[mine.path] = mine; };
+    await openLink(AUTO, { name: "Late", workflow: API });
+    results.unlisted_file = { loads: app.loads, saved: store.saved.map(([path]) => path) };
+}
+{
     // Its file holds a save PixlStash never received: the only copy of it.
     const mine = tagged("workflows/pixlstash/Unsent.json", AUTO);
     const { toasts, store } = comfy({ files: { [mine.path]: mine }, unsent: [mine.path] });
@@ -534,6 +544,15 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(same["version"], 2)
         # Only the graph was fetched: this save is not one to send back.
         self.assertEqual(same["sent"], 1)
+
+    def test_the_folder_is_read_again_before_a_file_is_taken_for_missing(self):
+        """Found as this workflow's own file, so it is loaded into, not
+        saved beside under a name ComfyUI would refuse."""
+        late = self.results["unlisted_file"]
+        mine = "workflows/pixlstash/Late.json"
+        self.assertEqual(late["loads"][0], ["api", "pixlstash/Late (opening)"])
+        self.assertEqual(late["loads"][1], ["editor", f"into {mine}"])
+        self.assertEqual(late["saved"], [mine])
 
     def test_a_save_pixlstash_never_received_is_not_opened_over(self):
         self._one_toast("unsent_file", "warn", "PixlStash never received")

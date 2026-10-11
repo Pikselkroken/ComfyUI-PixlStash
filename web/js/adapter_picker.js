@@ -171,7 +171,10 @@ async function fetchWorkflowPeople(credentials, workflowKey) {
     try {
         const data = await proxyFetch("/pixlstash/workflow_people", credentials, { workflow_key: workflowKey });
         return {
-            loras: new Set((data?.people ?? []).flatMap(p => (p.loras ?? []).map(l => String(l.sha256).toLowerCase()))),
+            // An entry with no digest names no adapter on the shelf.
+            loras: new Set((data?.people ?? []).flatMap(p => (p.loras ?? [])
+                .filter(l => typeof l?.sha256 === "string" && l.sha256)
+                .map(l => l.sha256.toLowerCase()))),
             note:  data?.note ?? "",
         };
     } catch (err) {
