@@ -70,13 +70,17 @@ async function startupFinished() {
     }
 }
 
+// Windows refuses these as a file name whatever the extension, case aside.
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
 /** A file name ComfyUI's workflows folder takes on any system, from a name. */
 export function fileStem(name) {
     const stem = String(name ?? "")
         .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
         .replace(/\s+/g, " ")
         .replace(/^[ .]+|[ .]+$/g, "");
-    return stem || "PixlStash workflow";
+    if (!stem) return "PixlStash workflow";
+    return RESERVED.test(stem) ? `${stem} workflow` : stem;
 }
 
 const nodeById = (graph, id) => graph.getNodeById(id) ?? graph.getNodeById(Number(id)) ?? null;
@@ -399,7 +403,7 @@ async function openFromUrl(key) {
         );
         return;
     }
-    const loadAs = !file ? name : loadName(file.path) + (file.mine ? " (opening)" : "");
+    const loadAs = !file ? fileStem(name) : loadName(file.path) + (file.mine ? " (opening)" : "");
     let arranged = false;
     if (body.editor) {
         // Whatever goes wrong with a layout costs the layout and nothing

@@ -310,7 +310,17 @@ const tagged = (path, key) => ({ path, content: JSON.stringify({ extra: { [TAG]:
         file: app.rootGraph.extra[FILE_TAG] ?? null,
     };
 }
-results.stems = ["a/b: c?", " . ", "Fine name"].map(fileStem);results.differs = {
+{
+    // No store to save a file with: the tab is still named from the workflow
+    // name, sanitised as a file name would be, not the raw server string.
+    const { store } = comfy();
+    delete store.getWorkflowByPath;
+    await openLink(AUTO, { name: "a/b: c?", workflow: API });
+    results.no_file_name = { loads: app.loads };
+}
+// Windows refuses these as file names whatever the extension, case aside.
+results.stems = ["a/b: c?", " . ", "Fine name", "CON", "nul", "LPT1", "console"].map(fileStem);
+results.differs = {
     same: differsFrom(convert(makeGraph(chain().map((n) => { n.widgets.forEach((w) => { if (w.name in API[n.id].inputs) w.value = API[n.id].inputs[w.name]; }); return n; }))), API),
     rewired: differsFrom({ ...API, 6: { class_type: "CLIPTextEncode", inputs: { text: "new words", clip: ["3", 1] } } }, API),
     extra_link: differsFrom({ ...API, 6: { class_type: "CLIPTextEncode", inputs: { text: ["1", 2], clip: ["1", 1] } } }, API),
@@ -616,10 +626,17 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(result["saved"], [])
         self.assertIsNone(result["file"])
 
+    def test_the_tab_name_is_sanitised_with_no_store_to_save_a_file(self):
+        self.assertEqual(self.results["no_file_name"]["loads"], [["api", "a b c"]])
+
     def test_a_name_becomes_a_file_name(self):
         self.assertEqual(
-            self.results["stems"], ["a b c", "PixlStash workflow", "Fine name"]
-        )
+            self.results["stems"],
+            [
+                "a b c", "PixlStash workflow", "Fine name",
+                "CON workflow", "nul workflow", "LPT1 workflow", "console",
+            ],
+        )  # fmt: skip
 
     # --- saving --------------------------------------------------------------
 
