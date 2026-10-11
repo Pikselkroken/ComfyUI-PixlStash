@@ -383,6 +383,17 @@ results.not_the_file = await save({ file: "workflows/pixlstash/Another.json", ti
 results.no_file_tag = await save({ file: null, path: "workflows/Dragged in.json" });
 results.not_the_file_by_hand = await save({ file: null, byHand: true });
 results.another_tab = await save({ wf: { path: "workflows/pixlstash/Other.json", filename: "Other", content: JSON.stringify({ extra: { [TAG]: OTHER } }) } });
+// The same of the file PixlStash opened (a background tab closed with Save):
+// ComfyUI wrote it and PixlStash never got it, so it must not be opened over.
+const BEHIND = "workflows/pixlstash/Behind.json";
+results.opened_file_behind_another_tab = await save({ wf: { path: BEHIND, filename: "Behind", content: JSON.stringify({ extra: { [TAG]: OTHER, [FILE_TAG]: BEHIND } }) } });
+// The reader switched tabs while the canvas was being converted.
+results.switched_while_converting = await save({
+    prompt: async () => {
+        app.extensionManager.workflow.activeWorkflow = { path: "workflows/Else.json", filename: "Else" };
+        return { workflow: {}, output: {} };
+    },
+});
 
 // --- the hook ---------------------------------------------------------------
 
@@ -768,6 +779,24 @@ class RoundTripTests(unittest.TestCase):
     def test_a_file_saved_behind_another_tab_is_said_not_dropped(self):
         self._one_toast("another_tab", "warn", "saved while another workflow")
         self.assertEqual(self.results["another_tab"]["sent"], [])
+        # It is not the file PixlStash opened, so no save of it is owed.
+        self.assertEqual(self.results["another_tab"]["stored"], [])
+
+    def test_a_save_that_was_not_sent_is_remembered_however_it_was_missed(self):
+        """ComfyUI wrote the opened file and PixlStash never got it: behind
+        another tab, or the tab switched mid-send. Opening the workflow from
+        PixlStash again must not write over that file, as when a send fails."""
+        behind = self.results["opened_file_behind_another_tab"]
+        self._one_toast(
+            "opened_file_behind_another_tab", "warn", "saved while another workflow"
+        )
+        self.assertEqual(
+            behind["stored"], ["PixlStash.unsent:workflows/pixlstash/Behind.json"]
+        )
+        switched = self.results["switched_while_converting"]
+        self._one_toast("switched_while_converting", "warn", "You switched workflows")
+        self.assertEqual(switched["sent"], [])
+        self.assertTrue(switched["unsent"])
 
     # --- the hook ------------------------------------------------------------
 

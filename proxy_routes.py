@@ -30,6 +30,7 @@ import re
 from aiohttp import web
 
 from .connection import (
+    MIN_SERVER_VERSION,
     MULTI_USER_MESSAGE,
     PixlStashClient,
     multi_user_active,
@@ -69,8 +70,14 @@ def _positive_id(raw: str) -> int | None:
 # ---------------------------------------------------------------------------
 
 
-def _build_client(request: web.Request) -> PixlStashClient:
+def _build_client(
+    request: web.Request, min_server_version: str = MIN_SERVER_VERSION
+) -> PixlStashClient:
     """Build a client for the *configured* PixlStash server.
+
+    *min_server_version* is the PixlStash a route's upstream path first
+    shipped in, so an older server is refused in plain words and not with the
+    404 of a path it does not have.
 
     The target URL and SSL setting come from ComfyUI's persisted settings,
     never from the request, so these proxy routes cannot be aimed at an
@@ -102,7 +109,12 @@ def _build_client(request: web.Request) -> PixlStashClient:
             reason="Configured PixlStash Server URL must start with http:// or https://."
         )
 
-    return PixlStashClient(base_url=url, api_token=token, verify_ssl=verify_ssl)
+    return PixlStashClient(
+        base_url=url,
+        api_token=token,
+        verify_ssl=verify_ssl,
+        min_server_version=min_server_version,
+    )
 
 
 def _ok(data) -> web.Response:
@@ -123,6 +135,7 @@ def _err(message: str, status: int = 502) -> web.Response:
 async def _proxy_get(
     request: web.Request,
     path: str,
+    min_server_version: str = MIN_SERVER_VERSION,
 ) -> web.Response:
     """Generic proxy: forward a GET to PixlStash and return the JSON.
 
@@ -130,7 +143,7 @@ async def _proxy_get(
     as-is (e.g. ``project_id`` for filtered set / character lists).
     """
     try:
-        client = _build_client(request)
+        client = _build_client(request, min_server_version)
     except web.HTTPBadRequest as exc:
         return _err(exc.reason, status=400)
 
@@ -338,6 +351,10 @@ def _workflow_key(raw) -> str | None:
 
 _NOT_A_WORKFLOW_ID = "workflow_key must be a PixlStash workflow id."
 
+# PixlStash's workflow routes (a workflow's graph and its people, the
+# whole-graph save, the export) first ship in 1.12.0.
+_WORKFLOWS_MIN_VERSION = "1.12.0"
+
 # An opening's id, as ``workflow_link.js`` makes it: 32 hex characters.
 _OPENING_RE = re.compile(r"[0-9a-f]{32}")
 
@@ -354,7 +371,9 @@ async def proxy_workflow_graph(request: web.Request) -> web.Response:
     workflow_key = _workflow_key(request.rel_url.query.get("workflow_key"))
     if workflow_key is None:
         return _err(_NOT_A_WORKFLOW_ID, status=400)
-    return await _proxy_get(request, f"/api/v1/workflows/{workflow_key}/graph")
+    return await _proxy_get(
+        request, f"/api/v1/workflows/{workflow_key}/graph", _WORKFLOWS_MIN_VERSION
+    )
 
 
 async def proxy_workflow_people(request: web.Request) -> web.Response:
@@ -367,7 +386,9 @@ async def proxy_workflow_people(request: web.Request) -> web.Response:
     workflow_key = _workflow_key(request.rel_url.query.get("workflow_key"))
     if workflow_key is None:
         return _err(_NOT_A_WORKFLOW_ID, status=400)
-    return await _proxy_get(request, f"/api/v1/workflows/{workflow_key}/people")
+    return await _proxy_get(
+        request, f"/api/v1/workflows/{workflow_key}/people", _WORKFLOWS_MIN_VERSION
+    )
 
 
 async def _proxy_write(
@@ -378,9 +399,10 @@ async def _proxy_write(
 
     PixlStash validates what it is sent, and its status and ``detail`` come
     back unchanged, so a 400, 403, 404 or 413 reaches the toast word for word.
+    Both writes there are (the export, the save) are workflow routes.
     """
     try:
-        client = _build_client(request)
+        client = _build_client(request, _WORKFLOWS_MIN_VERSION)
     except web.HTTPBadRequest as exc:
         return _err(exc.reason, status=400)
     try:

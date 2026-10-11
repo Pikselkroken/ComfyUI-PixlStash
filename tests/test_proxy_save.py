@@ -49,6 +49,9 @@ class _FakeClient:
     def put(self, path, **kwargs):
         return self._send("PUT", path, **kwargs)
 
+    def post(self, path, **kwargs):
+        return self._send("POST", path, **kwargs)
+
     def get(self, path, **kwargs):
         return self._send("GET", path, **kwargs)
 
@@ -60,7 +63,12 @@ def body_of(resp):
 class SaveProxyTests(unittest.TestCase):
     def _call(self, handler, request, client=None):
         client = client or _FakeClient()
-        with mock.patch.object(proxy, "_build_client", lambda request: client):
+
+        def build(request, min_server_version=None):
+            client.floor = min_server_version
+            return client
+
+        with mock.patch.object(proxy, "_build_client", build):
             resp = asyncio.run(handler(request))
         return client, resp
 
@@ -151,6 +159,33 @@ class SaveProxyTests(unittest.TestCase):
             proxy.proxy_workflow_people, _Request(query={"workflow_key": "../users"})
         )
         self.assertEqual((resp.kwargs.get("status"), client.calls), (400, []))
+
+    def test_every_workflow_route_asks_for_the_pixlstash_that_has_it(self):
+        """1.11 has none of these paths: it is told to update, not handed
+        the 404 the save's toast reads as a workflow PixlStash does not have."""
+        key = {"workflow_key": KEY}
+        for handler, request in (
+            (proxy.proxy_workflow_graph, _Request(query=key)),
+            (proxy.proxy_workflow_people, _Request(query=key)),
+            (proxy.proxy_workflow_convert, _Request(BODY)),
+            (proxy.proxy_workflow_save, _Request(BODY)),
+        ):
+            with self.subTest(handler=handler.__name__):
+                client, _ = self._call(handler, request)
+                self.assertEqual((client.floor, len(client.calls)), ("1.12.0", 1))
+
+    def test_the_floor_reaches_the_client_and_only_where_it_is_asked(self):
+        request = _Request()
+        with mock.patch.object(
+            proxy, "read_credentials", lambda: ("https://safe.example", "", True)
+        ):
+            asked = proxy._build_client(request, "1.12.0")
+            plain = proxy._build_client(request)
+        self.assertEqual(asked.min_server_version, "1.12.0")
+        self.assertEqual(plain.min_server_version, proxy.MIN_SERVER_VERSION)
+        # A route older than the workflow routes keeps the package's own floor.
+        client, _ = self._call(proxy.proxy_characters, _Request())
+        self.assertEqual(client.floor, proxy.MIN_SERVER_VERSION)
 
 
 if __name__ == "__main__":

@@ -106,7 +106,12 @@ export const isQuiet = (wf) => quiet.has(wf);
 export function flushCanvas(wf) {
     const tracker = wf?.changeTracker;
     const flush = tracker?.prepareForSave ?? tracker?.captureCanvasState ?? tracker?.checkState;
-    flush?.call(tracker);
+    if (!flush) {
+        // The save still goes ahead, of whatever state ComfyUI last captured.
+        console.warn("[PixlStash] this ComfyUI gives no way to bring a workflow's saved state up to the canvas; the file written now may lack the PixlStash link until it is next saved");
+        return;
+    }
+    flush.call(tracker);
 }
 
 // A save ComfyUI wrote that PixlStash never received, by file. Kept in the

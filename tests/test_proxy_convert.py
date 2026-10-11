@@ -63,7 +63,7 @@ class ConvertProxyTests(unittest.TestCase):
         client = client or _FakeClient(
             _Response({"name": "wf", "matched": True, "workflow_id": "manual:x"})
         )
-        with mock.patch.object(proxy, "_build_client", lambda request: client):
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
             resp = asyncio.run(proxy.proxy_workflow_convert(request))
         return client, resp
 

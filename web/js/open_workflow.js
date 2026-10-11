@@ -229,7 +229,10 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
         show.value = SHOW_PEOPLE;
         show.callback?.(SHOW_PEOPLE);
     }
-    // Beside the model source, where the eye looks for what follows it.
+    // Beside the model source, where the eye looks for what follows it. This
+    // is where it stays in a kept layout; a graph ComfyUI arranged is arranged
+    // again by the caller with the loader in it, which gives it a column of
+    // its own (here it would sit on top of the next one).
     loader.pos = [source.pos[0] + (source.size?.[0] ?? 300) + 40, source.pos[1]];
     source.connect(place.model.output, loader, "model");
     if (clipSource) clipSource.connect(place.clip.output, loader, "clip");
@@ -436,7 +439,8 @@ async function openFromUrl(key) {
     // it kept holds nobody: it is where it was left, and no other is put on.
     const kept = arranged ? keptPeopleLoader(graph, body.workflow) : null;
     if (!kept && body.people_loader && placePeopleLoader(graph, body.people_loader) && !arranged) {
-        // The API loader arranged the graph before the loader was on it.
+        // The API loader arranged the graph before the loader was on it, in
+        // columns with no room for one more: arranged again, after placing.
         graph.arrange?.();
     }
 

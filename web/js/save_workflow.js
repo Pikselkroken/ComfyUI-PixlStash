@@ -68,6 +68,8 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
     if (wf && active && wf.path !== active.path) {
         // Only the canvas can be converted, and it shows another workflow.
         if (tagOfContent(wf.content)) {
+            // The file PixlStash opened now holds a save PixlStash never got.
+            if (linkedFile(JSON.parse(wf.content)) === wf.path) markUnsent(wf.path, true);
             notify(
                 "warn",
                 `${name} was saved while another workflow was showing, so it was not sent to ` +
@@ -117,6 +119,8 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
         return failed(`a node will not convert to a runnable graph (${err.message}).`);
     }
     if (store?.activeWorkflow !== active) {
+        // ComfyUI wrote the file and PixlStash did not get it, as when it fails.
+        if (!byHand) markUnsent(path, true);
         notify("warn", `You switched workflows while ${name} was being sent to PixlStash. Save it again.`);
         return;
     }
