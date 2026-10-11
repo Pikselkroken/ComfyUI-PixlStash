@@ -245,6 +245,13 @@ for (const [name, canvas] of Object.entries(refused)) {
     await openLink(AUTO, { name: "Nobody", workflow: API, people_loader: null });
     results.nobody = { toasts, nodes: app.rootGraph.nodes.length };
 }
+{
+    // A graph rebuilt from a stored recipe: no seed, and models PixlStash
+    // forgot. Said together, before the first queue fails unexplained.
+    const { toasts } = comfy();
+    await openLink(AUTO, { name: "Recipe", workflow: API, seedless: true, forgotten: 3 });
+    results.rebuilt = { toasts };
+}
 const tagged = (path, key) => ({ path, content: JSON.stringify({ extra: { [TAG]: key } }) });
 {
     // The name is another workflow's file: left alone. This workflow's own,
@@ -526,6 +533,16 @@ class RoundTripTests(unittest.TestCase):
 
     def test_no_loader_where_nobody_has_a_lora(self):
         self.assertEqual(self.results["nobody"], {"toasts": [], "nodes": 3})
+
+    def test_a_graph_rebuilt_from_a_recipe_is_warned_about(self):
+        """No seed, and models PixlStash forgot: said before the first queue,
+        or it fails with no explanation."""
+        self._one_toast(
+            "rebuilt",
+            "warn",
+            "Rebuilt from a saved recipe: set a seed and pick 3 model(s) "
+            "PixlStash no longer knows before you queue it.",
+        )
 
     def test_another_workflows_file_of_the_same_name_is_left_alone(self):
         same = self.results["same_name"]

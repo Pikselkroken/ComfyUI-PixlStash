@@ -450,10 +450,13 @@ async function openFromUrl(key) {
                 "Save it in ComfyUI, then pick PixlStash › Save to PixlStash to send it.",
         );
     }
-    // A graph rebuilt from a stored recipe can name models PixlStash has
-    // forgotten: say so, or the first queue fails unexplained.
-    if (body.forgotten) {
-        notify("warn", `Rebuilt from a saved recipe: pick ${body.forgotten} model(s) PixlStash no longer knows before you queue it.`);
+    // A graph rebuilt from a stored recipe can hold no seed, or name models
+    // PixlStash has forgotten: say so, or the first queue fails unexplained.
+    const parts = [];
+    if (body.seedless) parts.push("set a seed");
+    if (body.forgotten) parts.push(`pick ${body.forgotten} model(s) PixlStash no longer knows`);
+    if (parts.length) {
+        notify("warn", `Rebuilt from a saved recipe: ${parts.join(" and ")} before you queue it.`);
     }
 }
 

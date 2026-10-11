@@ -187,6 +187,11 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
  * *Save As* copies the file, link and all. The copy is another file, so
  * saving it would not be sent anyway; taking the link off it also keeps the
  * pictures it makes from being filed on the workflow it was copied from.
+ *
+ * Only the copy's content is changed, and that is enough: this runs in the
+ * `after` of the store's `saveAs` action, which is synchronous, and ComfyUI's
+ * own Save As opens the copy straight after it returns (`openWorkflow`),
+ * loading this content into the canvas. So the live graph is the unlinked one.
  */
 function unlinkCopy(copy) {
     if (!copy || !tagOfContent(copy.content)) return;

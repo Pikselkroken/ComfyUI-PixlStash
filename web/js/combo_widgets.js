@@ -51,7 +51,9 @@ const NODE_MIN_VERSION = {
     "PixlStashPictureLikenessGate": "1.4.0",
     // The model shelf (GET /adapters, GET /model-icons) first ships in 1.10.0.
     "PixlStashAdapterLoader":    "1.10.0",
-    "PixlStashMultiAdapterLoader": "1.10.0",
+    // Its people view asks who fits the workflow the canvas was opened from
+    // (GET /workflows/{id}/people): 1.12.0.
+    "PixlStashMultiAdapterLoader": "1.12.0",
     "PixlStashCheckpointLoader": "1.10.0",
     "PixlStashVAELoader":        "1.10.0",
     "PixlStashCLIPLoader":       "1.10.0",
