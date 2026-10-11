@@ -4,8 +4,7 @@ What is pinned: a workflow never saved, or changed since its save, is exported
 as the canvas stands rather than refused; a saved file with no changes goes as
 the file's own content, which is what PixlStash matches on; a tab switch while
 ComfyUI converts sends nothing; the menu command is the plain export under
-its new name; and a link opened from PixlStash (``open_workflow.js``) converts
-a saved file but never sends a tab ComfyUI reports as modified.
+its new name; and a LoRA PixlStash left out because it is somebody's is said.
 
 The command is run in Node against a stand-in for ComfyUI's ``app``, so this
 is skipped where there is no ``node``.
@@ -42,13 +41,14 @@ const scenarios = {
     no_token: { wf: saved(), token: "" },
     no_workflow_store: { store: false },
     refused_by_pixlstash: { wf: saved(), ok: false, reply: { error: "Owner token required" } },
-    link_to_a_saved_file: { wf: saved(), options: { savedOnly: true }, reply: { matched: true } },
-    link_to_unsaved_changes: { wf: { ...saved(), isModified: true }, options: { savedOnly: true } },
-    link_edited_while_converting: { wf: saved(), options: { savedOnly: true }, during: (wf) => { wf.isModified = true; } },
+    a_persons_lora: { wf: saved(), reply: { matched: false, left_out: [
+        { class_type: "LoraLoader", lora: "Anna v2", people: ["Anna"] },
+        { class_type: "PixlStashMultiAdapterLoader", lora: "Ben", people: ["Ben"] },
+    ] } },
 };
 const results = {};
 for (const [name, s] of Object.entries(scenarios)) {
-    const { wf, during, options, store = true, token = "example-token", ok = true, reply = { matched: false } } = s;
+    const { wf, during, store = true, token = "example-token", ok = true, reply = { matched: false } } = s;
     const toasts = [];
     let sent = null;
     app.ui = { settings: { getSettingValue: (key) => (key === "PixlStash.APIToken" ? token : "") } };
@@ -59,7 +59,7 @@ for (const [name, s] of Object.entries(scenarios)) {
         sent = { url, method: init.method, auth: init.headers.Authorization, body: JSON.parse(init.body) };
         return { ok, status: ok ? 200 : 403, json: async () => reply };
     };
-    await exportActiveWorkflow(options);
+    await exportActiveWorkflow();
     results[name] = { sent, toasts };
 }
 
@@ -73,37 +73,6 @@ globalThis.fetch = async (url, init) => {
 };
 await command.function({ savedOnly: true });
 
-// A link from PixlStash, through the opener's own start-up.
-const { setup } = await import("./open_workflow.js").then(() => app.extensions[1]);
-const links = {
-    link_needing_conversion: { wf: saved(), graph: { needs_conversion: true } },
-    link_onto_unsaved_changes: { wf: { ...saved(), isModified: true }, graph: { needs_conversion: true } },
-    link_needing_nothing: { wf: saved(), graph: {} },
-};
-for (const [name, { wf, graph }] of Object.entries(links)) {
-    const toasts = [];
-    let sent = null;
-    globalThis.window = {
-        location: { href: `http://comfy.test/?pixlstash_workflow=manual:${"a".repeat(32)}` },
-        history: { replaceState() {} },
-    };
-    app.loadGraphData = async () => true;
-    app.extensionManager = {
-        toast: { add: (t) => toasts.push([t.severity, t.detail]) },
-        workflow: { activeWorkflow: wf, getWorkflowByPath: () => wf, syncWorkflows: async () => {}, isActive: () => true },
-    };
-    globalThis.fetch = async (url, init) => {
-        if (String(url).startsWith("/pixlstash/workflow_graph")) {
-            return { ok: true, json: async () => ({ comfyui_file: "wf.json", ...graph }) };
-        }
-        sent = { url, method: init.method, auth: init.headers.Authorization, body: JSON.parse(init.body) };
-        return { ok: true, json: async () => ({ matched: true }) };
-    };
-    await setup();
-    // `setup` does not wait for the open: give it the turns it needs.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    results[name] = { sent, toasts };
-}
 console.log(JSON.stringify(results));
 """
 
@@ -123,7 +92,7 @@ class ExportWorkflowTests(unittest.TestCase):
                 "    registerExtension(extension) { this.extensions.push(extension); },\n"
                 "};\n"
             )
-            for name in ("convert_workflow.js", "open_workflow.js"):
+            for name in ("convert_workflow.js", "workflow_link.js"):
                 shutil.copy(ROOT / "web" / "js" / name, js)
             (js / "driver.js").write_text(DRIVER)
             done = subprocess.run(
@@ -203,26 +172,19 @@ class ExportWorkflowTests(unittest.TestCase):
         # Unsaved changes go, whatever ComfyUI hands the command.
         self.assertEqual(command["sent"], CANVAS)
 
-    def test_an_opened_link_converts_a_saved_file(self):
-        body = self._sent("link_needing_conversion", says="PixlStash can now run wf.")
-        self.assertEqual(body["workflow"], FILE)
-
-    def test_an_opened_link_never_sends_unsaved_changes(self):
-        self._nothing_sent("link_onto_unsaved_changes", "warn", "Save it, then")
-
-    def test_an_opened_link_that_needs_no_conversion_sends_nothing(self):
+    def test_a_persons_lora_in_an_ordinary_loader_is_said(self):
+        """One sentence for the ordinary loader; the PixlStash loader's own
+        rows come off without one, since that is what it is for."""
+        toasts = self.results["a_persons_lora"]["toasts"]
+        self.assertEqual(len(toasts), 2)
         self.assertEqual(
-            self.results["link_needing_nothing"], {"sent": None, "toasts": []}
+            toasts[1],
+            [
+                "warn",
+                "Anna v2 is Anna's and is not saved with the workflow. "
+                "Pick people in the PixlStash loader beside the model.",
+            ],
         )
-
-    def test_a_link_exports_a_saved_file(self):
-        body = self._sent("link_to_a_saved_file", says="PixlStash can now run wf.")
-        self.assertEqual(body["workflow"], FILE)
-
-    def test_a_link_never_sends_unsaved_changes(self):
-        for scenario in ("link_to_unsaved_changes", "link_edited_while_converting"):
-            with self.subTest(scenario=scenario):
-                self._nothing_sent(scenario, "warn", "Save it, then")
 
 
 if __name__ == "__main__":

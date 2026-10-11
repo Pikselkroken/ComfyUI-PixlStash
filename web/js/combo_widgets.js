@@ -23,6 +23,7 @@ import {
 } from "./adapter_picker.js";
 import { ROWS, readRows, rowField, withPicks, writeRows } from "./adapter_rows.js";
 import { el, fitLabel } from "./modal_dom.js";
+import { linkedWorkflow } from "./workflow_link.js";
 
 // ---------------------------------------------------------------------------
 // Setting IDs
@@ -1267,6 +1268,8 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
                 picked: readRows(widgets).map(r => r.adapter_sha256),
                 limit:  ROWS,
                 people: isPeople(),
+                // Opened from PixlStash: the people are that workflow's.
+                workflowKey: linkedWorkflow(),
                 // The switch in the grid is this node's `show` setting. It
                 // arrives on confirm only, with the rows.
                 onView: (people) => {

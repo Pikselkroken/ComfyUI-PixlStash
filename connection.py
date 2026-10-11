@@ -455,6 +455,9 @@ class PixlStashClient:
     def post(self, path: str, *, is_write: bool = False, **kwargs) -> requests.Response:
         return self._request("POST", path, is_write=is_write, **kwargs)
 
+    def put(self, path: str, *, is_write: bool = False, **kwargs) -> requests.Response:
+        return self._request("PUT", path, is_write=is_write, **kwargs)
+
     def patch(
         self, path: str, *, is_write: bool = False, **kwargs
     ) -> requests.Response:

@@ -9,25 +9,22 @@
  * Nothing has to be saved first: what goes is the canvas as it stands, which
  * is what `output` was converted from. The one exception is a saved file with
  * no changes, which goes as the file's own content: PixlStash finds a
- * workflow it pulled by comparing documents, and ComfyUI rewrites the editor
- * graph every time it serialises it.
+ * workflow it already holds by comparing documents, and ComfyUI rewrites the
+ * editor graph every time it serialises it.
+ *
+ * An export is always a new workflow, or one whose content PixlStash already
+ * holds; it is never a version of another. On a canvas opened from PixlStash,
+ * where a plain save goes back to the workflow it was opened from
+ * (`save_workflow.js`), this is how to get a new workflow on purpose.
  *
  * The command id, the file and the route keep "convert" in their names: the
  * id is what a keybinding is saved against.
  */
 
 import { app } from "../../scripts/app.js";
+import { apiToken, leftOutSentences, notify } from "./workflow_link.js";
 
 const COMMAND_ID = "PixlStash.ConvertWorkflow";
-
-function notify(severity, detail) {
-    const toast = app.extensionManager?.toast;
-    if (toast?.add) {
-        toast.add({ severity, summary: "PixlStash", detail, life: 8000 });
-    } else {
-        console.warn(`[PixlStash] ${detail}`);
-    }
-}
 
 /**
  * The file's content when `wf` is a saved file ComfyUI reports as unmodified,
@@ -41,15 +38,10 @@ function savedContent(wf) {
 
 /**
  * Convert the active workflow, saved or not, and post it to PixlStash,
- * toasting the outcome. Shared by the menu command and the opener, which
- * calls it on a file it has just opened.
- *
- * `savedOnly` is the opener's: only a saved file with no changes is sent,
- * since a link must not send work the reader has not chosen to send, and
- * only the file's own content turns the workflow the link named runnable.
+ * toasting the outcome.
  */
-export async function exportActiveWorkflow({ savedOnly = false } = {}) {
-    const token = (app.ui.settings.getSettingValue("PixlStash.APIToken", "") ?? "").trim();
+export async function exportActiveWorkflow() {
+    const token = apiToken();
     if (!token) {
         notify("error", "Set your PixlStash API token in Settings › PixlStash, then export again.");
         return;
@@ -57,13 +49,6 @@ export async function exportActiveWorkflow({ savedOnly = false } = {}) {
     const wf = app.extensionManager?.workflow?.activeWorkflow;
     const name = wf?.filename || "workflow";
     const saved = savedContent(wf);
-    const unsaved = () =>
-        notify(
-            "warn",
-            "PixlStash cannot run this workflow yet, and it has unsaved changes here. " +
-                "Save it, then pick PixlStash › Export to PixlStash.",
-        );
-    if (savedOnly && saved === null) return unsaved();
     try {
         // Throws on a node with no definition (a pack not installed here):
         // that error is the answer, so it goes to the toast as is.
@@ -77,7 +62,6 @@ export async function exportActiveWorkflow({ savedOnly = false } = {}) {
         // An edit or a save while that ran: the file's content no longer
         // pairs with `output`; the canvas document came from the same call.
         const unchanged = saved !== null && savedContent(wf) === saved;
-        if (savedOnly && !unchanged) return unsaved();
         const resp = await fetch("/pixlstash/workflows/convert", {
             method: "POST",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -94,6 +78,8 @@ export async function exportActiveWorkflow({ savedOnly = false } = {}) {
                 ? `PixlStash can now run ${body.name || name}.`
                 : `Exported ${body.name || name} to PixlStash as a new workflow.`,
         );
+        // A person's LoRA is never part of a workflow: said, as for a save.
+        for (const sentence of leftOutSentences(body.left_out)) notify("warn", sentence);
     } catch (err) {
         console.error("[PixlStash] could not export workflow", name, err);
         notify("error", `Could not export ${name}: ${err.message}`);

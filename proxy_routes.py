@@ -327,56 +327,141 @@ async def proxy_entity_thumbnail(request: web.Request) -> web.Response:
     )
 
 
+def _workflow_key(raw) -> str | None:
+    """*raw* as a PixlStash workflow id, or ``None``.
+
+    The id is interpolated into the upstream path, so anything else is refused
+    before a client is built.
+    """
+    return raw if isinstance(raw, str) and _WORKFLOW_ID_RE.fullmatch(raw) else None
+
+
+_NOT_A_WORKFLOW_ID = "workflow_key must be a PixlStash workflow id."
+
+# An opening's id, as ``workflow_link.js`` makes it: 32 hex characters.
+_OPENING_RE = re.compile(r"[0-9a-f]{32}")
+
+
 async def proxy_workflow_graph(request: web.Request) -> web.Response:
     """Proxy one PixlStash workflow's runnable graph, for *Open in ComfyUI*.
 
     PixlStash's Workflow tab opens ComfyUI with ``?pixlstash_workflow=<id>``;
-    ``open_workflow.js`` reads it and fetches the graph through here. The id
-    (``auto:`` and a core hash, or ``manual:`` and a 32-character uuid hex) is interpolated
-    into the upstream path, so anything else is refused before a client is
-    built.
+    ``open_workflow.js`` reads it and fetches the graph through here, with
+    the layout it was last saved with and where the loader for people goes.
+    The id is ``auto:`` and a core hash, or ``manual:`` and a 32-character
+    uuid hex.
     """
-    workflow_key = request.rel_url.query.get("workflow_key", "")
-    if not _WORKFLOW_ID_RE.fullmatch(workflow_key):
-        return _err(
-            "workflow_key query param must be a PixlStash workflow id.",
-            status=400,
-        )
+    workflow_key = _workflow_key(request.rel_url.query.get("workflow_key"))
+    if workflow_key is None:
+        return _err(_NOT_A_WORKFLOW_ID, status=400)
     return await _proxy_get(request, f"/api/v1/workflows/{workflow_key}/graph")
 
 
-async def proxy_workflow_convert(request: web.Request) -> web.Response:
-    """Forward *Export to PixlStash*'s ``{name, workflow, output}`` to PixlStash.
+async def proxy_workflow_people(request: web.Request) -> web.Response:
+    """Proxy who a PixlStash workflow can make pictures of.
 
-    A thin pass-through: PixlStash validates the documents, and its status and
-    ``detail`` come back as they are, so a 400, 403 or 413 reaches the toast
-    word for word.
+    The people the Run popup offers for the workflow: the Multi Adapter
+    Loader's people view asks it on a canvas opened from PixlStash, so the two
+    offer the same people by the same rule.
+    """
+    workflow_key = _workflow_key(request.rel_url.query.get("workflow_key"))
+    if workflow_key is None:
+        return _err(_NOT_A_WORKFLOW_ID, status=400)
+    return await _proxy_get(request, f"/api/v1/workflows/{workflow_key}/people")
+
+
+async def _proxy_write(
+    request: web.Request, method: str, path: str, payload: dict
+) -> web.Response:
+    """Send *payload* to PixlStash with the client's *method* (``post``,
+    ``put``) and hand its answer back as it is.
+
+    PixlStash validates what it is sent, and its status and ``detail`` come
+    back unchanged, so a 400, 403, 404 or 413 reaches the toast word for word.
     """
     try:
         client = _build_client(request)
     except web.HTTPBadRequest as exc:
         return _err(exc.reason, status=400)
-
     try:
-        body = await request.json()
-    except ValueError:
-        body = None
-    if not (
-        isinstance(body, dict)
-        and isinstance(body.get("workflow"), dict)
-        and isinstance(body.get("output"), dict)
-    ):
-        return _err("workflow and output must both be JSON objects.", status=400)
-
-    path = "/api/v1/comfyui/workflows/convert"
-    try:
-        resp = await asyncio.to_thread(client.post, path, is_write=True, json=body)
+        resp = await asyncio.to_thread(
+            getattr(client, method), path, is_write=True, json=payload
+        )
         return _ok(resp.json())
     except RuntimeError as exc:
         log.warning("[PixlStash proxy] %s: %s", path, exc)
         return _err(
             getattr(exc, "detail", "") or str(exc), status=getattr(exc, "status", 502)
         )
+
+
+async def _both_documents(request: web.Request) -> dict | None:
+    """The request's JSON when it holds a ``workflow`` and an ``output`` object."""
+    try:
+        body = await request.json()
+    except ValueError:
+        return None
+    if (
+        isinstance(body, dict)
+        and isinstance(body.get("workflow"), dict)
+        and isinstance(body.get("output"), dict)
+    ):
+        return body
+    return None
+
+
+_NEEDS_BOTH = "workflow and output must both be JSON objects."
+
+
+async def proxy_workflow_convert(request: web.Request) -> web.Response:
+    """Forward *Export to PixlStash*'s ``{name, workflow, output}`` to PixlStash."""
+    body = await _both_documents(request)
+    if body is None:
+        return _err(_NEEDS_BOTH, status=400)
+    return await _proxy_write(
+        request, "post", "/api/v1/comfyui/workflows/convert", body
+    )
+
+
+async def proxy_workflow_save(request: web.Request) -> web.Response:
+    """Forward a save of a workflow opened from PixlStash, as its next version.
+
+    ``save_workflow.js`` posts ``{workflow_key, workflow, output}`` when
+    ComfyUI saves a canvas linked to a PixlStash workflow: ``output`` is the
+    runnable graph PixlStash stores, and ``workflow`` the editor document it
+    keeps beside it as the layout. ``read_version``, ``waiting_applied`` and
+    ``opening`` are what the canvas was opened with.
+
+    The one upstream call is PixlStash's whole-graph save. It adds a version
+    or a new workflow, keeps the layout, and with ``waiting_applied`` clears
+    the changes that waited in PixlStash's Workflow tab, which the graph was
+    opened with. It deletes no workflow and changes no recipe; PixlStash
+    decides what the caller's key may do.
+    """
+    body = await _both_documents(request)
+    if body is None:
+        return _err(_NEEDS_BOTH, status=400)
+    workflow_key = _workflow_key(body.get("workflow_key"))
+    if workflow_key is None:
+        return _err(_NOT_A_WORKFLOW_ID, status=400)
+    payload = {
+        "workflow": body["output"],
+        "editor": body["workflow"],
+        "source": "comfyui",
+        "waiting_applied": body.get("waiting_applied") is True,
+    }
+    # Sent only when known: its absence is what says "not read at a version".
+    read_version = body.get("read_version")
+    if isinstance(read_version, int) and not isinstance(read_version, bool):
+        payload["read_version"] = read_version
+    # Which opening the save is of, so PixlStash keeps an opening's saves as
+    # one version. Made by the browser; anything else is not forwarded.
+    opening = body.get("opening")
+    if isinstance(opening, str) and _OPENING_RE.fullmatch(opening):
+        payload["opening"] = opening
+    return await _proxy_write(
+        request, "put", f"/api/v1/workflows/{workflow_key}/graph", payload
+    )
 
 
 async def proxy_version(request: web.Request) -> web.Response:
@@ -436,7 +521,9 @@ def register_routes() -> None:
         r.get("/pixlstash/entity_thumbnail")(proxy_entity_thumbnail)
         r.get("/pixlstash/version")(proxy_version)
         r.get("/pixlstash/workflow_graph")(proxy_workflow_graph)
+        r.get("/pixlstash/workflow_people")(proxy_workflow_people)
         r.post("/pixlstash/workflows/convert")(proxy_workflow_convert)
+        r.post("/pixlstash/workflows/save")(proxy_workflow_save)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:
         log.warning("[PixlStash] Could not register proxy routes: %s", exc)
