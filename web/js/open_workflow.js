@@ -83,7 +83,12 @@ export function fileStem(name) {
     return RESERVED.test(stem) ? `${stem} workflow` : stem;
 }
 
-const nodeById = (graph, id) => graph.getNodeById(id) ?? graph.getNodeById(Number(id)) ?? null;
+// ComfyUI's API loader puts a subgraph's node ("75:70") on the canvas as
+// "75_70", so an id PixlStash sends is looked for under that name too.
+// ponytail: not the "75_70_" it takes when a node is already called "75_70".
+const nodeById = (graph, id) =>
+    graph.getNodeById(id) ?? graph.getNodeById(Number(id)) ??
+    graph.getNodeById(String(id).replaceAll(":", "_")) ?? null;
 
 /**
  * Write the values of the API graph `api` over the canvas, node by node.
