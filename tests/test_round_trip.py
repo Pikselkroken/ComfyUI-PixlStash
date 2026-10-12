@@ -30,7 +30,7 @@ OTHER = "manual:" + "b" * 32
 
 DRIVER = r"""
 import { app } from "../../scripts/app.js";
-import { differsFrom, fileStem } from "./open_workflow.js";
+import { differsFrom, fileStem, placePeopleLoader } from "./open_workflow.js";
 import { saveToPixlStash } from "./save_workflow.js";
 import { FILE_TAG, TAG, isUnsent, openings, quietly } from "./workflow_link.js";
 
@@ -238,6 +238,21 @@ for (const [name, canvas] of Object.entries(refused)) {
     const { toasts } = comfy();
     await openLink(AUTO, { name: "Two models", workflow: API, people_loader: { reason: "It loads two models." } });
     results.unplaceable = { toasts, wires: app.wires, nodes: app.rootGraph.nodes.length };
+}
+{
+    // A graph out of a subgraph: PixlStash names its nodes "75:70", and
+    // ComfyUI's API loader puts them on the canvas as "75_70".
+    const { toasts } = comfy();
+    const graph = makeGraph([
+        makeNode("75_70", "UNETLoader"),
+        makeNode("75_63", "CFGGuider", {}, ["model"]),
+    ]);
+    const placed = placePeopleLoader(graph, {
+        model: { node_id: "75:70", output: 0 },
+        clip: null,
+        rewires: [{ node_id: "75:63", field: "model", type: "MODEL" }],
+    });
+    results.renamed = { toasts, placed: !!placed, wires: app.wires };
 }
 {
     // Nobody has a LoRA: no loader, and nothing said about it.
@@ -566,6 +581,16 @@ class RoundTripTests(unittest.TestCase):
         result = self.results["unplaceable"]
         self._one_toast("unplaceable", "warn", "It loads two models.")
         self.assertEqual((result["wires"], result["nodes"]), ([], 3))
+
+    def test_the_loader_goes_on_a_graph_out_of_a_subgraph(self):
+        self.assertEqual(
+            self.results["renamed"],
+            {
+                "toasts": [],
+                "placed": True,
+                "wires": [["75_70", 0, 99, "model"], [99, 0, "75_63", "model"]],
+            },
+        )
 
     def test_no_loader_where_nobody_has_a_lora(self):
         self.assertEqual(self.results["nobody"], {"toasts": [], "nodes": 3})
