@@ -41,6 +41,8 @@ const FOLDER = "workflows/pixlstash/";
 
 // How long to wait for ComfyUI to finish restoring its own tabs.
 const STARTUP_TIMEOUT_MS = 30000;
+// How long to wait for a graph handed to ComfyUI's API loader to be on the canvas.
+const LOAD_TIMEOUT_MS = 30000;
 
 function takeKeyFromUrl() {
     const url = new URL(window.location.href);
@@ -197,6 +199,32 @@ export function differsFrom(output, api) {
         }
     }
     return null;
+}
+
+/**
+ * Load the API graph `workflow` as the tab `loadAs`, and resolve once it is.
+ *
+ * `await app.loadApiJson()` does not say so by itself: an extension that wraps
+ * it and drops its promise (rgthree-comfy does) ends the await with the canvas
+ * cleared and no node made yet. What came next was then done to an empty
+ * canvas, and saved into whichever tab was showing before. ComfyUI makes the
+ * nodes and then, last, shows the graph as a tab of the name it was loaded
+ * under: both are waited for. `tabbed` is false where ComfyUI's workflow store
+ * cannot be asked what is showing.
+ */
+async function loadApi(workflow, loadAs, tabbed) {
+    await app.loadApiJson(workflow, `${loadAs}.json`);
+    const ids = Object.keys(workflow ?? {});
+    const path = `workflows/${loadAs}.json`;
+    const loaded = () =>
+        (!ids.length || ids.some((id) => nodeById(rootGraph(), id))) &&
+        (!tabbed || app.extensionManager?.workflow?.activeWorkflow?.path === path);
+    const deadline = Date.now() + LOAD_TIMEOUT_MS;
+    while (!loaded()) {
+        // Nothing is placed on, or saved from, a canvas that is not this graph.
+        if (Date.now() > deadline) throw new Error("ComfyUI did not finish loading its graph.");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 }
 
 /**
@@ -432,7 +460,7 @@ async function openFromUrl(key) {
         if (differs) console.info("[PixlStash] the layout kept for", name, "is not used:", differs);
         arranged = !differs;
     }
-    if (!arranged) await app.loadApiJson(body.workflow, `${loadAs}.json`);
+    if (!arranged) await loadApi(body.workflow, loadAs, !!file);
     const graph = rootGraph();
     // Linked, so a save here goes back to this workflow and the pictures this
     // graph makes are filed on it (PixlStash reads the tag from their

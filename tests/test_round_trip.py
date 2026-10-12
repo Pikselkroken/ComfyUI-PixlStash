@@ -255,6 +255,19 @@ for (const [name, canvas] of Object.entries(refused)) {
     results.renamed = { toasts, placed: !!placed, wires: app.wires };
 }
 {
+    // An extension that wraps the API loader and drops its promise (rgthree
+    // does): the await is over with the canvas cleared and no node on it yet.
+    const { toasts, store } = comfy();
+    const load = app.loadApiJson;
+    app.loadApiJson = async (...args) => {
+        app.rootGraph = makeGraph([]);
+        setTimeout(() => load(...args), 60);
+    };
+    await openLink(AUTO, { name: "Late", workflow: API, people_loader: PLACE });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    results.dropped_promise = { toasts, wires: app.wires.length, saved: store.saved.map(([path]) => path) };
+}
+{
     // Nobody has a LoRA: no loader, and nothing said about it.
     const { toasts } = comfy();
     await openLink(AUTO, { name: "Nobody", workflow: API, people_loader: null });
@@ -590,6 +603,13 @@ class RoundTripTests(unittest.TestCase):
                 "placed": True,
                 "wires": [["75_70", 0, 99, "model"], [99, 0, "75_63", "model"]],
             },
+        )
+
+    def test_a_load_whose_promise_was_dropped_is_waited_for(self):
+        """Not placed on, and not saved from, a canvas the graph is not on yet."""
+        self.assertEqual(
+            self.results["dropped_promise"],
+            {"toasts": [], "wires": 4, "saved": ["workflows/pixlstash/Late.json"]},
         )
 
     def test_no_loader_where_nobody_has_a_lora(self):
