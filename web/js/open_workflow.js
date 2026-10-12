@@ -216,13 +216,18 @@ async function loadApi(workflow, loadAs, tabbed) {
     await app.loadApiJson(workflow, `${loadAs}.json`);
     const ids = Object.keys(workflow ?? {});
     const path = `workflows/${loadAs}.json`;
+    // One node, not every node: ComfyUI makes them all in one go, so there is
+    // no canvas with some of them, and a frontend before 1.52 leaves out a node
+    // whose class it does not have, which is what the owner came here to fix.
     const loaded = () =>
         (!ids.length || ids.some((id) => nodeById(rootGraph(), id))) &&
         (!tabbed || app.extensionManager?.workflow?.activeWorkflow?.path === path);
     const deadline = Date.now() + LOAD_TIMEOUT_MS;
     while (!loaded()) {
         // Nothing is placed on, or saved from, a canvas that is not this graph.
-        if (Date.now() > deadline) throw new Error("ComfyUI did not finish loading its graph.");
+        if (Date.now() > deadline) {
+            throw new Error("ComfyUI did not finish loading its graph. Open it from PixlStash again.");
+        }
         await new Promise((resolve) => setTimeout(resolve, 50));
     }
 }
