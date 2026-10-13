@@ -38,6 +38,7 @@ read them at runtime, so they never end up in saved workflow JSON.
 | Character Loader | Picks a character. | 1.0 | 1.2.1 |
 | Picture Loader | Loads images as `IMAGE` and `MASK`. Pick them in a thumbnail browser, or leave the selection empty to fetch everything matching the wired filters. | 1.0 | 1.0 |
 | Picture Saver | Uploads images, optionally filed under a project, set or character. Can embed the workflow in PNGs. | 1.0 | 1.0 |
+| Video Saver | Uploads a `VIDEO`, optionally filed under a project, set or character. Format and codec as in ComfyUI's Save Video; can embed the workflow in the file. | 1.7 | 1.2 |
 | Likeness Search | Finds pictures by facial or image similarity to reference images. | 1.1 | 1.4 |
 | Semantic Search | Finds pictures by text. | 1.1 | 1.4 |
 | Face Likeness Gate | Splits a batch into `accepted` and `rejected` by how well each face matches a character. | 1.2 | 1.6 |

@@ -79,13 +79,18 @@ class PathTraversalTests(unittest.TestCase):
         hostile = "../../../../tmp/evil"
         FP.calls.clear()
 
-        def fake_upload(client, files, project_id=""):
+        def fake_upload(client, files, project_id="", node=""):
             return ([], [])
 
-        with mock.patch.object(
-            picture_saver.PixlStashPictureSaver,
-            "_upload",
-            staticmethod(fake_upload),
+        # picture_saver binds folder_paths when it is first imported, which may
+        # have been by another test module; point it at this one's stand-in.
+        with (
+            mock.patch.object(picture_saver, "folder_paths", FP),
+            mock.patch.object(
+                picture_saver.PixlStashPictureSaver,
+                "_upload",
+                staticmethod(fake_upload),
+            ),
         ):
             saver.save_pictures(_Images(), hostile, False, url="https://x", token="t")
 
