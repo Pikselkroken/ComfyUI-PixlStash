@@ -31,13 +31,18 @@
  *   for a LoRA its shelf holds. A link that also carries `pixlstash_original`
  *   (PixlStash's *Open original in ComfyUI*) opens the workflow's own nodes.
  *
+ * - **A run from the Run popup** (`open_run.js`, which calls `openFromUrl`
+ *   with what PixlStash holds the run as): the workflow with that run's
+ *   changes in it, always as a file of its own, and marked so that a save of
+ *   it is sent as a new workflow (`NEW_TAG`).
+ *
  * The key is taken off the address at once, so reloading the tab does not
  * fetch the graph again over whatever the reader has changed since.
  */
 
 import { app } from "../../scripts/app.js";
 import {
-    FILE_TAG, KEY_RE, PEOPLE_LOADER, SHOW_PEOPLE, TAG, apiToken, flushCanvas, isUnsent,
+    FILE_TAG, KEY_RE, NEW_TAG, PEOPLE_LOADER, SHOW_PEOPLE, TAG, apiToken, flushCanvas, isUnsent,
     linkedWorkflow, newOpening, notify, openings, quietly, rootGraph,
 } from "./workflow_link.js";
 
@@ -302,11 +307,16 @@ function keptPeopleLoader(graph, api) {
     );
 }
 
-/** The PixlStash workflow a file in ComfyUI's workflows is linked to, or null. */
+/**
+ * The PixlStash workflow a file in ComfyUI's workflows is linked to, or null.
+ * A run opened from the Run popup is nobody's: it is a new workflow in the
+ * making, not the file of the workflow it came from.
+ */
 async function workflowOfFile(file) {
     try {
         const content = (await file.load?.())?.content ?? file.content;
-        return linkedWorkflow(JSON.parse(content ?? "null"));
+        const state = JSON.parse(content ?? "null");
+        return state?.extra?.[NEW_TAG] ? null : linkedWorkflow(state);
     } catch (err) {
         console.info("[PixlStash] could not read", file.path, "to see whose it is:", err);
         return null;
@@ -320,9 +330,10 @@ async function workflowOfFile(file) {
  * A file already there under the name is this workflow's own from an earlier
  * open only when it carries this workflow's id: that one is `mine`, and is
  * opened over with what PixlStash holds now. Any other file (another workflow
- * of the same name) is left alone and this takes the next name.
+ * of the same name) is left alone and this takes the next name. `fresh` is a
+ * run from the Run popup, which is never opened over a file there already.
  */
-async function fileFor(name, key) {
+async function fileFor(name, key, fresh = false) {
     const store = app.extensionManager?.workflow;
     if (typeof store?.getWorkflowByPath !== "function" || typeof store.saveWorkflow !== "function") {
         console.info("[PixlStash] this ComfyUI's workflow store cannot save an opened workflow as a file");
@@ -341,7 +352,7 @@ async function fileFor(name, key) {
         const path = `${FOLDER}${stem}${n === 1 ? "" : ` (${n})`}.json`;
         const there = store.getWorkflowByPath(path);
         if (!there) return { path, mine: null };
-        if ((await workflowOfFile(there)) === key) return { path, mine: there };
+        if (!fresh && (await workflowOfFile(there)) === key) return { path, mine: there };
     }
     return null;
 }
@@ -391,11 +402,16 @@ async function saveOpened(mine) {
 function unsavedTabOf(key) {
     const store = app.extensionManager?.workflow;
     return (store?.openWorkflows ?? []).find(
-        (wf) => wf?.path?.startsWith(FOLDER) && wf.isModified && linkedWorkflow(wf.activeState) === key,
+        (wf) => wf?.path?.startsWith(FOLDER) && wf.isModified && !wf.activeState?.extra?.[NEW_TAG] &&
+            linkedWorkflow(wf.activeState) === key,
     ) ?? null;
 }
 
-async function openFromUrl(key, original = false) {
+/**
+ * Open the workflow `key`. `run` is what PixlStash holds a run from its Run
+ * popup as: that run's graph opens instead, to be saved as a new workflow.
+ */
+export async function openFromUrl(key, original = false, run = null) {
     if (!KEY_RE.test(key)) {
         notify("error", "That is not a PixlStash workflow link.");
         return;
@@ -413,10 +429,13 @@ async function openFromUrl(key, original = false) {
         // `waiting`: the changes waiting in PixlStash's Workflow tab are in
         // the graph, and come back in the version saved here. `all_stages`:
         // a stage cut out of a graph saved back could not be switched on again.
-        const query = new URLSearchParams({ workflow_key: key, waiting: "true", all_stages: "true" });
+        // A run is held whole by PixlStash, so it is asked for by itself.
+        const query = new URLSearchParams(
+            run ? { workflow_key: key, run } : { workflow_key: key, waiting: "true", all_stages: "true" },
+        );
         // This pack's savers and Adapter Loader in place of the stock nodes,
         // unless the link asks for the workflow as it is.
-        if (!original) query.set("pixlstash_nodes", "true");
+        if (!run && !original) query.set("pixlstash_nodes", "true");
         const resp = await fetch(`/pixlstash/workflow_graph?${query}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
@@ -433,7 +452,8 @@ async function openFromUrl(key, original = false) {
         return;
     }
     const name = body.name || "PixlStash workflow";
-    const unsaved = unsavedTabOf(key);
+    // A run opens as a file of its own, so it is over nobody's unsaved work.
+    const unsaved = run ? null : unsavedTabOf(key);
     if (unsaved) {
         // Opening over it would throw the reader's unsaved work away.
         notify(
@@ -447,7 +467,7 @@ async function openFromUrl(key, original = false) {
     // Loaded under the file's own name, so ComfyUI makes the tab that file.
     // Over this workflow's own file the canvas is built in a tab beside it
     // first (`saveOpened`), under a name no file has.
-    const file = await fileFor(name, key);
+    const file = await fileFor(name, key, !!run);
     if (file?.mine && isUnsent(file.path)) {
         // The file holds a save PixlStash never received: the only copy.
         notify(
@@ -485,6 +505,12 @@ async function openFromUrl(key, original = false) {
     // `workflow` chunk).
     graph.extra ??= {};
     graph.extra[TAG] = key;
+    // A run's graph is that workflow with the run's changes in it: what is
+    // saved from here is a new workflow, never a version of that one. Taken
+    // off any other canvas: a layout kept from a run's first save could
+    // carry it, and the workflow it opens would never save over itself.
+    if (run) graph.extra[NEW_TAG] = true;
+    else delete graph.extra[NEW_TAG];
 
     // A layout that was used converts to the graph, so a loader for people
     // it kept holds nobody: it is where it was left, and no other is put on.
@@ -513,6 +539,9 @@ async function openFromUrl(key, original = false) {
             `${name} is open as an unsaved workflow, so saving it does not save to PixlStash. ` +
                 "Save it in ComfyUI, then pick PixlStash › Save to PixlStash to send it.",
         );
+    }
+    if (run && path) {
+        notify("info", `${name} is open as PixlStash's Run popup had it. Saving it here saves a new workflow to PixlStash.`);
     }
     // A graph rebuilt from a stored recipe can hold no seed, or name models
     // PixlStash has forgotten: say so, or the first queue fails unexplained.

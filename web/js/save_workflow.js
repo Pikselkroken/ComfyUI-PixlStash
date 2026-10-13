@@ -8,6 +8,13 @@
  * is asked: opening it from PixlStash already said which workflow is meant.
  * What happened is said in a toast.
  *
+ * **A run opened from the Run popup is saved as a new workflow** (`NEW_TAG`):
+ * the first save of it makes that workflow, the canvas is linked to it, and
+ * every save after is a version of the new one. It goes to a proxy route of
+ * its own (`/pixlstash/workflows/save_new`), so a ComfyUI that has this script
+ * and not yet that route (updated, not restarted) stores nothing rather than
+ * saving the run over the workflow it came from.
+ *
  * **Only that file.** A canvas that carries a workflow's id but is not the
  * file PixlStash opened (a duplicated tab, a picture dragged back in, a copy,
  * somebody else's file) is not sent by saving it, and is told so once.
@@ -26,7 +33,7 @@
 
 import { app } from "../../scripts/app.js";
 import {
-    FILE_TAG, PEOPLE_LOADER, TAG, apiToken, flushCanvas, isQuiet, leftOutSentences,
+    FILE_TAG, NEW_TAG, PEOPLE_LOADER, TAG, apiToken, flushCanvas, isQuiet, leftOutSentences,
     linkedFile, linkedWorkflow, markUnsent, notify, openings, quietly, rootGraph,
 } from "./workflow_link.js";
 
@@ -125,14 +132,23 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
         return;
     }
     const opened = openings.get(path) ?? {};
+    // Opened from PixlStash's Run popup: a new workflow, not a version.
+    const asNew = !!rootGraph().extra?.[NEW_TAG];
+    // PixlStash keeps the document as the new workflow's layout, which must
+    // not open marked as a run again.
+    let editor = prompt.workflow;
+    if (asNew && editor?.extra) {
+        editor = { ...editor, extra: { ...editor.extra } };
+        delete editor.extra[NEW_TAG];
+    }
     let resp, body;
     try {
-        resp = await fetch("/pixlstash/workflows/save", {
+        resp = await fetch(asNew ? "/pixlstash/workflows/save_new" : "/pixlstash/workflows/save", {
             method: "POST",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
             body: JSON.stringify({
                 workflow_key: key,
-                workflow: prompt.workflow,
+                workflow: editor,
                 output: prompt.output,
                 read_version: opened.version ?? null,
                 waiting_applied: !!opened.waiting,
@@ -142,6 +158,11 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
         body = await resp.json().catch(() => ({}));
     } catch (err) {
         return failed(`PixlStash cannot be reached (${err.message}).`);
+    }
+    if (asNew && [404, 405].includes(resp.status) && !body.error && !body.detail) {
+        // ComfyUI's own answer, not PixlStash's through the proxy: the route
+        // is not there, so its Python is from before the pack was updated.
+        return failed("ComfyUI has to be restarted before it can save this as a new workflow: its PixlStash nodes were updated since it started.");
     }
     if (resp.status === 404) {
         // Somebody else's file, or a workflow deleted since: nothing to save over.
@@ -155,20 +176,24 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
     const again = !!opened.saved;
     openings.set(path, { ...opened, version: body.version ?? null, waiting: false, saved: true });
     if (body.new_workflow) {
+        const why = asNew ? "" : ": the checkpoint changed";
         if (store?.activeWorkflow === active) {
             // The canvas is the new workflow's from here on, and so is its file.
             rootGraph().extra[TAG] = body.workflow_id;
+            delete rootGraph().extra[NEW_TAG];
             await quietly(active, async () => {
                 flushCanvas(active);
                 await store.saveWorkflow(active);
             }).catch((err) => console.warn("[PixlStash] could not re-save the re-linked canvas", err));
-            notify("success", `Saved to PixlStash as a new workflow, ${stored}: the checkpoint changed.`);
+            notify("success", `Saved to PixlStash as a new workflow, ${stored}${why}.`);
         } else {
             // Another canvas is showing now: its link is not this save's to change.
             notify(
                 "warn",
-                `Saved to PixlStash as a new workflow, ${stored}: the checkpoint changed. ` +
-                    `${name} is still linked to the workflow it was opened from; open the new one from PixlStash.`,
+                `Saved to PixlStash as a new workflow, ${stored}${why}. ` +
+                    (asNew
+                        ? `${name} would save as another new workflow; open ${stored} from PixlStash to go on with it.`
+                        : `${name} is still linked to the workflow it was opened from; open the new one from PixlStash.`),
             );
         }
     } else if (body.unchanged) {
@@ -206,6 +231,7 @@ function unlinkCopy(copy) {
     const state = JSON.parse(copy.content);
     delete state.extra[TAG];
     delete state.extra[FILE_TAG];
+    delete state.extra[NEW_TAG];
     copy.content = copy.originalContent = JSON.stringify(state);
     notify("info", `Saved as a copy that is not linked to PixlStash. ${EXPORT_HINT}`);
 }

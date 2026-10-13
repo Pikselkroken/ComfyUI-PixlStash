@@ -243,6 +243,14 @@ with it is linked to the PixlStash workflow it came from:
   out of the workflow too, and the toast names it.
 - **Save As makes a copy that is not linked.** Use *Export to PixlStash* to
   send a copy, or any other workflow, to PixlStash as a new workflow.
+- **A run opens as a new workflow in the making.** PixlStash's Run popup has
+  an **Open in ComfyUI** button too. It opens the workflow with what the
+  popup holds in it (prompt, seed, models, LoRAs, stages, pictures), as a file
+  of its own beside the workflow's. Saving that one saves a **new** workflow
+  to PixlStash and leaves the one it came from as it was: `Saved to PixlStash
+  as a new workflow, Portrait (from a run)`. The canvas is linked to the new
+  workflow from then on, so the saves after it are versions of that one.
+  Needs PixlStash 1.12.
 
 The save is sent when ComfyUI's own save finishes, by watching the workflow
 store's `saveWorkflow` action. That is ComfyUI's internal interface (checked

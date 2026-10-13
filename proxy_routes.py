@@ -366,7 +366,9 @@ async def proxy_workflow_graph(request: web.Request) -> web.Response:
     ``open_workflow.js`` reads it and fetches the graph through here, with
     the layout it was last saved with and where the loader for people goes.
     The id is ``auto:`` and a core hash, or ``manual:`` and a 32-character
-    uuid hex.
+    uuid hex. A link from the Run popup (``open_run.js``) adds ``run``, which
+    goes on with the rest of the query: PixlStash then answers the graph it
+    holds for that run.
     """
     workflow_key = _workflow_key(request.rel_url.query.get("workflow_key"))
     if workflow_key is None:
@@ -445,14 +447,17 @@ async def proxy_workflow_convert(request: web.Request) -> web.Response:
     )
 
 
-async def proxy_workflow_save(request: web.Request) -> web.Response:
+async def proxy_workflow_save(
+    request: web.Request, as_new: bool = False
+) -> web.Response:
     """Forward a save of a workflow opened from PixlStash, as its next version.
 
     ``save_workflow.js`` posts ``{workflow_key, workflow, output}`` when
     ComfyUI saves a canvas linked to a PixlStash workflow: ``output`` is the
     runnable graph PixlStash stores, and ``workflow`` the editor document it
     keeps beside it as the layout. ``read_version``, ``waiting_applied`` and
-    ``opening`` are what the canvas was opened with.
+    ``opening`` are what the canvas was opened with. *as_new* is
+    :func:`proxy_workflow_save_new`'s: the graph is stored as a new workflow.
 
     The one upstream call is PixlStash's whole-graph save. It adds a version
     or a new workflow, keeps the layout, and with ``waiting_applied`` clears
@@ -481,9 +486,26 @@ async def proxy_workflow_save(request: web.Request) -> web.Response:
     opening = body.get("opening")
     if isinstance(opening, str) and _OPENING_RE.fullmatch(opening):
         payload["opening"] = opening
+    # Said by the route and never by the body: see `proxy_workflow_save_new`.
+    if as_new:
+        payload["as_new"] = True
     return await _proxy_write(
         request, "put", f"/api/v1/workflows/{workflow_key}/graph", payload
     )
+
+
+async def proxy_workflow_save_new(request: web.Request) -> web.Response:
+    """Forward a save of a canvas opened from PixlStash's Run popup, which is
+    stored as a NEW workflow and never as a version of the one it names.
+
+    A route of its own and not a flag in the save's body, so that it fails
+    closed: this file is loaded when ComfyUI starts and the script that calls
+    it when the page does. A ComfyUI not restarted since the pack was updated
+    has the new script and the old routes, and a flag the old save route does
+    not know would be dropped, saving the run over the workflow it came from.
+    Here that ComfyUI answers 404 and nothing is stored.
+    """
+    return await proxy_workflow_save(request, as_new=True)
 
 
 async def proxy_version(request: web.Request) -> web.Response:
@@ -546,6 +568,7 @@ def register_routes() -> None:
         r.get("/pixlstash/workflow_people")(proxy_workflow_people)
         r.post("/pixlstash/workflows/convert")(proxy_workflow_convert)
         r.post("/pixlstash/workflows/save")(proxy_workflow_save)
+        r.post("/pixlstash/workflows/save_new")(proxy_workflow_save_new)
         log.info("[PixlStash] Proxy routes registered.")
     except (ImportError, AttributeError) as exc:
         log.warning("[PixlStash] Could not register proxy routes: %s", exc)

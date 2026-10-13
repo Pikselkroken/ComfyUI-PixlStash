@@ -113,6 +113,20 @@ class SaveProxyTests(unittest.TestCase):
         )
         self.assertEqual(sent["source"], "comfyui")
 
+    def test_a_run_opened_from_pixlstash_is_sent_as_a_new_workflow(self):
+        """The route says so, never the body: a flag in the body is what a
+        ComfyUI still running the older routes would drop."""
+        client, resp = self._call(proxy.proxy_workflow_save_new, _Request(BODY))
+        [(method, path, kwargs)] = client.calls
+        self.assertEqual((method, path, kwargs["is_write"]), ("PUT", PATH, True))
+        self.assertIs(kwargs["json"]["as_new"], True)
+        self.assertEqual(kwargs["json"]["workflow"], OUTPUT)
+        self.assertEqual(body_of(resp), {"version": 4})
+        client, _ = self._call(
+            proxy.proxy_workflow_save, _Request({**BODY, "as_new": True})
+        )
+        self.assertNotIn("as_new", client.calls[0][2]["json"])
+
     def test_a_version_that_is_not_known_is_not_sent(self):
         """Its absence is what tells PixlStash the graph was read at none."""
         for unknown in (None, "3", True, 2.5):
@@ -169,6 +183,7 @@ class SaveProxyTests(unittest.TestCase):
             (proxy.proxy_workflow_people, _Request(query=key)),
             (proxy.proxy_workflow_convert, _Request(BODY)),
             (proxy.proxy_workflow_save, _Request(BODY)),
+            (proxy.proxy_workflow_save_new, _Request(BODY)),
         ):
             with self.subTest(handler=handler.__name__):
                 client, _ = self._call(handler, request)

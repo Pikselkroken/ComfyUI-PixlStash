@@ -10,7 +10,9 @@ is used only when it converts to the graph PixlStash sent, where the loader
 for people is wired, that the opener's own save is not sent, that only the
 file PixlStash opened saves back, what a save sends and each outcome's toast,
 that a copy made with *Save As* is unlinked, and that a ComfyUI without the
-save hook says so.
+save hook says so. And the run opened from PixlStash's Run popup
+(``web/js/open_run.js``): that it opens as a file of its own and is saved as a
+new workflow, never over the one it came from.
 
 Run in Node against a stand-in for ComfyUI's ``app``, so this is skipped where
 there is no ``node``.
@@ -32,10 +34,12 @@ DRIVER = r"""
 import { app } from "../../scripts/app.js";
 import { differsFrom, fileStem, placePeopleLoader } from "./open_workflow.js";
 import { saveToPixlStash } from "./save_workflow.js";
-import { FILE_TAG, TAG, isUnsent, openings, quietly } from "./workflow_link.js";
+import { FILE_TAG, NEW_TAG, TAG, isUnsent, openings, quietly } from "./workflow_link.js";
+import "./open_run.js";
 
 const [AUTO, OTHER] = JSON.parse(process.argv[2]);
-const [opener, saver] = app.extensions;
+const [opener, saver, runOpener] = app.extensions;
+const RUN = "d".repeat(32);
 const results = {};
 const turns = () => new Promise((resolve) => setTimeout(resolve, 20));
 const LOADER = "PixlStashMultiAdapterLoader";
@@ -145,6 +149,8 @@ function comfy({ files = {}, open = [], hook = true, unsent = [] } = {}) {
         app.loads.push([how, file ? `into ${file.path}` : into]);
         const before = app.rootGraph;
         app.rootGraph = makeGraph(how === "editor" && document.canvas ? document.canvas() : chain());
+        // A document's `extra` is the canvas's once it is loaded.
+        if (how === "editor" && document.extra) app.rootGraph.extra = { ...document.extra };
         // A canvas serialised and loaded again is the same canvas.
         if (file) Object.assign(app.rootGraph, { nodes: before.nodes, extra: document.extra });
         store.activeWorkflow = file ?? { path: `workflows/${into}.json`, filename: into.split("/").pop(), isTemporary: true };
@@ -173,6 +179,25 @@ async function openLink(key, graph, also = "") {
     await opener.setup();
     await turns();
     return sent;
+}
+
+/** Open the run `run` of `key` from the Run popup; returns what was sent. */
+async function openRun(run, key, graph) {
+    const sent = [];
+    let address = null;
+    globalThis.window = {
+        location: { href: `http://comfy.test/?pixlstash_run=${run}&pixlstash_of=${key}` },
+        history: { replaceState(_state, _title, url) { address = url; } },
+    };
+    globalThis.fetch = async (url, init) => {
+        sent.push([String(url), init.method ?? "GET"]);
+        return { ok: true, status: 200, json: async () => graph };
+    };
+    // The workflow's own opener reads the same address, and finds nothing.
+    await opener.setup();
+    await runOpener.setup();
+    await turns();
+    return { sent, address };
 }
 
 const loaders = (graph) => graph.nodes.filter((n) => n.type === LOADER);
@@ -282,6 +307,40 @@ for (const [name, canvas] of Object.entries(refused)) {
 }
 const tagged = (path, key) => ({ path, content: JSON.stringify({ extra: { [TAG]: key } }) });
 {
+    // A run from the Run popup: a file of its own although the workflow's is
+    // there, and open with unsaved changes, and marked to save as new.
+    const mine = tagged("workflows/pixlstash/Portrait.json", AUTO);
+    const tab = { path: mine.path, isModified: true, activeState: { extra: { [TAG]: AUTO } } };
+    const { toasts, store } = comfy({ files: { [mine.path]: mine }, open: [tab] });
+    await saver.setup();
+    const { sent, address } = await openRun(RUN, AUTO, { name: "Portrait", workflow: API, version: 3 });
+    results.run_opened = { sent, address, toasts, loads: app.loads, saved: store.saved, closed: store.closed };
+}
+{
+    // The file of a run opened earlier is not the workflow's own file, and
+    // its unsaved tab is not the workflow's: neither stops the workflow opening.
+    const extra = { [TAG]: AUTO, [NEW_TAG]: true };
+    const run = { path: "workflows/pixlstash/Kept.json", content: JSON.stringify({ extra }) };
+    const tab = { path: run.path, isModified: true, activeState: { extra } };
+    const { toasts } = comfy({ files: { [run.path]: run }, open: [tab] });
+    await openLink(AUTO, { name: "Kept", workflow: API });
+    results.run_file_is_nobodys = { toasts, loads: app.loads };
+}
+{
+    // The layout kept from a run's first save can still carry the mark. The
+    // workflow it belongs to is not a run: it saves over itself.
+    const { store } = comfy();
+    const editor = { canvas: () => chain(), extra: { [NEW_TAG]: true, ds: 1 } };
+    await openLink(AUTO, { name: "Was a run", workflow: API, editor });
+    results.layout_from_a_run = { loads: app.loads, saved: store.saved };
+}
+{
+    // Not what PixlStash holds a run as: nothing is asked for.
+    const { toasts } = comfy();
+    const { sent } = await openRun("../x", AUTO, { name: "No", workflow: API });
+    results.not_a_run = { toasts, sent, loads: app.loads };
+}
+{
     // The name is another workflow's file: left alone. This workflow's own,
     // open in a tab from an earlier time, is loaded into and saved over.
     const theirs = tagged("workflows/pixlstash/Same.json", OTHER);
@@ -365,11 +424,11 @@ results.differs = {
 const PATH = "workflows/pixlstash/Portrait.json";
 
 /** Saves of a canvas linked to `key`, answered by `reply`. */
-async function save({ key = AUTO, file = PATH, path = PATH, reply = { version: 4 }, status = 200, opened, prompt, offline = false, wf, byHand = false, times = 1, during } = {}) {
+async function save({ key = AUTO, file = PATH, path = PATH, reply = { version: 4 }, status = 200, opened, prompt, offline = false, wf, byHand = false, times = 1, during, asNew = false } = {}) {
     const { toasts, store, kept } = comfy();
     const active = { path, filename: "Portrait", isTemporary: false };
     store.activeWorkflow = active;
-    app.rootGraph = { extra: { ...(key ? { [TAG]: key } : {}), ...(file ? { [FILE_TAG]: file } : {}) } };
+    app.rootGraph = { extra: { ...(key ? { [TAG]: key } : {}), ...(file ? { [FILE_TAG]: file } : {}), ...(asNew ? { [NEW_TAG]: true } : {}) } };
     const canvas = app.rootGraph;
     app.graphToPrompt = prompt ?? (async () => ({ workflow: { nodes: [{ id: 1, type: "x" }] }, output: { 1: {} } }));
     openings.clear();
@@ -382,7 +441,7 @@ async function save({ key = AUTO, file = PATH, path = PATH, reply = { version: 4
         return { ok: status < 400, status, json: async () => reply };
     };
     for (let n = 0; n < times; n++) await saveToPixlStash(wf === undefined ? active : wf, { byHand });
-    return { sent, toasts, saved: store.saved.map(([path]) => path), tag: canvas.extra[TAG], opening: openings.get(PATH), unsent: isUnsent(PATH), stored: [...kept.keys()] };
+    return { sent, toasts, saved: store.saved.map(([path]) => path), tag: canvas.extra[TAG], marked: NEW_TAG in canvas.extra, opening: openings.get(PATH), unsent: isUnsent(PATH), stored: [...kept.keys()] };
 }
 
 results.saved = await save({ opened: { version: 3, waiting: true, opening: "c".repeat(32) }, times: 2 });
@@ -391,6 +450,23 @@ results.new_workflow_after_a_switch = await save({
     reply: { new_workflow: true, workflow_id: OTHER, name: "Portrait (new checkpoint)", version: 1 },
     during: (store) => { store.activeWorkflow = { path: "workflows/Else.json", filename: "Else" }; },
 });
+// A run opened from the Run popup: the first save makes the new workflow, and
+// the save after it is a version of that one.
+const FROM_A_RUN = { new_workflow: true, workflow_id: OTHER, name: "Portrait (from a run)", version: 1 };
+results.run_saved = await save({
+    asNew: true, reply: FROM_A_RUN, times: 2,
+    prompt: async () => ({ workflow: { nodes: [], extra: { ...app.rootGraph.extra, ds: 1 } }, output: { 1: {} } }),
+});
+results.run_saved_after_a_switch = await save({
+    asNew: true, reply: FROM_A_RUN,
+    during: (store) => { store.activeWorkflow = { path: "workflows/Else.json", filename: "Else" }; },
+});
+// A ComfyUI updated and not restarted: this script, and no route for it yet.
+results.run_saved_before_a_restart = await save({ asNew: true, status: 404, reply: {} });
+// PixlStash's own 404 through the proxy is another thing: the workflow is gone.
+// (Its own file: a sentence already said of a file is not said again.)
+const GONE = "workflows/pixlstash/Gone.json";
+results.run_of_a_workflow_that_is_gone = await save({ asNew: true, status: 404, reply: { error: "Unknown workflow." }, file: GONE, path: GONE });
 results.replaced_newer = await save({ reply: { version: 6, replaced_newer: true } });
 results.offline = await save({ offline: true, times: 2 });
 // A by-hand send that fails made no ComfyUI save, so the file must not be
@@ -445,7 +521,7 @@ results.switched_while_converting = await save({
     await turns();
 
     // Save As: the copy ComfyUI makes carries the link until it is taken off.
-    const copy = { content: JSON.stringify({ extra: { [TAG]: AUTO, [FILE_TAG]: PATH, ds: 1 } }) };
+    const copy = { content: JSON.stringify({ extra: { [TAG]: AUTO, [FILE_TAG]: PATH, [NEW_TAG]: true, ds: 1 } }) };
     copy.originalContent = copy.content;
     for (const listen of store.actions) {
         const afters = [];
@@ -486,6 +562,7 @@ class RoundTripTests(unittest.TestCase):
                 "};\n"
             )
             for name in (
+                "open_run.js",
                 "open_workflow.js",
                 "save_workflow.js",
                 "workflow_link.js",
@@ -756,6 +833,116 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(len(result["sent"]), 1)
         # PixlStash names the new workflow: no name is sent for it.
         self.assertNotIn("name", result["sent"][0]["body"])
+
+    def test_a_run_opens_as_a_file_of_its_own_marked_to_save_as_new(self):
+        """The Run popup's Open in ComfyUI. Wrong if the workflow's own file
+        is opened over, or the file is not marked: its saves would then go
+        over the workflow."""
+        opened = self.results["run_opened"]
+        [(url, method)] = opened["sent"]
+        self.assertEqual(method, "GET")
+        self.assertTrue(url.startswith("/pixlstash/workflow_graph?"))
+        self.assertIn(f"run={'d' * 32}", url)
+        self.assertIn("workflow_key=auto%3A", url)
+        # PixlStash holds the run's graph whole: nothing else is asked of it.
+        for other in ("waiting", "all_stages", "pixlstash_nodes"):
+            self.assertNotIn(other, url)
+        # Off the address, so a reload does not open it again.
+        self.assertEqual(opened["address"], "http://comfy.test/")
+        path = "workflows/pixlstash/Portrait (2).json"
+        self.assertEqual(opened["loads"], [["api", "pixlstash/Portrait (2)"]])
+        self.assertEqual(
+            opened["saved"],
+            [
+                [
+                    path,
+                    {
+                        "pixlstash_workflow_id": AUTO,
+                        "pixlstash_save_as_new": True,
+                        "pixlstash_file": path,
+                    },
+                ]
+            ],
+        )
+        self.assertEqual(opened["closed"], [])
+        self._one_toast("run_opened", "info", "saves a new workflow to PixlStash")
+
+    def test_a_runs_file_is_not_the_file_of_the_workflow_it_came_from(self):
+        result = self.results["run_file_is_nobodys"]
+        self.assertEqual(result["loads"], [["api", "pixlstash/Kept (2)"]])
+        self.assertEqual(result["toasts"], [])
+
+    def test_a_layout_kept_from_a_run_does_not_make_its_workflow_a_run(self):
+        """Wrong if the mark reaches the file: every save of that workflow
+        would then make another new one."""
+        result = self.results["layout_from_a_run"]
+        self.assertEqual(result["loads"], [["editor", "pixlstash/Was a run"]])
+        path = "workflows/pixlstash/Was a run.json"
+        self.assertEqual(
+            result["saved"],
+            [[path, {"ds": 1, "pixlstash_workflow_id": AUTO, "pixlstash_file": path}]],
+        )
+
+    def test_a_link_that_names_no_run_asks_for_nothing(self):
+        result = self.results["not_a_run"]
+        self._one_toast("not_a_run", "error", "not a link from PixlStash's Run popup")
+        self.assertEqual((result["sent"], result["loads"]), ([], []))
+
+    def test_a_run_is_saved_as_a_new_workflow_and_then_as_versions_of_it(self):
+        result = self.results["run_saved"]
+        first, second = result["sent"]
+        # Named for the workflow it came from, on the route that stores a new
+        # one. The route says so and the body does not: a body flag is what
+        # an older proxy would drop, saving over the workflow.
+        self.assertEqual(first["body"]["workflow_key"], AUTO)
+        self.assertEqual(first["url"], "/pixlstash/workflows/save_new")
+        self.assertNotIn("as_new", first["body"])
+        # From then on the canvas is the new workflow's, and saves over it.
+        self.assertEqual((result["tag"], result["marked"]), (OTHER, False))
+        self.assertEqual(second["body"]["workflow_key"], OTHER)
+        self.assertEqual(second["url"], "/pixlstash/workflows/save")
+        self.assertEqual(
+            result["toasts"][0],
+            [
+                "success",
+                "Saved to PixlStash as a new workflow, Portrait (from a run).",
+            ],
+        )
+        # The document is kept as the new workflow's layout: not marked, or
+        # that workflow would open as a run again.
+        self.assertEqual(
+            first["body"]["workflow"]["extra"],
+            {
+                "pixlstash_workflow_id": AUTO,
+                "pixlstash_file": "workflows/pixlstash/Portrait.json",
+                "ds": 1,
+            },
+        )
+        # An ordinary save never goes there.
+        for sent in self.results["saved"]["sent"]:
+            self.assertEqual(sent["url"], "/pixlstash/workflows/save")
+
+    def test_a_run_saved_behind_another_canvas_stays_a_new_workflow(self):
+        """Never linked to the workflow it came from by a save that missed."""
+        result = self.results["run_saved_after_a_switch"]
+        self.assertEqual((result["tag"], result["marked"]), (AUTO, True))
+        self.assertNotIn("checkpoint", result["toasts"][0][1])
+        self.assertIn("another new workflow", result["toasts"][0][1])
+
+    def test_a_comfyui_not_restarted_since_the_update_stores_nothing(self):
+        """It has this script and not the route. Wrong if the save falls back
+        to the ordinary route: that is the run saved over its workflow."""
+        result = self.results["run_saved_before_a_restart"]
+        self.assertEqual(
+            [sent["url"] for sent in result["sent"]], ["/pixlstash/workflows/save_new"]
+        )
+        self._one_toast("run_saved_before_a_restart", "error", "has to be restarted")
+        self.assertEqual((result["tag"], result["marked"]), (AUTO, True))
+        self.assertTrue(result["unsent"])
+        # A workflow PixlStash no longer has is said as it always was.
+        self._one_toast(
+            "run_of_a_workflow_that_is_gone", "warn", "is not a workflow in this"
+        )
 
     def test_another_canvas_is_never_linked_to_the_new_workflow(self):
         """The reader switched tabs while the save was on its way."""

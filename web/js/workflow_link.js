@@ -19,6 +19,14 @@ import { app } from "../../scripts/app.js";
 export const TAG = "pixlstash_workflow_id";
 /** The file, under ComfyUI's user folder, that PixlStash opened the workflow as. */
 export const FILE_TAG = "pixlstash_file";
+/**
+ * On a canvas opened from PixlStash's Run popup (`open_run.js`): it is the
+ * workflow with one run's changes in it, so a save of it is sent as a NEW
+ * workflow and never over the one it came from. Written into the graph like
+ * the other two, so it outlives a reload; taken off once that new workflow
+ * exists, when the canvas is linked to it instead.
+ */
+export const NEW_TAG = "pixlstash_save_as_new";
 
 /** A workflow id: `auto:` and the core hash, or `manual:` and a uuid hex. */
 export const KEY_RE = /^(?:auto:[0-9a-f]{64}|manual:[0-9a-f]{32})$/;
