@@ -127,6 +127,26 @@ class SaveProxyTests(unittest.TestCase):
         )
         self.assertNotIn("as_new", client.calls[0][2]["json"])
 
+    def test_a_run_goes_on_with_the_query_and_only_what_is_one(self):
+        """The Run popup's link: PixlStash is asked for the run by its id."""
+        run = "c" * 32
+        client, _ = self._call(
+            proxy.proxy_workflow_graph,
+            _Request(query={"workflow_key": KEY, "run": run}),
+        )
+        [(method, path, kwargs)] = client.calls
+        self.assertEqual((method, path), ("GET", f"/api/v1/workflows/{KEY}/graph"))
+        self.assertEqual(kwargs["params"]["run"], run)
+        for bad in ("", "c" * 31, "c" * 33, "C" * 32, f"{run}&waiting=true", "../x"):
+            with self.subTest(bad=bad):
+                client, resp = self._call(
+                    proxy.proxy_workflow_graph,
+                    _Request(query={"workflow_key": KEY, "run": bad}),
+                )
+                self.assertEqual(resp.kwargs.get("status"), 400)
+                self.assertIn("run must be", body_of(resp)["error"])
+                self.assertEqual(client.calls, [])
+
     def test_a_version_that_is_not_known_is_not_sent(self):
         """Its absence is what tells PixlStash the graph was read at none."""
         for unknown in (None, "3", True, 2.5):

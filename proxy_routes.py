@@ -355,8 +355,11 @@ _NOT_A_WORKFLOW_ID = "workflow_key must be a PixlStash workflow id."
 # whole-graph save, the export) first ship in 1.12.0.
 _WORKFLOWS_MIN_VERSION = "1.12.0"
 
-# An opening's id, as ``workflow_link.js`` makes it: 32 hex characters.
+# An opening's id, as ``workflow_link.js`` makes it: 32 hex characters. What
+# PixlStash holds a run from its Run popup as (``run``) has the same shape.
 _OPENING_RE = re.compile(r"[0-9a-f]{32}")
+
+_NOT_A_RUN = "run must be what PixlStash holds a run as: 32 hex characters."
 
 
 async def proxy_workflow_graph(request: web.Request) -> web.Response:
@@ -368,11 +371,14 @@ async def proxy_workflow_graph(request: web.Request) -> web.Response:
     The id is ``auto:`` and a core hash, or ``manual:`` and a 32-character
     uuid hex. A link from the Run popup (``open_run.js``) adds ``run``, which
     goes on with the rest of the query: PixlStash then answers the graph it
-    holds for that run.
+    holds for that run. Anything else in its place is refused here.
     """
     workflow_key = _workflow_key(request.rel_url.query.get("workflow_key"))
     if workflow_key is None:
         return _err(_NOT_A_WORKFLOW_ID, status=400)
+    run = request.rel_url.query.get("run")
+    if run is not None and not _OPENING_RE.fullmatch(run):
+        return _err(_NOT_A_RUN, status=400)
     return await _proxy_get(
         request, f"/api/v1/workflows/{workflow_key}/graph", _WORKFLOWS_MIN_VERSION
     )
