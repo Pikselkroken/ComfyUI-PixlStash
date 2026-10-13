@@ -30,6 +30,18 @@ import { el, mkBtn, mkRow, selStyle } from "./modal_dom.js";
 // The header of PixlStash's picture list that says which library its ids are of.
 const LIBRARY_HEADER = "X-PixlStash-Library";
 
+/**
+ * The library every page listed so far is of, given the one known before
+ * this page (`undefined` before the first) and the one this page names ("" for
+ * none). One library, or none: pages that do not agree name no library, and
+ * none after them brings one back. That is PixlStash having switched library,
+ * or the key having changed, while the picker was open, and what is picked
+ * across it is not known to be anybody's.
+ */
+export function libraryOfPages(known, named) {
+    return known === undefined || known === named ? named : "";
+}
+
 async function proxyFetch(path, credentials, extraParams = {}, seen = null) {
     const params = new URLSearchParams({
         url:        credentials.url,
@@ -44,7 +56,7 @@ async function proxyFetch(path, credentials, extraParams = {}, seen = null) {
         throw new Error(body.error || `HTTP ${resp.status}`);
     }
     // Whose the listed ids are, for a caller that asked to be told.
-    if (seen) seen.library = resp.headers.get(LIBRARY_HEADER) ?? "";
+    if (seen) seen.library = libraryOfPages(seen.library, resp.headers.get(LIBRARY_HEADER) ?? "");
     return resp.json();
 }
 
@@ -122,7 +134,7 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     // an older PixlStash): the pick lands all the same, saying nothing of
     // whose it is.
     const libraryWidget = node.widgets?.find(w => w.name === "library");
-    const listed = { library: "" };
+    const listed = { library: undefined };
 
     // First pre-selected ID (lowest by file order in the widget value) — we
     // keep paging until we find it, then scroll it into view once.
@@ -460,7 +472,7 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
         const ids = Array.from(selectedIds);
         // With the IDs and never apart from them: IDs under another pick's
         // library would say they are that library's.
-        if (libraryWidget) libraryWidget.value = ids.length ? listed.library : "";
+        if (libraryWidget) libraryWidget.value = ids.length ? (listed.library ?? "") : "";
         pictureIdsWidget.value = ids.join(",");
         if (typeof pictureIdsWidget.callback === "function") {
             pictureIdsWidget.callback(pictureIdsWidget.value);
