@@ -14,6 +14,11 @@
  * JSON), paginates via infinite scroll, supports multi-select with
  * shift-click range, and writes confirmed IDs back into the widget.
  * Inline node previews are updated after confirm.
+ *
+ * Beside the IDs it writes the uuid of the library they were picked from into
+ * the node's `library` widget: an ID means nothing outside its library, and
+ * PixlStash reads the IDs back out of a picture's workflow only when that
+ * names the library it has open.
  */
 
 import { el, mkBtn, mkRow, selStyle } from "./modal_dom.js";
@@ -22,7 +27,22 @@ import { el, mkBtn, mkRow, selStyle } from "./modal_dom.js";
 // Proxy fetch helper  (JSON endpoints only — goes through ComfyUI proxy)
 // ---------------------------------------------------------------------------
 
-async function proxyFetch(path, credentials, extraParams = {}) {
+// The header of PixlStash's picture list that says which library its ids are of.
+const LIBRARY_HEADER = "X-PixlStash-Library";
+
+/**
+ * The library every page listed so far is of, given the one known before
+ * this page (`undefined` before the first) and the one this page names ("" for
+ * none). One library, or none: pages that do not agree name no library, and
+ * none after them brings one back. That is PixlStash having switched library,
+ * or the key having changed, while the picker was open, and what is picked
+ * across it is not known to be anybody's.
+ */
+export function libraryOfPages(known, named) {
+    return known === undefined || known === named ? named : "";
+}
+
+async function proxyFetch(path, credentials, extraParams = {}, seen = null) {
     const params = new URLSearchParams({
         url:        credentials.url,
         verify_ssl: credentials.verifySsl ? "true" : "false",
@@ -35,6 +55,8 @@ async function proxyFetch(path, credentials, extraParams = {}) {
         const body = await resp.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${resp.status}`);
     }
+    // Whose the listed ids are, for a caller that asked to be told.
+    if (seen) seen.library = libraryOfPages(seen.library, resp.headers.get(LIBRARY_HEADER) ?? "");
     return resp.json();
 }
 
@@ -106,6 +128,13 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
 
     const itemElements = [];
     let lastClickedIdx = -1;
+
+    // The library the grid's pictures are of, as PixlStash names it on the
+    // list itself. Empty where it names none (a key that is not the owner's,
+    // an older PixlStash): the pick lands all the same, saying nothing of
+    // whose it is.
+    const libraryWidget = node.widgets?.find(w => w.name === "library");
+    const listed = { library: undefined };
 
     // First pre-selected ID (lowest by file order in the widget value) — we
     // keep paging until we find it, then scroll it into view once.
@@ -289,7 +318,7 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
         }
 
         try {
-            const pictures = await proxyFetch("/pixlstash/pictures", credentials, extra);
+            const pictures = await proxyFetch("/pixlstash/pictures", credentials, extra, listed);
 
             if (!Array.isArray(pictures) || pictures.length < PAGE_SIZE) exhausted = true;
             offset += (pictures ?? []).length;
@@ -441,6 +470,9 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
 
     confirmBtn.addEventListener("click", async () => {
         const ids = Array.from(selectedIds);
+        // With the IDs and never apart from them: IDs under another pick's
+        // library would say they are that library's.
+        if (libraryWidget) libraryWidget.value = ids.length ? (listed.library ?? "") : "";
         pictureIdsWidget.value = ids.join(",");
         if (typeof pictureIdsWidget.callback === "function") {
             pictureIdsWidget.callback(pictureIdsWidget.value);

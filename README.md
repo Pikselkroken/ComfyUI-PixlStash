@@ -198,6 +198,25 @@ node, which is normally one — but a node fed from something with
 so the list can hold several and indexing `[0]` would record one resolution out
 of N.
 
+### Whose an id is
+
+The Picture Loader and the Checkpoint Loader address what they load by a row
+id, and an id means nothing outside the library or the shelf it was picked
+from: ids start at 1 in every one. So each keeps, in a hidden widget beside
+the id, whose it is. The Picture Loader's `library` is the uuid of the library
+its `picture_ids` are from; the Checkpoint Loader's `shelf` is the id of the
+shelf its `checkpoint_id` is a row of (`GET /checkpoints` answers it as
+`shelf`). The Browse buttons write them, and so does PixlStash when it opens a
+workflow here.
+
+They reach the API `prompt`, and so every picture the workflow makes. PixlStash
+reads the ids back out of such a picture (to run the workflow again, or to
+find what the picture was made from) only when they name the library and the
+shelf it has open. The nodes themselves load by id alone. A workflow saved
+before these widgets has them empty; pick again to fill them. PixlStash
+names the library on its picture list for the owner's key and the one it
+hands ComfyUI; with a share link's key the pick lands without it.
+
 ### Opened from PixlStash
 
 PixlStash's Workflow tab has an **Open in ComfyUI** button. A workflow opened
@@ -205,6 +224,9 @@ with it is linked to the PixlStash workflow it came from:
 
 - **It opens as a saved file**, in a `pixlstash` folder of your ComfyUI
   workflows, so Ctrl+S saves it and never asks for a filename.
+- **The canvas says so.** While that file is showing, a small *Linked to
+  PixlStash* sign sits at the top of the canvas. It is gone on any other
+  workflow, a copy of this one included.
 - **Saving it saves a version in PixlStash.** No question is asked in either
   app, and a toast says what happened: `Saved to PixlStash: Portrait, version
   4`. The saves of one opening are one version there, so the workflow as it
@@ -220,29 +242,39 @@ with it is linked to the PixlStash workflow it came from:
   picture it makes and every duplicate of its tab. A picture dragged back
   in, a duplicated tab, a renamed file or somebody else's file is told that
   saving it does not save to PixlStash; **PixlStash > Save to PixlStash**
-  sends it over the workflow it names if that is what you mean, and *Export
-  to PixlStash* sends it as a new one.
+  sends it over the workflow it names if that is what you mean, and *Save as
+  new workflow in PixlStash* sends it as a new one. On a canvas that names no
+  workflow *Save to PixlStash* is greyed out.
 - **Your layout comes back.** Positions, groups and notes are kept with the
   workflow, and the next *Open in ComfyUI* opens it the way you left it, with
   the workflow's current values written over it. The layout is used only when
   it turns out to be the same graph PixlStash has; a workflow never saved
-  from ComfyUI, or rewired in PixlStash since, opens auto-arranged.
+  from ComfyUI, or rewired in PixlStash since, opens auto-arranged. A node
+  PixlStash has since put one of its own in place of (below) is replaced
+  where it stands, so the layout is kept across that.
 - **It opens with PixlStash nodes in it.** Save Image and Save Video open as
   the PixlStash Picture Saver and Video Saver, so what you queue here comes
   back to PixlStash, and a LoRA loader whose file is on PixlStash's shelf
-  opens as the Adapter Loader. Nothing else about the graph changes, and
+  opens as the Adapter Loader. A Load Image with a picture pinned to it in
+  PixlStash, or holding one a run uploaded, opens as the Picture Loader on
+  that picture, and, where ComfyUI and
+  PixlStash are on one computer, a Load Checkpoint whose file is on the shelf
+  opens as the Checkpoint Loader. Nothing else about the graph changes, and
   saving it untouched saves nothing new. **Open original in ComfyUI**, in the
   Workflow tab's *More* menu, opens the workflow with its own nodes instead.
   Needs PixlStash 1.12.
 - **A loader for people is put beside the model**: a Multi Adapter Loader set
   to *People who fit*, offering the people PixlStash's Run popup offers for
   the workflow, wired where a run from PixlStash would put a person's LoRA.
+  A workflow that loads the same model several times gets one beside every
+  copy; pick the person in each copy that should have them.
   Pick one or several and queue. Nobody is picked when it opens, and what you
   pick is never saved into the workflow: `Nothing new to save. The people
   picked here stay in ComfyUI.` A person's LoRA in an ordinary loader is left
   out of the workflow too, and the toast names it.
-- **Save As makes a copy that is not linked.** Use *Export to PixlStash* to
-  send a copy, or any other workflow, to PixlStash as a new workflow.
+- **Save As makes a copy that is not linked.** Use *Save as new workflow in
+  PixlStash* to send a copy, or any other workflow, to PixlStash as a new
+  workflow.
 - **A run opens as a new workflow in the making.** PixlStash's Run popup has
   an **Open in ComfyUI** button too. It opens the workflow with what the
   popup holds in it (prompt, seed, models, LoRAs, stages, pictures), as a file
@@ -261,12 +293,12 @@ hand. Autosave makes the same call as Ctrl+S, so it is sent like any save.
 Needs a PixlStash new enough to keep versions of a workflow, and an owner
 token in **Settings > PixlStash**.
 
-### Export to PixlStash
+### Save as new workflow in PixlStash
 
 A workflow in ComfyUI is an editor document, and only ComfyUI can turn it into
-a graph PixlStash can run. Open the workflow, then pick **PixlStash > Export
-to PixlStash** from the menu: ComfyUI converts it and sends both to PixlStash,
-which can then run it and offer its parameters.
+a graph PixlStash can run. Open the workflow, then pick **PixlStash > Save as
+new workflow in PixlStash** from the menu: ComfyUI converts it and sends both
+to PixlStash, which can then run it and offer its parameters.
 
 Nothing has to be saved first. What is sent is the workflow as it stands on
 the canvas, unsaved changes included, and ComfyUI's own file is left alone.
@@ -274,7 +306,7 @@ PixlStash recognises a workflow it already holds and makes that one runnable;
 anything else arrives there as a new workflow. It is never a version of
 another workflow, also on a canvas opened from PixlStash, where it is how to
 get a new workflow on purpose. One that uses a node pack this ComfyUI lacks
-can't be converted, so it can't be exported. A LoRA attached to a person is
+can't be converted, so it can't be sent. A LoRA attached to a person is
 not part of a workflow: the toast names any the canvas holds in an ordinary
 loader, and PixlStash runs and opens the workflow without it.
 

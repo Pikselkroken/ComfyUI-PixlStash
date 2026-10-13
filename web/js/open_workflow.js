@@ -12,14 +12,18 @@
  *   the graph PixlStash sent. PixlStash stores a layout on the word of
  *   whoever saved it, so this check, made here at the moment of use, is what
  *   ties the two together. Otherwise the runnable graph opens, which
- *   ComfyUI's API loader (`app.loadApiJson`) arranges.
+ *   ComfyUI's API loader (`app.loadApiJson`) arranges. A layout saved with
+ *   a stock node where the graph now has one of this pack's (or the other
+ *   way round) is still that layout: the node is replaced where it stands
+ *   (`swapNodes`) before the check is made.
  * - **Linked to its workflow**: the id and the file's own path go into the
  *   graph, for an automatic workflow as for a manual one, so a save of this
  *   file goes back to it (`save_workflow.js`) and pictures queued here are
  *   filed on it.
  * - **With a loader for people**, where PixlStash says a run would splice a
  *   person's LoRA: straight after the model source, with nobody picked, so a
- *   workflow opened and queued untouched runs as the workflow alone.
+ *   workflow opened and queued untouched runs as the workflow alone. One
+ *   after every copy, where the workflow loads the same model several times.
  * - **As a saved file** in `pixlstash/` of ComfyUI's workflows, so Ctrl+S
  *   saves and never asks for a filename. ComfyUI makes a tab the file it is
  *   loaded under the name of, so the graph is loaded as `pixlstash/<name>`
@@ -27,8 +31,10 @@
  *
  * - **With this pack's nodes** where PixlStash can put one in place of a
  *   stock node (`pixlstash_nodes`): its savers for Save Image and Save Video,
- *   so what is queued here comes back to PixlStash, and its Adapter Loader
- *   for a LoRA its shelf holds. A link that also carries `pixlstash_original`
+ *   so what is queued here comes back to PixlStash, its Adapter Loader for a
+ *   LoRA its shelf holds, its Picture Loader for a picture input PixlStash
+ *   knows the picture of, and its Checkpoint Loader where PixlStash and
+ *   ComfyUI share a computer. A link that also carries `pixlstash_original`
  *   (PixlStash's *Open original in ComfyUI*) opens the workflow's own nodes.
  *
  * - **A run from the Run popup** (`open_run.js`, which calls `openFromUrl`
@@ -133,6 +139,68 @@ export function writeValues(graph, api) {
             widget.callback?.(value);
         }
     }
+}
+
+/** The link with this id on `graph`, whichever way this LiteGraph keeps them. */
+const linkOf = (graph, id) =>
+    (typeof graph.links?.get === "function" ? graph.links.get(id) : graph.links?.[id]) ?? null;
+
+/**
+ * Make each node on the canvas the class the API graph `api` names for it.
+ *
+ * A layout holds the nodes it was saved with, and PixlStash may since have
+ * put one of this pack's where a stock one was, or the stock one back: a
+ * saver, a LoRA loader, the picture or the checkpoint loader. Which it does
+ * depends on what its shelf and library hold that day, so without this a
+ * layout would be dropped each time that changed.
+ *
+ * The node is replaced where it stands by one of the class `api` names,
+ * under the same id, and wired as PixlStash wires the swap: what it read, by
+ * the input's name, and what read it, by the output's position. Its values
+ * are the graph's (`writeValues`, which the caller runs next). Returns the
+ * ids replaced.
+ *
+ * Nothing here decides whether the layout is used. A node this could not
+ * replace, or a wire the new node has no place for, leaves a canvas that
+ * converts to something else, and the caller's check (`differsFrom`) then
+ * drops the layout. Nodes inside a subgraph are not reached.
+ */
+export function swapNodes(graph, api, LiteGraph = globalThis.LiteGraph) {
+    const swapped = [];
+    for (const [id, entry] of Object.entries(api ?? {})) {
+        const old = graph.getNodeById(id) ?? graph.getNodeById(Number(id));
+        if (!old || !entry?.class_type || old.type === entry.class_type) continue;
+        const fresh = LiteGraph?.createNode?.(entry.class_type);
+        if (!fresh) continue;
+        // Read before the old node goes: removing it takes its links along.
+        const reads = (old.inputs ?? []).flatMap((input) => {
+            const link = input.link == null ? null : linkOf(graph, input.link);
+            const from = link ? graph.getNodeById(link.origin_id) : null;
+            return from ? [{ from, slot: link.origin_slot, name: input.name }] : [];
+        });
+        const readBy = (old.outputs ?? []).flatMap((output, slot) =>
+            (output.links ?? []).flatMap((linkId) => {
+                const link = linkOf(graph, linkId);
+                const to = link ? graph.getNodeById(link.target_id) : null;
+                return to ? [{ slot, to, input: link.target_slot }] : [];
+            }),
+        );
+        graph.remove(old);
+        fresh.id = old.id;
+        graph.add(fresh);
+        fresh.pos = [...old.pos];
+        // No narrower than it was laid out, and as tall as its own widgets need.
+        if (fresh.size && old.size) fresh.size[0] = Math.max(fresh.size[0], old.size[0]);
+        fresh.mode = old.mode;
+        if (old.color) fresh.color = old.color;
+        if (old.bgcolor) fresh.bgcolor = old.bgcolor;
+        // A name the owner gave it stays; the stock node's own name does not.
+        if (old.title && old.title !== old.constructor?.title) fresh.title = old.title;
+        for (const { from, slot, name } of reads) from.connect(slot, fresh, name);
+        for (const { slot, to, input } of readBy) fresh.connect(slot, to, input);
+        swapped.push(String(id));
+    }
+    return swapped;
 }
 
 const DIGEST_ROW = /^adapter_sha256(_\d+)?$/;
@@ -250,7 +318,10 @@ async function loadApi(workflow, loadAs, tabbed) {
 /**
  * Put the loader for people on the canvas where `place` says: reading the
  * model source's MODEL (and CLIP), with every input that read those reading
- * the loader's instead. Returns the node, or null with `why` said.
+ * the loader's instead. A workflow that loads the same model several times
+ * gets one after every copy (`place.places`), or the copies without one would
+ * run without the person. A PixlStash from before `places` sends the one
+ * place as `place` itself. Returns the first loader, or null with `why` said.
  *
  * Everything is found before anything is changed, so a canvas this cannot be
  * done on is left exactly as it was.
@@ -260,38 +331,47 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
         notify("warn", `This workflow opened without the PixlStash loader for people: ${why}`);
         return null;
     };
-    if (!place?.model) {
+    const places = place?.places?.length ? place.places : place?.model ? [place] : [];
+    if (!places.length) {
         return refuse(place?.reason || "PixlStash could not tell where it goes.");
     }
-    const source = nodeById(graph, place.model.node_id);
-    const clipSource = place.clip ? nodeById(graph, place.clip.node_id) : null;
-    const rewires = (place.rewires ?? []).map((rewire) => {
-        const reader = nodeById(graph, rewire.node_id);
-        return { reader, slot: reader?.findInputSlot?.(rewire.field) ?? -1, type: rewire.type };
-    });
-    if (!source || (place.clip && !clipSource) || rewires.some((r) => !r.reader || r.slot < 0)) {
+    const splices = places.map(({ model, clip, rewires }) => ({
+        model, clip,
+        source: model ? nodeById(graph, model.node_id) : null,
+        clipSource: clip ? nodeById(graph, clip.node_id) : null,
+        rewires: (rewires ?? []).map((rewire) => {
+            const reader = nodeById(graph, rewire.node_id);
+            return { reader, slot: reader?.findInputSlot?.(rewire.field) ?? -1, type: rewire.type };
+        }),
+    }));
+    const lost = ({ source, clip, clipSource, rewires }) =>
+        !source || (clip && !clipSource) || rewires.some((r) => !r.reader || r.slot < 0);
+    if (splices.some(lost)) {
         return refuse("the model is loaded where the canvas cannot be rewired (inside a subgraph).");
     }
-    const loader = LiteGraph?.createNode?.(PEOPLE_LOADER);
-    if (!loader) {
+    const loaders = splices.map(() => LiteGraph?.createNode?.(PEOPLE_LOADER));
+    if (!loaders.every(Boolean)) {
         return refuse("this ComfyUI has no PixlStash Multi Adapter Loader. Update the ComfyUI-PixlStash nodes.");
     }
-    graph.add(loader);
-    const show = loader.widgets?.find((w) => w.name === "show");
-    if (show) {
-        show.value = SHOW_PEOPLE;
-        show.callback?.(SHOW_PEOPLE);
-    }
-    // Beside the model source, where the eye looks for what follows it. This
-    // is where it stays in a kept layout; a graph ComfyUI arranged is arranged
-    // again by the caller with the loader in it, which gives it a column of
-    // its own (here it would sit on top of the next one).
-    loader.pos = [source.pos[0] + (source.size?.[0] ?? 300) + 40, source.pos[1]];
-    source.connect(place.model.output, loader, "model");
-    if (clipSource) clipSource.connect(place.clip.output, loader, "clip");
-    // MODEL is the loader's output 0 and CLIP its output 1.
-    for (const { reader, slot, type } of rewires) loader.connect(type === "CLIP" ? 1 : 0, reader, slot);
-    return loader;
+    splices.forEach(({ model, clip, source, clipSource, rewires }, at) => {
+        const loader = loaders[at];
+        graph.add(loader);
+        const show = loader.widgets?.find((w) => w.name === "show");
+        if (show) {
+            show.value = SHOW_PEOPLE;
+            show.callback?.(SHOW_PEOPLE);
+        }
+        // Beside the model source, where the eye looks for what follows it.
+        // This is where it stays in a kept layout; a graph ComfyUI arranged is
+        // arranged again by the caller with the loader in it, which gives it a
+        // column of its own (here it would sit on top of the next one).
+        loader.pos = [source.pos[0] + (source.size?.[0] ?? 300) + 40, source.pos[1]];
+        source.connect(model.output, loader, "model");
+        if (clipSource) clipSource.connect(clip.output, loader, "clip");
+        // MODEL is the loader's output 0 and CLIP its output 1.
+        for (const { reader, slot, type } of rewires) loader.connect(type === "CLIP" ? 1 : 0, reader, slot);
+    });
+    return loaders[0];
 }
 
 /**
@@ -489,6 +569,7 @@ export async function openFromUrl(key, original = false, run = null) {
             if ((await app.loadGraphData(body.editor, true, true, loadAs)) === false) {
                 differs = "ComfyUI would not load it";
             } else {
+                swapNodes(rootGraph(), body.workflow);
                 writeValues(rootGraph(), body.workflow);
                 differs = differsFrom((await app.graphToPrompt()).output, body.workflow);
             }

@@ -141,7 +141,10 @@ class PayloadShapeTests(unittest.TestCase):
         entry = lock.shelf_model(
             "checkpoint",
             row_id=7,
-            record={"filename": " juggernaut.safetensors ", "display_name": "Juggernaut"},
+            record={
+                "filename": " juggernaut.safetensors ",
+                "display_name": "Juggernaut",
+            },
         )
         self.assertEqual(entry["filename"], "juggernaut.safetensors")
         self.assertEqual(entry["display_name"], "Juggernaut")
@@ -214,6 +217,30 @@ class PictureLockTests(unittest.TestCase):
             ),
         ):
             return node.load_pictures(",".join(str(i) for i in ids))
+
+    def test_the_library_the_ids_are_from_is_a_widget_and_loads_nothing(self):
+        # Written by the picker and by PixlStash, read back by PixlStash. Empty
+        # until then: a default that named a library would vouch for ids nobody
+        # picked from it. Optional, so an older workflow still validates.
+        spec = picture_loader.PixlStashPictureLoader.INPUT_TYPES()
+        _type, opts = spec["optional"]["library"]
+        self.assertEqual((_type, opts["default"]), ("STRING", ""))
+        node = picture_loader.PixlStashPictureLoader()
+        with (
+            mock.patch.object(
+                picture_loader,
+                "read_credentials",
+                lambda *a: ("https://vault.example", "t", True),
+            ),
+            mock.patch.object(picture_loader, "make_client", lambda *a: object()),
+            mock.patch.object(
+                picture_loader.PixlStashPictureLoader,
+                "_fetch_image",
+                staticmethod(lambda client, pid: (_Pil(), _Arr())),
+            ),
+        ):
+            out = node.load_pictures("11", library="any-library")
+        self.assertEqual(out["ui"][lock.UI_KEY][0]["pictures"], [11])
 
     def test_reports_every_picture_that_loaded(self):
         out = self._load([11, 12])

@@ -6,7 +6,7 @@ document as its layout; an id that is not a workflow id never leaves ComfyUI;
 ``read_version`` goes only when the canvas knows it, and nothing the route
 does not take is forwarded; and PixlStash's own
 status comes back unchanged, since a 404 is what makes the toast offer
-*Export to PixlStash*.
+*Save as new workflow in PixlStash*.
 """
 
 import asyncio

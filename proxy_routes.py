@@ -117,10 +117,11 @@ def _build_client(
     )
 
 
-def _ok(data) -> web.Response:
+def _ok(data, headers: dict | None = None) -> web.Response:
     return web.Response(
         body=json.dumps(data).encode(),
         content_type="application/json",
+        headers=headers or None,
     )
 
 
@@ -136,11 +137,13 @@ async def _proxy_get(
     request: web.Request,
     path: str,
     min_server_version: str = MIN_SERVER_VERSION,
+    pass_on: tuple[str, ...] = (),
 ) -> web.Response:
     """Generic proxy: forward a GET to PixlStash and return the JSON.
 
     Query params other than ``url`` and ``verify_ssl`` are forwarded
     as-is (e.g. ``project_id`` for filtered set / character lists).
+    *pass_on* names response headers of PixlStash's to hand on as they are.
     """
     try:
         client = _build_client(request, min_server_version)
@@ -154,7 +157,8 @@ async def _proxy_get(
 
     try:
         resp = await asyncio.to_thread(client.get, path, params=forward_params or None)
-        return _ok(resp.json())
+        kept = {name: resp.headers[name] for name in pass_on if name in resp.headers}
+        return _ok(resp.json(), kept)
     except RuntimeError as exc:
         log.warning("[PixlStash proxy] %s: %s", path, exc)
         return _err(str(exc))
@@ -181,8 +185,13 @@ async def proxy_sort_mechanisms(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/sort_mechanisms")
 
 
+# The header of PixlStash's picture list that says which library its ids are
+# of. The picture picker writes it beside the ids it picks.
+LIBRARY_HEADER = "X-PixlStash-Library"
+
+
 async def proxy_pictures(request: web.Request) -> web.Response:
-    return await _proxy_get(request, "/api/v1/pictures")
+    return await _proxy_get(request, "/api/v1/pictures", pass_on=(LIBRARY_HEADER,))
 
 
 async def proxy_thumbnail(request: web.Request) -> web.Response:
@@ -444,7 +453,7 @@ _NEEDS_BOTH = "workflow and output must both be JSON objects."
 
 
 async def proxy_workflow_convert(request: web.Request) -> web.Response:
-    """Forward *Export to PixlStash*'s ``{name, workflow, output}`` to PixlStash."""
+    """Forward *Save as new workflow in PixlStash*'s ``{name, workflow, output}`` to PixlStash."""
     body = await _both_documents(request)
     if body is None:
         return _err(_NEEDS_BOTH, status=400)

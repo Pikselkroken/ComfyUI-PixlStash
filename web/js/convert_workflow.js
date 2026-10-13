@@ -1,6 +1,6 @@
 /**
- * Export to PixlStash: send the open workflow, with ComfyUI's API conversion
- * of it, to PixlStash.
+ * Save as new workflow in PixlStash: send the open workflow, with ComfyUI's API
+ * conversion of it, to PixlStash.
  *
  * A workflow is an editor document and only ComfyUI's `graphToPrompt` can
  * turn one into a runnable API graph. This posts both to PixlStash through
@@ -12,19 +12,21 @@
  * workflow it already holds by comparing documents, and ComfyUI rewrites the
  * editor graph every time it serialises it.
  *
- * An export is always a new workflow, or one whose content PixlStash already
+ * What is sent is always a new workflow, or one whose content PixlStash already
  * holds; it is never a version of another. On a canvas opened from PixlStash,
  * where a plain save goes back to the workflow it was opened from
  * (`save_workflow.js`), this is how to get a new workflow on purpose.
  *
- * The command id, the file and the route keep "convert" in their names: the
- * id is what a keybinding is saved against.
+ * The command itself is registered beside *Save to PixlStash*
+ * (`save_workflow.js`), so the two sit in the menu as one pair, in one order.
+ * Its id, this file and the route keep "convert" in their names, and the
+ * function "export", which the command was first called: the id is what a
+ * keybinding is saved against.
  */
 
 import { app } from "../../scripts/app.js";
 import { apiToken, leftOutSentences, notify } from "./workflow_link.js";
 
-const COMMAND_ID = "PixlStash.ConvertWorkflow";
 
 /**
  * The file's content when `wf` is a saved file ComfyUI reports as unmodified,
@@ -43,7 +45,7 @@ function savedContent(wf) {
 export async function exportActiveWorkflow() {
     const token = apiToken();
     if (!token) {
-        notify("error", "Set your PixlStash API token in Settings › PixlStash, then export again.");
+        notify("error", "Set your PixlStash API token in Settings › PixlStash, then try again.");
         return;
     }
     const wf = app.extensionManager?.workflow?.activeWorkflow;
@@ -56,7 +58,7 @@ export async function exportActiveWorkflow() {
         // A tab switch while that ran would send another workflow's graph
         // under this one's name.
         if (app.extensionManager?.workflow?.activeWorkflow !== wf) {
-            notify("warn", "You switched workflows while exporting. Export again.");
+            notify("warn", "You switched workflows while it was being sent to PixlStash. Send it again.");
             return;
         }
         // An edit or a save while that ran: the file's content no longer
@@ -76,26 +78,12 @@ export async function exportActiveWorkflow() {
             body.matched || !unchanged ? "success" : "warn",
             body.matched
                 ? `PixlStash can now run ${body.name || name}.`
-                : `Exported ${body.name || name} to PixlStash as a new workflow.`,
+                : `Saved ${body.name || name} to PixlStash as a new workflow.`,
         );
         // A person's LoRA is never part of a workflow: said, as for a save.
         for (const sentence of leftOutSentences(body.left_out)) notify("warn", sentence);
     } catch (err) {
-        console.error("[PixlStash] could not export workflow", name, err);
-        notify("error", `Could not export ${name}: ${err.message}`);
+        console.error("[PixlStash] could not save as a new workflow", name, err);
+        notify("error", `Could not save ${name} to PixlStash as a new workflow: ${err.message}`);
     }
 }
-
-app.registerExtension({
-    name: "ComfyUI.PixlStash.ConvertWorkflow",
-    commands: [
-        {
-            id: COMMAND_ID,
-            label: "Export to PixlStash",
-            icon: "pi pi-upload",
-            // ComfyUI may pass the command its own arguments.
-            function: () => exportActiveWorkflow(),
-        },
-    ],
-    menuCommands: [{ path: ["PixlStash"], commands: [COMMAND_ID] }],
-});

@@ -9,10 +9,12 @@ What is pinned: which document opens and under what file name, that a layout
 is used only when it converts to the graph PixlStash sent, where the loader
 for people is wired, that the opener's own save is not sent, that only the
 file PixlStash opened saves back, what a save sends and each outcome's toast,
-that a copy made with *Save As* is unlinked, and that a ComfyUI without the
-save hook says so. And the run opened from PixlStash's Run popup
-(``web/js/open_run.js``): that it opens as a file of its own and is saved as a
-new workflow, never over the one it came from.
+that a copy made with *Save As* is unlinked, that a ComfyUI without the
+save hook says so, and what the canvas shows of its link: *Save to PixlStash*
+greyed out where there is none, and a sign on the file PixlStash opened. And the run
+opened from PixlStash's Run popup (``web/js/open_run.js``): that it opens as
+a file of its own and is saved as a new workflow, never over the one it came
+from.
 
 Run in Node against a stand-in for ComfyUI's ``app``, so this is skipped where
 there is no ``node``.
@@ -32,13 +34,14 @@ OTHER = "manual:" + "b" * 32
 
 DRIVER = r"""
 import { app } from "../../scripts/app.js";
-import { differsFrom, fileStem, placePeopleLoader } from "./open_workflow.js";
+import { differsFrom, fileStem, placePeopleLoader, swapNodes } from "./open_workflow.js";
 import { saveToPixlStash } from "./save_workflow.js";
-import { FILE_TAG, NEW_TAG, TAG, isUnsent, openings, quietly } from "./workflow_link.js";
+import { FILE_TAG, NEW_TAG, TAG, isUnsent, linkState, openings, quietly } from "./workflow_link.js";
+import { refreshLinkBadge } from "./link_badge.js";
 import "./open_run.js";
 
 const [AUTO, OTHER] = JSON.parse(process.argv[2]);
-const [opener, saver, runOpener] = app.extensions;
+const [opener, saver, signer, runOpener] = app.extensions;
 const RUN = "d".repeat(32);
 const results = {};
 const turns = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -60,9 +63,9 @@ function makeNode(id, type, widgets = {}, inputs = [], mode = 0) {
 
 function makeGraph(nodes) {
     return {
-        nodes, arranged: 0,
+        nodes, arranged: 0, added: 0,
         getNodeById(id) { return nodes.find((n) => n.id === id) ?? null; },
-        add(node) { node.id = 99; nodes.push(node); },
+        add(node) { node.id = 99 + this.added++; nodes.push(node); },
         arrange() { this.arranged++; },
         serialize() { return { serialized: nodes.map((n) => n.id), extra: { ...this.extra } }; },
     };
@@ -278,6 +281,44 @@ for (const [name, canvas] of Object.entries(refused)) {
         rewires: [{ node_id: "75:63", field: "model", type: "MODEL" }],
     });
     results.renamed = { toasts, placed: !!placed, wires: app.wires };
+}
+// The same model loaded twice, each copy with a sampler of its own.
+const copies = () => makeGraph([
+    makeNode(1, "UNETLoader"), makeNode(2, "CLIPLoader"),
+    makeNode(3, "KSampler", {}, ["model"]), makeNode(4, "CLIPTextEncode", {}, ["clip"]),
+    makeNode(11, "UNETLoader"), makeNode(13, "KSampler", {}, ["model"]),
+]);
+// As PixlStash sends several places: no `model`, and a `reason` only a node
+// from before `places` shows.
+const TWICE = {
+    model: null, clip: null, rewires: [], reason: "it loads the same model 2 times.",
+    places: [
+        {
+            model: { node_id: "1", output: 0 },
+            clip: { node_id: "2", output: 0 },
+            rewires: [{ node_id: "3", field: "model", type: "MODEL" }, { node_id: "4", field: "clip", type: "CLIP" }],
+        },
+        { model: { node_id: "11", output: 0 }, clip: null, rewires: [{ node_id: "13", field: "model", type: "MODEL" }] },
+    ],
+};
+{
+    // A loader after every copy: one after the first only would leave the
+    // second sampler running without the person.
+    const { toasts } = comfy();
+    const graph = copies();
+    const placed = placePeopleLoader(graph, TWICE);
+    results.copies = {
+        toasts, placed: placed?.id, wires: app.wires,
+        shows: loaders(graph).map((n) => valueOf(n, "show")),
+    };
+}
+{
+    // A copy the canvas cannot be rewired at: no loader at all, not one of two.
+    const { toasts } = comfy();
+    const graph = copies();
+    const lost = { ...TWICE.places[1], rewires: [{ node_id: "14", field: "model", type: "MODEL" }] };
+    const placed = placePeopleLoader(graph, { ...TWICE, places: [TWICE.places[0], lost] });
+    results.copy_lost = { toasts, placed, wires: app.wires, nodes: graph.nodes.length };
 }
 {
     // An extension that wraps the API loader and drops its promise (rgthree
@@ -536,6 +577,177 @@ results.switched_while_converting = await save({
     await saver.setup();
     results.no_hook = { toasts, commands: saver.commands.map((c) => c.label), menu: saver.menuCommands };
 }
+
+// --- what the canvas shows of its link ---------------------------------------
+
+/** The canvas as `extra` on the tab at `path`. */
+function canvas(store, extra, path) {
+    app.rootGraph = { extra };
+    store.activeWorkflow = { path, filename: "Portrait" };
+}
+const LINKED = { [TAG]: AUTO, [FILE_TAG]: PATH };
+{
+    const { store } = comfy();
+    // Pinia's registry and ComfyUI's menu store, as far as the pack reaches.
+    const item = { comfyCommand: { id: "PixlStash.SaveWorkflow" } };
+    const other = { comfyCommand: { id: "PixlStash.ConvertWorkflow" } };
+    store._p = { _s: new Map([["menuItem", { menuItems: [{ label: "File", items: [] }, { label: "PixlStash", items: [item, other] }] }]]) };
+    await saver.setup();
+    const at = (extra, path) => {
+        canvas(store, extra, path);
+        return { state: linkState(), greyed: item.disabled() };
+    };
+    results.link = {
+        none: at({}, PATH),
+        linked: at(LINKED, PATH),
+        copy: at(LINKED, "workflows/Copy.json"),
+        no_file_tag: at({ [TAG]: AUTO }, PATH),
+        // A run from the Run popup, on its own file: saved as a new workflow.
+        run: at({ ...LINKED, [NEW_TAG]: true }, PATH),
+        other_item_untouched: !("disabled" in other),
+    };
+}
+{
+    // The page, as far as the sign reaches into it.
+    const element = () => ({
+        style: {}, kids: [], isConnected: false,
+        append(...kids) { this.kids.push(...kids); kids.forEach((k) => { if (typeof k === "object") k.isConnected = true; }); },
+    });
+    const panel = element();
+    const made = [];
+    globalThis.document = {
+        body: element(),
+        createElement: () => { const el = element(); made.push(el); return el; },
+        querySelector: (selector) => (selector === ".graph-canvas-panel" ? panel : null),
+    };
+    const { store } = comfy();
+    await signer.setup();
+    const shown = () => (made.length ? made[0].style.display : "never made");
+    const steps = {};
+    canvas(store, {}, PATH);
+    refreshLinkBadge();
+    steps.not_linked = shown();
+    canvas(store, LINKED, PATH);
+    refreshLinkBadge();
+    steps.linked = shown();
+    steps.says = made[0].kids.filter((k) => typeof k === "string");
+    steps.in_the_canvas_panel = panel.kids.includes(made[0]);
+    canvas(store, LINKED, "workflows/Copy.json");
+    refreshLinkBadge();
+    steps.a_copy = shown();
+    // A run from the Run popup, on its own file: its save is a new workflow.
+    canvas(store, { ...LINKED, [NEW_TAG]: true }, PATH);
+    refreshLinkBadge();
+    steps.a_run = shown();
+    // An action of ComfyUI's workflow store (here: back to the tab) keeps it.
+    canvas(store, LINKED, PATH);
+    for (const listen of store.actions) {
+        const afters = [];
+        listen({ name: "openWorkflow", args: [], after: (fn) => afters.push(fn), onError() {} });
+        afters.forEach((fn) => fn());
+    }
+    steps.after_a_store_action = shown();
+    // A graph load does too.
+    canvas(store, {}, PATH);
+    signer.afterConfigureGraph();
+    steps.after_a_graph_load = shown();
+    // ComfyUI rebuilt the panel and took the sign with it.
+    made[0].isConnected = false;
+    canvas(store, LINKED, PATH);
+    refreshLinkBadge();
+    steps.put_back = made[0].isConnected && panel.kids.filter((k) => k === made[0]).length === 2;
+    results.sign = steps;
+}
+{
+    // A layout saved with stock nodes, opened on a graph that has this pack's
+    // in their place: each is replaced where it stands, wired as it was.
+    const SLOTS = {
+        CheckpointLoaderSimple: [[], ["MODEL", "CLIP", "VAE"]],
+        PixlStashCheckpointLoader: [[], ["MODEL", "CLIP", "VAE"]],
+        LoraLoader: [["model", "clip"], ["MODEL", "CLIP"]],
+        PixlStashAdapterLoader: [["model", "clip", "pixlstash_set"], ["MODEL", "CLIP", "STRING"]],
+        CLIPTextEncode: [["clip"], ["CONDITIONING"]],
+        VAEDecode: [["samples", "vae"], ["IMAGE"]],
+        SaveImage: [["images"], []],
+        PixlStashPictureSaver: [["images", "pixlstash_set"], ["STRING"]],
+        // A node of another shape: no input by the name the old one read.
+        OtherSaver: [["frames"], []],
+    };
+    const links = new Map();
+    let nextLink = 1;
+    const linked = (id, type, title) => ({
+        id, type, title: title ?? `Load ${type}`, constructor: { title: `Load ${type}` }, mode: 0,
+        pos: [id * 10, 7], size: [type.startsWith("PixlStash") ? 260 : 320, 80],
+        inputs: SLOTS[type][0].map((name) => ({ name, link: null })),
+        outputs: SLOTS[type][1].map((name) => ({ name, links: [] })),
+        findInputSlot(name) { return this.inputs.findIndex((i) => i.name === name); },
+        connect(slot, target, to) {
+            const input = typeof to === "number" ? to : target.findInputSlot(to);
+            if (input < 0) return null;
+            const link = { id: nextLink++, origin_id: this.id, origin_slot: slot, target_id: target.id, target_slot: input };
+            links.set(link.id, link);
+            this.outputs[slot].links.push(link.id);
+            target.inputs[input].link = link.id;
+            return link;
+        },
+    });
+    const graph = {
+        links, nodes: [],
+        getNodeById(id) { return this.nodes.find((n) => n.id === id) ?? null; },
+        add(node) { if (node.id == null || node.id === -1) node.id = 99; this.nodes.push(node); },
+        remove(node) {
+            for (const [id, link] of [...links]) {
+                if (link.origin_id !== node.id && link.target_id !== node.id) continue;
+                links.delete(id);
+                const from = this.getNodeById(link.origin_id), to = this.getNodeById(link.target_id);
+                if (from) from.outputs[link.origin_slot].links = from.outputs[link.origin_slot].links.filter((l) => l !== id);
+                if (to) to.inputs[link.target_slot].link = null;
+            }
+            this.nodes = this.nodes.filter((n) => n !== node);
+        },
+    };
+    const lite = {
+        createNode: (type) => (type === "NotInstalled" ? null : { ...linked(-1, type), pos: [0, 0] }),
+    };
+    const [ckpt, lora, text, decode, save, copy, gone] = [
+        linked(1, "CheckpointLoaderSimple"), linked(2, "LoraLoader"), linked(6, "CLIPTextEncode"),
+        linked(8, "VAEDecode"), linked(9, "SaveImage", "Final"), linked(10, "SaveImage"), linked(11, "SaveImage"),
+    ];
+    for (const node of [ckpt, lora, text, decode, save, copy, gone]) graph.add(node);
+    ckpt.connect(0, lora, "model");
+    ckpt.connect(1, lora, "clip");
+    lora.connect(1, text, "clip");
+    ckpt.connect(2, decode, "vae");
+    decode.connect(0, save, "images");
+    decode.connect(0, copy, "images");
+    decode.connect(0, gone, "images");
+    save.mode = 4;
+    const api = {
+        1: { class_type: "PixlStashCheckpointLoader" },
+        2: { class_type: "PixlStashAdapterLoader" },
+        6: { class_type: "CLIPTextEncode" },
+        8: { class_type: "VAEDecode" },
+        9: { class_type: "PixlStashPictureSaver" },
+        10: { class_type: "NotInstalled" },
+        11: { class_type: "OtherSaver" },
+        "75:3": { class_type: "PixlStashPictureSaver" },
+    };
+    const wires = () => [...links.values()]
+        .map((l) => [l.origin_id, l.origin_slot, l.target_id, graph.getNodeById(l.target_id).inputs[l.target_slot].name])
+        .sort();
+    const before = wires();
+    const swapped = swapNodes(graph, api, lite);
+    const at = (id) => graph.getNodeById(id);
+    results.swapped = {
+        swapped, before, after: wires(),
+        types: graph.nodes.map((n) => [n.id, n.type]).sort((a, b) => a[0] - b[0]),
+        pos: [at(1).pos, at(2).pos, at(9).pos],
+        // No narrower than it was laid out.
+        width: at(2).size[0],
+        titles: [at(9).title, at(2).title],
+        mode: at(9).mode,
+    };
+}
 {
     // PixlStash's "Open original in ComfyUI": the workflow's own nodes.
     comfy();
@@ -562,6 +774,8 @@ class RoundTripTests(unittest.TestCase):
                 "};\n"
             )
             for name in (
+                "convert_workflow.js",
+                "link_badge.js",
                 "open_run.js",
                 "open_workflow.js",
                 "save_workflow.js",
@@ -664,6 +878,41 @@ class RoundTripTests(unittest.TestCase):
                 self.assertEqual(result["nodes"], [1, 3, 6])
                 self.assertEqual(result["toasts"], [])
 
+    def test_a_layouts_stock_node_becomes_the_packs_where_it_stands(self):
+        """A layout holds the nodes it was saved with; PixlStash may since
+        open the workflow with one of this pack's in a stock node's place.
+        The node is replaced under its id, where it was, wired as it was."""
+        result = self.results["swapped"]
+        self.assertEqual(result["swapped"], ["1", "2", "9", "11"])
+        self.assertEqual(
+            result["types"],
+            [
+                [1, "PixlStashCheckpointLoader"],
+                [2, "PixlStashAdapterLoader"],
+                [6, "CLIPTextEncode"],
+                [8, "VAEDecode"],
+                [9, "PixlStashPictureSaver"],
+                # A class this ComfyUI does not have: the node is left, and
+                # the canvas then converts to another graph, which costs the
+                # layout and nothing else.
+                [10, "SaveImage"],
+                [11, "OtherSaver"],
+            ],
+        )
+        # Every wire is where it was, but the one the new node has no input
+        # for: that is a canvas the caller's check does not take for the graph.
+        lost = [8, 0, 11, "images"]
+        self.assertIn(lost, result["before"])
+        self.assertEqual(
+            result["after"], [wire for wire in result["before"] if wire != lost]
+        )
+        self.assertEqual(result["pos"], [[10, 7], [20, 7], [90, 7]])
+        self.assertEqual(result["width"], 320)
+        # A name the owner gave stays; the stock node's own name does not.
+        self.assertEqual(result["titles"], ["Final", "Load PixlStashAdapterLoader"])
+        # Bypassed stays bypassed.
+        self.assertEqual(result["mode"], 4)
+
     def test_what_makes_a_canvas_another_graph(self):
         differs = self.results["differs"]
         self.assertIsNone(differs["same"])
@@ -694,6 +943,31 @@ class RoundTripTests(unittest.TestCase):
                 "placed": True,
                 "wires": [["75_70", 0, 99, "model"], [99, 0, "75_63", "model"]],
             },
+        )
+
+    def test_a_model_loaded_twice_gets_a_loader_after_each_copy(self):
+        self.assertEqual(
+            self.results["copies"],
+            {
+                "toasts": [],
+                "placed": 99,
+                "wires": [
+                    [1, 0, 99, "model"],
+                    [2, 0, 99, "clip"],
+                    [99, 0, 3, "model"],
+                    [99, 1, 4, "clip"],
+                    [11, 0, 100, "model"],
+                    [100, 0, 13, "model"],
+                ],
+                "shows": ["People who fit", "People who fit"],
+            },
+        )
+
+    def test_a_copy_that_cannot_be_rewired_leaves_the_canvas_alone(self):
+        result = self.results["copy_lost"]
+        self._one_toast("copy_lost", "warn", "inside a subgraph")
+        self.assertEqual(
+            (result["placed"], result["wires"], result["nodes"]), (None, [], 6)
         )
 
     def test_a_load_whose_promise_was_dropped_is_waited_for(self):
@@ -974,7 +1248,7 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(self.results["will_not_convert"]["sent"], [])
 
     def test_a_workflow_pixlstash_does_not_have_offers_export(self):
-        self._one_toast("unknown_workflow", "warn", "Export to PixlStash")
+        self._one_toast("unknown_workflow", "warn", "Save as new workflow in PixlStash")
 
     def test_what_pixlstash_refused_reaches_the_toast(self):
         self._one_toast("refused", "error", "Too large")
@@ -1007,7 +1281,9 @@ class RoundTripTests(unittest.TestCase):
             (self.results["not_linked"]["sent"], self.results["not_linked"]["toasts"]),
             ([], []),
         )
-        self._one_toast("not_linked_by_hand", "warn", "Export to PixlStash")
+        self._one_toast(
+            "not_linked_by_hand", "warn", "Save as new workflow in PixlStash"
+        )
         self.assertEqual(self.results["not_linked_by_hand"]["sent"], [])
 
     def test_only_the_file_pixlstash_opened_saves_back(self):
@@ -1059,7 +1335,7 @@ class RoundTripTests(unittest.TestCase):
         self.assertIn(
             ["info", "Saved as a copy that is not linked to PixlStash."],
             [
-                [severity, detail.split(" Use ")[0]]
+                [severity, detail.split(" Pick ")[0]]
                 for severity, detail in hook["toasts"]
             ],
         )
@@ -1068,10 +1344,58 @@ class RoundTripTests(unittest.TestCase):
         """Loaded twice, said once: not on every page load."""
         result = self.results["no_hook"]
         self._one_toast("no_hook", "warn", "Save to PixlStash")
-        self.assertEqual(result["commands"], ["Save to PixlStash"])
+        self.assertEqual(
+            result["commands"],
+            ["Save to PixlStash", "Save as new workflow in PixlStash"],
+        )
         self.assertEqual(
             result["menu"],
-            [{"path": ["PixlStash"], "commands": ["PixlStash.SaveWorkflow"]}],
+            [
+                {
+                    "path": ["PixlStash"],
+                    "commands": ["PixlStash.SaveWorkflow", "PixlStash.ConvertWorkflow"],
+                }
+            ],
+        )
+
+    # --- what the canvas shows of its link -----------------------------------
+
+    def test_save_to_pixlstash_is_greyed_out_where_there_is_no_link(self):
+        """Greyed where the canvas carries no workflow's id. A copy carries
+        one and the command saves it over that workflow, so it stays on."""
+        link = self.results["link"]
+        self.assertEqual(
+            {name: link[name] for name in ("none", "linked", "copy", "no_file_tag")},
+            {
+                "none": {"state": None, "greyed": True},
+                "linked": {"state": "linked", "greyed": False},
+                "copy": {"state": "copy", "greyed": False},
+                "no_file_tag": {"state": "copy", "greyed": False},
+            },
+        )
+        self.assertTrue(link["other_item_untouched"])
+
+    def test_a_run_is_not_called_linked_to_the_workflow_it_came_from(self):
+        """The sign says a save is the workflow's next version, which is the
+        one thing a run's save is not. *Save to PixlStash* stays on: by hand
+        it sends the run as a new workflow too."""
+        self.assertEqual(self.results["link"]["run"], {"state": "new", "greyed": False})
+        self.assertEqual(self.results["sign"]["a_run"], "none")
+
+    def test_the_sign_shows_only_on_the_file_pixlstash_opened(self):
+        self.assertEqual(
+            self.results["sign"],
+            {
+                "not_linked": "never made",
+                "linked": "flex",
+                "says": ["Linked to PixlStash"],
+                "in_the_canvas_panel": True,
+                "a_copy": "none",
+                "a_run": "none",
+                "after_a_store_action": "flex",
+                "after_a_graph_load": "none",
+                "put_back": True,
+            },
         )
 
 

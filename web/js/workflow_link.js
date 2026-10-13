@@ -8,7 +8,7 @@
  * id alone is not enough: ComfyUI writes `extra` into every picture the
  * canvas makes and into every duplicate of the tab, so a picture dragged back
  * in, a duplicated tab or somebody else's file can all carry it. Those reach
- * PixlStash only through *Export to PixlStash*, as anything else does.
+ * PixlStash only through *Save as new workflow in PixlStash*, as anything else does.
  *
  * Shared by the opener, the save hook and the export, and importing nothing
  * but ComfyUI's `app`.
@@ -64,6 +64,21 @@ export function linkedWorkflow(graph = rootGraph()) {
 export function linkedFile(graph = rootGraph()) {
     const file = graph?.extra?.[FILE_TAG];
     return typeof file === "string" && file ? file : null;
+}
+
+/**
+ * How the canvas stands with PixlStash: `"linked"` when it is the file
+ * PixlStash opened, so saving it saves to its workflow; `"new"` when it is
+ * that file and a run from the Run popup (`NEW_TAG`), so saving it makes a
+ * new workflow and the one it names is left alone; `"copy"` when it carries a
+ * workflow's id and is another file, which only *Save to PixlStash* sends;
+ * null when it carries none.
+ */
+export function linkState() {
+    if (!linkedWorkflow()) return null;
+    const path = app.extensionManager?.workflow?.activeWorkflow?.path ?? "";
+    if (linkedFile() !== path) return "copy";
+    return rootGraph()?.extra?.[NEW_TAG] ? "new" : "linked";
 }
 
 /**
