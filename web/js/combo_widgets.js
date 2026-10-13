@@ -45,6 +45,7 @@ const NODE_MIN_VERSION = {
     "PixlStashSetLoader":       "1.2.0",
     "PixlStashPictureLoader":   "1.2.0",
     "PixlStashPictureSaver":    "1.2.0",
+    "PixlStashVideoSaver":      "1.2.0",
     "PixlStashSemanticSearch":  "1.2.0",
     "PixlStashLikenessSearch":  "1.4.0",
     "PixlStashFaceLikenessGate": "1.6.0",

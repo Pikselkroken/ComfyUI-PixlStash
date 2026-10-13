@@ -10,7 +10,7 @@ Typical workflow:
         ├─> PixlStashSetLoader       (optional)
         └─> PixlStashCharacterLoader (optional)
                 └─> PixlStashPictureLoader
-                        └─> PixlStashPictureSaver
+                        └─> PixlStashPictureSaver / PixlStashVideoSaver
 
 Credentials (URL, token, SSL) are configured once in
 ComfyUI Settings › PixlStash and injected automatically at run time.
@@ -21,6 +21,7 @@ from .nodes.set_loader import PixlStashSetLoader
 from .nodes.character_loader import PixlStashCharacterLoader
 from .nodes.picture_loader import PixlStashPictureLoader
 from .nodes.picture_saver import PixlStashPictureSaver
+from .nodes.video_saver import PixlStashVideoSaver
 from .nodes.likeness_search import PixlStashLikenessSearch
 from .nodes.face_likeness_gate import PixlStashFaceLikenessGate
 from .nodes.picture_likeness_gate import PixlStashPictureLikenessGate
@@ -45,6 +46,7 @@ NODE_CLASS_MAPPINGS = {
     "PixlStashCharacterLoader": PixlStashCharacterLoader,
     "PixlStashPictureLoader": PixlStashPictureLoader,
     "PixlStashPictureSaver": PixlStashPictureSaver,
+    "PixlStashVideoSaver": PixlStashVideoSaver,
     "PixlStashLikenessSearch": PixlStashLikenessSearch,
     "PixlStashFaceLikenessGate": PixlStashFaceLikenessGate,
     "PixlStashPictureLikenessGate": PixlStashPictureLikenessGate,
@@ -63,6 +65,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixlStashCharacterLoader": "PixlStash Character Loader",
     "PixlStashPictureLoader": "PixlStash Picture Loader",
     "PixlStashPictureSaver": "PixlStash Picture Saver",
+    "PixlStashVideoSaver": "PixlStash Video Saver",
     "PixlStashLikenessSearch": "PixlStash Likeness Search",
     "PixlStashFaceLikenessGate": "PixlStash Face Likeness Gate",
     "PixlStashPictureLikenessGate": "PixlStash Picture Likeness Gate",

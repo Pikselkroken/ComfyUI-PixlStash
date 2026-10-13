@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import mimetypes
 import os
 import time
 
@@ -34,6 +35,13 @@ _FACE_WORKER_HINTS = ("face extraction", "face worker", "worker not running")
 # deleted, or the token can be pointed at a different library, and either way
 # the id sitting in the Project Loader still looks perfectly valid.
 _MISSING_PROJECT = "project"
+
+_NODE = "PixlStash Picture Saver"
+
+
+def _mime(name: str) -> str:
+    """Content type for an uploaded file, from its extension."""
+    return mimetypes.guess_type(name)[0] or "application/octet-stream"
 
 
 class PixlStashPictureSaver:
@@ -128,7 +136,7 @@ class PixlStashPictureSaver:
         url, token, verify_ssl = read_credentials(url, token, verify_ssl)
         if not url or not token:
             raise RuntimeError(
-                "PixlStash Picture Saver: URL and API Token are required. "
+                f"{_NODE}: URL and API Token are required. "
                 "Configure them in ComfyUI Settings \u203a PixlStash."
             )
         client = make_client(url, token, verify_ssl)
@@ -152,10 +160,9 @@ class PixlStashPictureSaver:
             )
 
         # Resolve a safe output location.  folder_paths.get_save_image_path
-        # strips any path traversal / absolute path out of filename_prefix and
-        # guarantees the resolved folder stays inside ComfyUI's temp directory,
-        # so a hostile filename_prefix (e.g. in a shared workflow) cannot escape
-        # it to write elsewhere on disk.
+        # refuses a filename_prefix that resolves outside the directory it is
+        # given, so a hostile one (e.g. in a shared workflow) cannot write
+        # anywhere but under ComfyUI's temp directory.
         temp_dir = folder_paths.get_temp_directory()
         full_output_folder, base_name, counter, subfolder, _ = (
             folder_paths.get_save_image_path(filename_prefix, temp_dir)
@@ -174,19 +181,13 @@ class PixlStashPictureSaver:
                 {"filename": fname, "subfolder": subfolder, "type": "temp"}
             )
 
-        new_ids, all_ids = self._upload(client, files, project_id=project_id)
-
-        # Post-import assignments — applied to ALL ids (new + duplicates)
-        # so that even re-imported images end up in the right context.
-        if set_id and all_ids:
-            client.post(
-                f"/api/v1/picture_sets/{set_id}/members",
-                is_write=True,
-                json={"picture_ids": all_ids},
-            )
-
-        if character_id and all_ids:
-            self._assign_character(client, character_id, all_ids)
+        new_ids = self._store(
+            client,
+            files,
+            project_id=project_id,
+            set_id=set_id,
+            character_id=character_id,
+        )
 
         ids_str = ",".join(str(i) for i in new_ids)
         return {
@@ -218,11 +219,44 @@ class PixlStashPictureSaver:
         pil_img.save(buf, format="PNG", pnginfo=metadata, compress_level=4)
         return buf.getvalue()
 
+    @classmethod
+    def _store(
+        cls,
+        client,
+        files: list[tuple[str, bytes]],
+        *,
+        project_id: str = "",
+        set_id: str = "",
+        character_id: str = "",
+        node: str = _NODE,
+    ) -> list[int]:
+        """Upload *files*, then file them under the set and the character.
+
+        Shared with the Video Saver, which passes its own name as *node* for
+        the error messages. Returns the ids of the newly imported pictures.
+        """
+        new_ids, all_ids = cls._upload(client, files, project_id=project_id, node=node)
+
+        # Post-import assignments — applied to ALL ids (new + duplicates)
+        # so that even re-imported images end up in the right context.
+        if set_id and all_ids:
+            client.post(
+                f"/api/v1/picture_sets/{set_id}/members",
+                is_write=True,
+                json={"picture_ids": all_ids},
+            )
+
+        if character_id and all_ids:
+            cls._assign_character(client, character_id, all_ids)
+
+        return new_ids
+
     @staticmethod
     def _upload(
         client,
         files: list[tuple[str, bytes]],
         project_id: str = "",
+        node: str = _NODE,
     ) -> tuple[list[int], list[int]]:
         """Upload files one-by-one via ``POST /pictures/import``, polling each
         task to completion before starting the next.
@@ -242,7 +276,7 @@ class PixlStashPictureSaver:
                 response = client.post(
                     "/api/v1/pictures/import",
                     is_write=True,
-                    files=[("file", (name, data, "image/png"))],
+                    files=[("file", (name, data, _mime(name)))],
                     data=form_data or None,
                 )
             except RuntimeError as exc:
@@ -254,7 +288,7 @@ class PixlStashPictureSaver:
                     ) from exc
                 if "not found" in msg and _MISSING_PROJECT in msg:
                     raise RuntimeError(
-                        f"PixlStash Picture Saver: project {project_id} is not "
+                        f"{node}: project {project_id} is not "
                         "in the library this token opens — it may have been "
                         "deleted, or the token may point at another library. "
                         "Pick the project again on the Project Loader wired "
