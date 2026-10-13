@@ -58,9 +58,9 @@ function makeNode(id, type, widgets = {}, inputs = [], mode = 0) {
 
 function makeGraph(nodes) {
     return {
-        nodes, arranged: 0,
+        nodes, arranged: 0, added: 0,
         getNodeById(id) { return nodes.find((n) => n.id === id) ?? null; },
-        add(node) { node.id = 99; nodes.push(node); },
+        add(node) { node.id = 99 + this.added++; nodes.push(node); },
         arrange() { this.arranged++; },
         serialize() { return { serialized: nodes.map((n) => n.id), extra: { ...this.extra } }; },
     };
@@ -255,6 +255,44 @@ for (const [name, canvas] of Object.entries(refused)) {
         rewires: [{ node_id: "75:63", field: "model", type: "MODEL" }],
     });
     results.renamed = { toasts, placed: !!placed, wires: app.wires };
+}
+// The same model loaded twice, each copy with a sampler of its own.
+const copies = () => makeGraph([
+    makeNode(1, "UNETLoader"), makeNode(2, "CLIPLoader"),
+    makeNode(3, "KSampler", {}, ["model"]), makeNode(4, "CLIPTextEncode", {}, ["clip"]),
+    makeNode(11, "UNETLoader"), makeNode(13, "KSampler", {}, ["model"]),
+]);
+// As PixlStash sends several places: no `model`, and a `reason` only a node
+// from before `places` shows.
+const TWICE = {
+    model: null, clip: null, rewires: [], reason: "it loads the same model 2 times.",
+    places: [
+        {
+            model: { node_id: "1", output: 0 },
+            clip: { node_id: "2", output: 0 },
+            rewires: [{ node_id: "3", field: "model", type: "MODEL" }, { node_id: "4", field: "clip", type: "CLIP" }],
+        },
+        { model: { node_id: "11", output: 0 }, clip: null, rewires: [{ node_id: "13", field: "model", type: "MODEL" }] },
+    ],
+};
+{
+    // A loader after every copy: one after the first only would leave the
+    // second sampler running without the person.
+    const { toasts } = comfy();
+    const graph = copies();
+    const placed = placePeopleLoader(graph, TWICE);
+    results.copies = {
+        toasts, placed: placed?.id, wires: app.wires,
+        shows: loaders(graph).map((n) => valueOf(n, "show")),
+    };
+}
+{
+    // A copy the canvas cannot be rewired at: no loader at all, not one of two.
+    const { toasts } = comfy();
+    const graph = copies();
+    const lost = { ...TWICE.places[1], rewires: [{ node_id: "14", field: "model", type: "MODEL" }] };
+    const placed = placePeopleLoader(graph, { ...TWICE, places: [TWICE.places[0], lost] });
+    results.copy_lost = { toasts, placed, wires: app.wires, nodes: graph.nodes.length };
 }
 {
     // An extension that wraps the API loader and drops its promise (rgthree
@@ -696,6 +734,31 @@ class RoundTripTests(unittest.TestCase):
                 "placed": True,
                 "wires": [["75_70", 0, 99, "model"], [99, 0, "75_63", "model"]],
             },
+        )
+
+    def test_a_model_loaded_twice_gets_a_loader_after_each_copy(self):
+        self.assertEqual(
+            self.results["copies"],
+            {
+                "toasts": [],
+                "placed": 99,
+                "wires": [
+                    [1, 0, 99, "model"],
+                    [2, 0, 99, "clip"],
+                    [99, 0, 3, "model"],
+                    [99, 1, 4, "clip"],
+                    [11, 0, 100, "model"],
+                    [100, 0, 13, "model"],
+                ],
+                "shows": ["People who fit", "People who fit"],
+            },
+        )
+
+    def test_a_copy_that_cannot_be_rewired_leaves_the_canvas_alone(self):
+        result = self.results["copy_lost"]
+        self._one_toast("copy_lost", "warn", "inside a subgraph")
+        self.assertEqual(
+            (result["placed"], result["wires"], result["nodes"]), (None, [], 6)
         )
 
     def test_a_load_whose_promise_was_dropped_is_waited_for(self):
