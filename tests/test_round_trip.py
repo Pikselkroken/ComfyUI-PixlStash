@@ -9,8 +9,9 @@ What is pinned: which document opens and under what file name, that a layout
 is used only when it converts to the graph PixlStash sent, where the loader
 for people is wired, that the opener's own save is not sent, that only the
 file PixlStash opened saves back, what a save sends and each outcome's toast,
-that a copy made with *Save As* is unlinked, and that a ComfyUI without the
-save hook says so.
+that a copy made with *Save As* is unlinked, that a ComfyUI without the
+save hook says so, and what the canvas shows of its link: *Save to PixlStash*
+greyed out where there is none, and a sign on the file PixlStash opened.
 
 Run in Node against a stand-in for ComfyUI's ``app``, so this is skipped where
 there is no ``node``.
@@ -32,10 +33,11 @@ DRIVER = r"""
 import { app } from "../../scripts/app.js";
 import { differsFrom, fileStem, placePeopleLoader } from "./open_workflow.js";
 import { saveToPixlStash } from "./save_workflow.js";
-import { FILE_TAG, TAG, isUnsent, openings, quietly } from "./workflow_link.js";
+import { FILE_TAG, TAG, isUnsent, linkState, openings, quietly } from "./workflow_link.js";
+import { refreshLinkBadge } from "./link_badge.js";
 
 const [AUTO, OTHER] = JSON.parse(process.argv[2]);
-const [opener, saver] = app.extensions;
+const [opener, saver, signer] = app.extensions;
 const results = {};
 const turns = () => new Promise((resolve) => setTimeout(resolve, 20));
 const LOADER = "PixlStashMultiAdapterLoader";
@@ -460,6 +462,81 @@ results.switched_while_converting = await save({
     await saver.setup();
     results.no_hook = { toasts, commands: saver.commands.map((c) => c.label), menu: saver.menuCommands };
 }
+
+// --- what the canvas shows of its link ---------------------------------------
+
+/** The canvas as `extra` on the tab at `path`. */
+function canvas(store, extra, path) {
+    app.rootGraph = { extra };
+    store.activeWorkflow = { path, filename: "Portrait" };
+}
+const LINKED = { [TAG]: AUTO, [FILE_TAG]: PATH };
+{
+    const { store } = comfy();
+    // Pinia's registry and ComfyUI's menu store, as far as the pack reaches.
+    const item = { comfyCommand: { id: "PixlStash.SaveWorkflow" } };
+    const other = { comfyCommand: { id: "PixlStash.ConvertWorkflow" } };
+    store._p = { _s: new Map([["menuItem", { menuItems: [{ label: "File", items: [] }, { label: "PixlStash", items: [item, other] }] }]]) };
+    await saver.setup();
+    const at = (extra, path) => {
+        canvas(store, extra, path);
+        return { state: linkState(), greyed: item.disabled() };
+    };
+    results.link = {
+        none: at({}, PATH),
+        linked: at(LINKED, PATH),
+        copy: at(LINKED, "workflows/Copy.json"),
+        no_file_tag: at({ [TAG]: AUTO }, PATH),
+        other_item_untouched: !("disabled" in other),
+    };
+}
+{
+    // The page, as far as the sign reaches into it.
+    const element = () => ({
+        style: {}, kids: [], isConnected: false,
+        append(...kids) { this.kids.push(...kids); kids.forEach((k) => { if (typeof k === "object") k.isConnected = true; }); },
+    });
+    const panel = element();
+    const made = [];
+    globalThis.document = {
+        body: element(),
+        createElement: () => { const el = element(); made.push(el); return el; },
+        querySelector: (selector) => (selector === ".graph-canvas-panel" ? panel : null),
+    };
+    const { store } = comfy();
+    await signer.setup();
+    const shown = () => (made.length ? made[0].style.display : "never made");
+    const steps = {};
+    canvas(store, {}, PATH);
+    refreshLinkBadge();
+    steps.not_linked = shown();
+    canvas(store, LINKED, PATH);
+    refreshLinkBadge();
+    steps.linked = shown();
+    steps.says = made[0].kids.filter((k) => typeof k === "string");
+    steps.in_the_canvas_panel = panel.kids.includes(made[0]);
+    canvas(store, LINKED, "workflows/Copy.json");
+    refreshLinkBadge();
+    steps.a_copy = shown();
+    // An action of ComfyUI's workflow store (here: back to the tab) keeps it.
+    canvas(store, LINKED, PATH);
+    for (const listen of store.actions) {
+        const afters = [];
+        listen({ name: "openWorkflow", args: [], after: (fn) => afters.push(fn), onError() {} });
+        afters.forEach((fn) => fn());
+    }
+    steps.after_a_store_action = shown();
+    // A graph load does too.
+    canvas(store, {}, PATH);
+    signer.afterConfigureGraph();
+    steps.after_a_graph_load = shown();
+    // ComfyUI rebuilt the panel and took the sign with it.
+    made[0].isConnected = false;
+    canvas(store, LINKED, PATH);
+    refreshLinkBadge();
+    steps.put_back = made[0].isConnected && panel.kids.filter((k) => k === made[0]).length === 2;
+    results.sign = steps;
+}
 {
     // PixlStash's "Open original in ComfyUI": the workflow's own nodes.
     comfy();
@@ -486,6 +563,8 @@ class RoundTripTests(unittest.TestCase):
                 "};\n"
             )
             for name in (
+                "convert_workflow.js",
+                "link_badge.js",
                 "open_workflow.js",
                 "save_workflow.js",
                 "workflow_link.js",
@@ -787,7 +866,7 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(self.results["will_not_convert"]["sent"], [])
 
     def test_a_workflow_pixlstash_does_not_have_offers_export(self):
-        self._one_toast("unknown_workflow", "warn", "Export to PixlStash")
+        self._one_toast("unknown_workflow", "warn", "Save as new workflow in PixlStash")
 
     def test_what_pixlstash_refused_reaches_the_toast(self):
         self._one_toast("refused", "error", "Too large")
@@ -820,7 +899,9 @@ class RoundTripTests(unittest.TestCase):
             (self.results["not_linked"]["sent"], self.results["not_linked"]["toasts"]),
             ([], []),
         )
-        self._one_toast("not_linked_by_hand", "warn", "Export to PixlStash")
+        self._one_toast(
+            "not_linked_by_hand", "warn", "Save as new workflow in PixlStash"
+        )
         self.assertEqual(self.results["not_linked_by_hand"]["sent"], [])
 
     def test_only_the_file_pixlstash_opened_saves_back(self):
@@ -872,7 +953,7 @@ class RoundTripTests(unittest.TestCase):
         self.assertIn(
             ["info", "Saved as a copy that is not linked to PixlStash."],
             [
-                [severity, detail.split(" Use ")[0]]
+                [severity, detail.split(" Pick ")[0]]
                 for severity, detail in hook["toasts"]
             ],
         )
@@ -881,10 +962,50 @@ class RoundTripTests(unittest.TestCase):
         """Loaded twice, said once: not on every page load."""
         result = self.results["no_hook"]
         self._one_toast("no_hook", "warn", "Save to PixlStash")
-        self.assertEqual(result["commands"], ["Save to PixlStash"])
+        self.assertEqual(
+            result["commands"],
+            ["Save to PixlStash", "Save as new workflow in PixlStash"],
+        )
         self.assertEqual(
             result["menu"],
-            [{"path": ["PixlStash"], "commands": ["PixlStash.SaveWorkflow"]}],
+            [
+                {
+                    "path": ["PixlStash"],
+                    "commands": ["PixlStash.SaveWorkflow", "PixlStash.ConvertWorkflow"],
+                }
+            ],
+        )
+
+    # --- what the canvas shows of its link -----------------------------------
+
+    def test_save_to_pixlstash_is_greyed_out_where_there_is_no_link(self):
+        """Greyed where the canvas carries no workflow's id. A copy carries
+        one and the command saves it over that workflow, so it stays on."""
+        link = self.results["link"]
+        self.assertEqual(
+            {name: link[name] for name in ("none", "linked", "copy", "no_file_tag")},
+            {
+                "none": {"state": None, "greyed": True},
+                "linked": {"state": "linked", "greyed": False},
+                "copy": {"state": "copy", "greyed": False},
+                "no_file_tag": {"state": "copy", "greyed": False},
+            },
+        )
+        self.assertTrue(link["other_item_untouched"])
+
+    def test_the_sign_shows_only_on_the_file_pixlstash_opened(self):
+        self.assertEqual(
+            self.results["sign"],
+            {
+                "not_linked": "never made",
+                "linked": "flex",
+                "says": ["Linked to PixlStash"],
+                "in_the_canvas_panel": True,
+                "a_copy": "none",
+                "after_a_store_action": "flex",
+                "after_a_graph_load": "none",
+                "put_back": True,
+            },
         )
 
 

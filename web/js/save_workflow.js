@@ -18,6 +18,9 @@
  * this says so once and the *Save to PixlStash* command in the PixlStash menu
  * does the same by hand. It never stops sending without saying so.
  *
+ * **The menu item is greyed out on a canvas that carries no workflow's id**
+ * (`greyOutWhenUnlinked`), where there is nothing for it to save over.
+ *
  * Autosave calls the same action as Ctrl+S, so it is sent like any save.
  * PixlStash stores nothing for a graph it already holds and keeps the saves
  * of one opening as one version, and a sentence that would repeat with every
@@ -25,13 +28,16 @@
  */
 
 import { app } from "../../scripts/app.js";
+import { exportActiveWorkflow } from "./convert_workflow.js";
 import {
     FILE_TAG, PEOPLE_LOADER, TAG, apiToken, flushCanvas, isQuiet, leftOutSentences,
     linkedFile, linkedWorkflow, markUnsent, notify, openings, quietly, rootGraph,
 } from "./workflow_link.js";
 
 const COMMAND_ID = "PixlStash.SaveWorkflow";
-const EXPORT_HINT = "Use PixlStash › Export to PixlStash to send it as a new workflow.";
+// Named for what the command was first called; a keybinding is saved against it.
+const NEW_COMMAND_ID = "PixlStash.ConvertWorkflow";
+const EXPORT_HINT = "Pick PixlStash › Save as new workflow in PixlStash to send it there.";
 const NO_HOOK_SAID = "PixlStash.noSaveHookSaid";
 
 // What was last said for each file, so an autosave does not repeat it.
@@ -210,6 +216,30 @@ function unlinkCopy(copy) {
     notify("info", `Saved as a copy that is not linked to PixlStash. ${EXPORT_HINT}`);
 }
 
+/**
+ * Grey *Save to PixlStash* out in the menu on a canvas that carries no
+ * workflow's id.
+ *
+ * ComfyUI's extension interface has no "disabled" for a command, so this
+ * reaches the menu's own store through Pinia's registry (`_p._s`, internal to
+ * Pinia; checked against frontend 1.53.10) and gives the item PrimeVue's
+ * `disabled`, which the menu reads each time it opens. Where any of that is
+ * missing the item stays enabled and the command answers with a toast, as it
+ * does from a keybinding or the command palette.
+ */
+function greyOutWhenUnlinked(store) {
+    const find = (items) => {
+        for (const item of items ?? []) {
+            const found = item?.comfyCommand?.id === COMMAND_ID ? item : find(item?.items);
+            if (found) return found;
+        }
+        return null;
+    };
+    const item = find(store?._p?._s?.get?.("menuItem")?.menuItems);
+    if (item) item.disabled = () => !linkedWorkflow();
+    else console.info("[PixlStash] this ComfyUI's menu cannot be reached, so Save to PixlStash is not greyed out on a canvas that is not linked");
+}
+
 /** Say, once in this browser, that this ComfyUI gives no sign of a save. */
 function sayNoHook() {
     try {
@@ -234,11 +264,20 @@ app.registerExtension({
             icon: "pi pi-save",
             function: () => saveToPixlStash(null, { byHand: true }),
         },
+        {
+            id: NEW_COMMAND_ID,
+            label: "Save as new workflow in PixlStash",
+            icon: "pi pi-upload",
+            // ComfyUI may pass the command its own arguments.
+            function: () => exportActiveWorkflow(),
+        },
     ],
-    menuCommands: [{ path: ["PixlStash"], commands: [COMMAND_ID] }],
+    // One group, so the pair keeps this order however the files load.
+    menuCommands: [{ path: ["PixlStash"], commands: [COMMAND_ID, NEW_COMMAND_ID] }],
 
     async setup() {
         const store = app.extensionManager?.workflow;
+        greyOutWhenUnlinked(store);
         if (typeof store?.$onAction !== "function" || typeof store.saveWorkflow !== "function") {
             sayNoHook();
             return;
