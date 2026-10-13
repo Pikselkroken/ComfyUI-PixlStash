@@ -12,7 +12,10 @@
  *   the graph PixlStash sent. PixlStash stores a layout on the word of
  *   whoever saved it, so this check, made here at the moment of use, is what
  *   ties the two together. Otherwise the runnable graph opens, which
- *   ComfyUI's API loader (`app.loadApiJson`) arranges.
+ *   ComfyUI's API loader (`app.loadApiJson`) arranges. A layout saved with
+ *   a stock node where the graph now has one of this pack's (or the other
+ *   way round) is still that layout: the node is replaced where it stands
+ *   (`swapNodes`) before the check is made.
  * - **Linked to its workflow**: the id and the file's own path go into the
  *   graph, for an automatic workflow as for a manual one, so a save of this
  *   file goes back to it (`save_workflow.js`) and pictures queued here are
@@ -28,8 +31,10 @@
  *
  * - **With this pack's nodes** where PixlStash can put one in place of a
  *   stock node (`pixlstash_nodes`): its savers for Save Image and Save Video,
- *   so what is queued here comes back to PixlStash, and its Adapter Loader
- *   for a LoRA its shelf holds. A link that also carries `pixlstash_original`
+ *   so what is queued here comes back to PixlStash, its Adapter Loader for a
+ *   LoRA its shelf holds, its Picture Loader for a picture input PixlStash
+ *   knows the picture of, and its Checkpoint Loader where PixlStash and
+ *   ComfyUI share a computer. A link that also carries `pixlstash_original`
  *   (PixlStash's *Open original in ComfyUI*) opens the workflow's own nodes.
  *
  * The key is taken off the address at once, so reloading the tab does not
@@ -129,6 +134,68 @@ export function writeValues(graph, api) {
             widget.callback?.(value);
         }
     }
+}
+
+/** The link with this id on `graph`, whichever way this LiteGraph keeps them. */
+const linkOf = (graph, id) =>
+    (typeof graph.links?.get === "function" ? graph.links.get(id) : graph.links?.[id]) ?? null;
+
+/**
+ * Make each node on the canvas the class the API graph `api` names for it.
+ *
+ * A layout holds the nodes it was saved with, and PixlStash may since have
+ * put one of this pack's where a stock one was, or the stock one back: a
+ * saver, a LoRA loader, the picture or the checkpoint loader. Which it does
+ * depends on what its shelf and library hold that day, so without this a
+ * layout would be dropped each time that changed.
+ *
+ * The node is replaced where it stands by one of the class `api` names,
+ * under the same id, and wired as PixlStash wires the swap: what it read, by
+ * the input's name, and what read it, by the output's position. Its values
+ * are the graph's (`writeValues`, which the caller runs next). Returns the
+ * ids replaced.
+ *
+ * Nothing here decides whether the layout is used. A node this could not
+ * replace, or a wire the new node has no place for, leaves a canvas that
+ * converts to something else, and the caller's check (`differsFrom`) then
+ * drops the layout. Nodes inside a subgraph are not reached.
+ */
+export function swapNodes(graph, api, LiteGraph = globalThis.LiteGraph) {
+    const swapped = [];
+    for (const [id, entry] of Object.entries(api ?? {})) {
+        const old = graph.getNodeById(id) ?? graph.getNodeById(Number(id));
+        if (!old || !entry?.class_type || old.type === entry.class_type) continue;
+        const fresh = LiteGraph?.createNode?.(entry.class_type);
+        if (!fresh) continue;
+        // Read before the old node goes: removing it takes its links along.
+        const reads = (old.inputs ?? []).flatMap((input) => {
+            const link = input.link == null ? null : linkOf(graph, input.link);
+            const from = link ? graph.getNodeById(link.origin_id) : null;
+            return from ? [{ from, slot: link.origin_slot, name: input.name }] : [];
+        });
+        const readBy = (old.outputs ?? []).flatMap((output, slot) =>
+            (output.links ?? []).flatMap((linkId) => {
+                const link = linkOf(graph, linkId);
+                const to = link ? graph.getNodeById(link.target_id) : null;
+                return to ? [{ slot, to, input: link.target_slot }] : [];
+            }),
+        );
+        graph.remove(old);
+        fresh.id = old.id;
+        graph.add(fresh);
+        fresh.pos = [...old.pos];
+        // No narrower than it was laid out, and as tall as its own widgets need.
+        if (fresh.size && old.size) fresh.size[0] = Math.max(fresh.size[0], old.size[0]);
+        fresh.mode = old.mode;
+        if (old.color) fresh.color = old.color;
+        if (old.bgcolor) fresh.bgcolor = old.bgcolor;
+        // A name the owner gave it stays; the stock node's own name does not.
+        if (old.title && old.title !== old.constructor?.title) fresh.title = old.title;
+        for (const { from, slot, name } of reads) from.connect(slot, fresh, name);
+        for (const { slot, to, input } of readBy) fresh.connect(slot, to, input);
+        swapped.push(String(id));
+    }
+    return swapped;
 }
 
 const DIGEST_ROW = /^adapter_sha256(_\d+)?$/;
@@ -482,6 +549,7 @@ async function openFromUrl(key, original = false) {
             if ((await app.loadGraphData(body.editor, true, true, loadAs)) === false) {
                 differs = "ComfyUI would not load it";
             } else {
+                swapNodes(rootGraph(), body.workflow);
                 writeValues(rootGraph(), body.workflow);
                 differs = differsFrom((await app.graphToPrompt()).output, body.workflow);
             }

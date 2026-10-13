@@ -16,6 +16,12 @@ The three filter IDs (``project_id``, ``set_id``, ``character_id``) are
 passed through as outputs so a downstream Saver can receive them without
 requiring extra wires from each individual filter node.
 
+``library`` says whose the IDs in ``picture_ids`` are: the uuid of the library
+they were picked from, written beside them by the Browse button and by
+PixlStash when it opens a workflow here. A picture ID means nothing outside
+its library, so PixlStash reads the IDs back out of a picture's workflow only
+when this names the library it has open. The node itself loads by ID alone.
+
 Whichever mode ran, the pictures that actually came back are reported as the
 node's resolution lock — see ``nodes/lock.py``.  In Browse mode they are not
 in the saved workflow at all, and in either mode a picture that has since
@@ -77,6 +83,16 @@ class PixlStashPictureLoader:
                 ),
             },
             "optional": {
+                "library": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": (
+                            "Written by the Browse button: the PixlStash "
+                            "library the picture IDs are from."
+                        ),
+                    },
+                ),
                 "pixlstash_project": (
                     "PIXLSTASH_PROJECT",
                     {
@@ -111,6 +127,7 @@ class PixlStashPictureLoader:
         pixlstash_project: str = "",
         pixlstash_set: str = "",
         pixlstash_character: str = "",
+        library: str = "",
         url: str = "",
         token: str = "",
         verify_ssl: bool = True,

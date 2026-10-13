@@ -25,6 +25,12 @@ Two more things follow from the server's shape:
   list per resolve, which ComfyUI caches on the node's inputs — revisit if the
   server ever grows a by-id route or a shelf gets big enough to notice.
 
+``shelf`` says whose the id is: the id of the shelf it was picked from, which
+``GET /checkpoints`` answers beside the list, written by the Browse button and
+by PixlStash when it opens a workflow here. A shelf id means nothing on another
+PixlStash, so PixlStash reads the id back out of a picture's workflow only when
+this names its own shelf. The node itself loads by id alone.
+
 A *bare diffusion model* (a Flux UNET in ``models/diffusion_models``) is filed
 as a checkpoint by PixlStash's parameter-count rule, so it will show up in the
 grid.  ``load_checkpoint_guess_config`` cannot build a CLIP or a VAE out of one
@@ -153,10 +159,22 @@ class PixlStashCheckpointLoader:
                         ),
                     },
                 ),
-            }
+            },
+            "optional": {
+                "shelf": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": (
+                            "Written by the Browse button: the PixlStash "
+                            "model shelf the id is from."
+                        ),
+                    },
+                ),
+            },
         }
 
-    def load_checkpoint(self, checkpoint_id: str):
+    def load_checkpoint(self, checkpoint_id: str, shelf: str = ""):
         record = self._fetch_record(checkpoint_id)
         outputs = load_file(local_copy(record, label=LABEL))
 

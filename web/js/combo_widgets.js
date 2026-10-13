@@ -837,10 +837,19 @@ function addShelfBrowseButton(node, valueWidget, opts) {
  *
  * @param {Object}   node        the LiteGraph node
  * @param {Object}   valueWidget the hidden widget the modal writes
- * @param {Object}   opts        { fileKind, browse, picked, filters? }
+ * @param {Object}   opts        { fileKind, browse, picked, from?, filters? }
  */
 function addShelfBrowseButtonInline(node, valueWidget, opts) {
-    const { fileKind, browse, picked, filters = () => ({}) } = opts;
+    const { fileKind, browse, picked, from, filters = () => ({}) } = opts;
+    // The widget a pick writes the shelf's own id into, beside its value: a
+    // row id means nothing on another PixlStash, and this says whose it is.
+    // Written by a pick and by nothing else. Filled in on load, it would say
+    // an id from somewhere else was picked here.
+    const fromWidget = from ? node.widgets?.find(w => w.name === from) : null;
+    if (fromWidget) {
+        fromWidget.hidden = true;
+        fromWidget.computeSize = () => [0, -4];
+    }
     const remember = (record) => rememberModels(node, valueWidget.name, record
         ? [modelEntry(valueWidget.name, lockKind(fileKind), record)]
         : []);
@@ -902,6 +911,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         const v = String(valueWidget.value ?? "").trim();
         setLabel(v ? (v.length > 12 ? `${v.slice(0, 10)}…` : `#${v}`) : "");
         if (!v) {
+            if (fromWidget) fromWidget.value = "";
             showFace(null);
             remember(null);
             return;
@@ -935,7 +945,8 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
             alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
             return;
         }
-        openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record) => {
+        openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record, shelfId) => {
+            if (fromWidget) fromWidget.value = shelfId ?? "";
             setLabel(nameOf(record) || String(record.sha256 ?? record.id ?? "").slice(0, 10));
             remember(record);
             showFace(record);
@@ -1543,6 +1554,12 @@ app.registerExtension({
                 // Hide the raw text widget \u2014 values are managed by the Browse button.
                 picIdsWidget.hidden = true;
                 picIdsWidget.computeSize = () => [0, -4];
+                // And the library they are from, which the picker writes too.
+                const libraryWidget = this.widgets?.find(w => w.name === "library");
+                if (libraryWidget) {
+                    libraryWidget.hidden = true;
+                    libraryWidget.computeSize = () => [0, -4];
+                }
 
                 this.addWidget(
                     "button",
@@ -1639,7 +1656,7 @@ app.registerExtension({
                 { widget: "clip_sha256_2", fileKind: "text_encoder", browse: "Second encoder (optional)…", picked: "Encoder 2" },
             ],
             "PixlStashCheckpointLoader": [
-                { widget: "checkpoint_id", fileKind: "checkpoint", browse: "Browse checkpoints…", picked: "Checkpoint" },
+                { widget: "checkpoint_id", fileKind: "checkpoint", browse: "Browse checkpoints…", picked: "Checkpoint", from: "shelf" },
             ],
         };
         const browsers = SHELF_BROWSERS[nodeData.name];

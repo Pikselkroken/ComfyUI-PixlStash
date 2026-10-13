@@ -71,10 +71,19 @@ class ContractTests(unittest.TestCase):
             (CLIP, "clip_sha256", "required"),
             (CLIP, "clip_sha256_2", "optional"),
             (CKPT, "checkpoint_id", "required"),
+            # Whose the id is. Optional, so a workflow saved before it was
+            # there still validates.
+            (CKPT, "shelf", "optional"),
         )
         for cls, name, section in cases:
             with self.subTest(node=cls.__name__, widget=name):
                 self.assertIn(name, cls.INPUT_TYPES()[section])
+
+    def test_the_shelf_an_id_is_from_is_empty_until_a_pick_writes_it(self):
+        # PixlStash reads the id back only where this names its own shelf, so
+        # a default that named one would vouch for an id nobody picked here.
+        _type, opts = CKPT.INPUT_TYPES()["optional"]["shelf"]
+        self.assertEqual((_type, opts["default"]), ("STRING", ""))
 
     def test_no_credential_widgets(self):
         # Credentials are resolved server-side from ComfyUI Settings; a widget
