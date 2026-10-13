@@ -160,10 +160,10 @@ function comfy({ files = {}, open = [], hook = true, unsent = [] } = {}) {
 }
 
 /** Open `key` from PixlStash, which answers `graph`; returns what was sent. */
-async function openLink(key, graph) {
+async function openLink(key, graph, also = "") {
     const sent = [];
     globalThis.window = {
-        location: { href: `http://comfy.test/?pixlstash_workflow=${key}` },
+        location: { href: `http://comfy.test/?pixlstash_workflow=${key}${also}` },
         history: { replaceState() {} },
     };
     globalThis.fetch = async (url, init) => {
@@ -460,6 +460,12 @@ results.switched_while_converting = await save({
     await saver.setup();
     results.no_hook = { toasts, commands: saver.commands.map((c) => c.label), menu: saver.menuCommands };
 }
+{
+    // PixlStash's "Open original in ComfyUI": the workflow's own nodes.
+    comfy();
+    await saver.setup();
+    results.original = await openLink(OTHER, { name: "Original", workflow: API }, "&pixlstash_original=1");
+}
 console.log(JSON.stringify(results));
 """
 
@@ -496,6 +502,12 @@ class RoundTripTests(unittest.TestCase):
             raise AssertionError(done.stderr)
         cls.results = json.loads(done.stdout.strip().splitlines()[-1])
 
+    def test_a_link_for_the_original_asks_for_the_workflows_own_nodes(self):
+        [(url, _method)] = self.results["original"]
+        self.assertTrue(url.startswith("/pixlstash/workflow_graph?"))
+        self.assertIn("waiting=true", url)
+        self.assertNotIn("pixlstash_nodes", url)
+
     def _one_toast(self, scenario, severity, says):
         [(got, detail)] = self.results[scenario]["toasts"]
         self.assertEqual(got, severity)
@@ -512,6 +524,8 @@ class RoundTripTests(unittest.TestCase):
         # The waiting changes are in the graph, and every stage.
         self.assertIn("waiting=true", url)
         self.assertIn("all_stages=true", url)
+        # And this pack's nodes in place of the stock ones.
+        self.assertIn("pixlstash_nodes=true", url)
         # Under the file's own name, in `pixlstash/`: no name is asked for.
         path = "workflows/pixlstash/Portrait v2.json"
         self.assertEqual(opened["loads"], [["api", "pixlstash/Portrait v2"]])
