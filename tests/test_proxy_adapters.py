@@ -240,6 +240,32 @@ class AdapterListProxyTests(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["params"], {"file_kind": "adapter"})
 
 
+class PictureListProxyTests(unittest.TestCase):
+    """``/pixlstash/pictures``: the list, and whose its ids are."""
+
+    def _call(self, headers):
+        client = _FakeClient(_Response(payload=[{"id": 41}], headers=headers))
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
+            resp = asyncio.run(proxy.proxy_pictures(_Request(fields="grid")))
+        return client, resp
+
+    def test_hands_on_the_library_the_ids_are_of(self):
+        # PixlStash names it on the list; the picker writes it beside a pick.
+        client, resp = self._call(
+            {"X-PixlStash-Library": "lib-open", "Set-Cookie": "session=1"}
+        )
+        self.assertEqual(client.calls[0][0], "/api/v1/pictures")
+        self.assertEqual(json.loads(resp.kwargs["body"]), [{"id": 41}])
+        # That header and no other of PixlStash's.
+        self.assertEqual(resp.kwargs["headers"], {"X-PixlStash-Library": "lib-open"})
+
+    def test_a_list_that_names_no_library_is_still_the_list(self):
+        # A key that is not the owner's, or an older PixlStash.
+        _client, resp = self._call({})
+        self.assertEqual(json.loads(resp.kwargs["body"]), [{"id": 41}])
+        self.assertFalse(resp.kwargs.get("headers"))
+
+
 class WorkflowGraphProxyTests(unittest.TestCase):
     """``/pixlstash/workflow_graph`` puts ``workflow_key`` into an upstream path.
 

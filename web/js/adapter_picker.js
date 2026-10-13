@@ -10,7 +10,9 @@
  *   credentials — { url, token, verifySsl }
  *   filters     — { fileKind, kind, baseModel, characterId, setId, workflowSetId,
  *                   several? }
- *   onPicked    — called with the chosen shelf record after confirm
+ *   onPicked    — called with the chosen shelf record after confirm, and
+ *                 the id of the shelf the list came from ("" where the
+ *                 server names none)
  *
  * With `filters.several` the same grid ticks several adapters, for the
  * Multi Adapter Loader: `{ picked, limit, people, onView }`, where `picked` is
@@ -378,6 +380,9 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
 
     let selectedValue = String(valueWidget?.value ?? "").trim() || null;
     let selectedRecord = null;
+    // The id of the shelf the list came from, which the server answers
+    // beside the list. Empty until it has, and where it names none.
+    let shelfId = "";
 
     const itemElements = [];
     let workflowNote = ""; // why the canvas's PixlStash workflow offers nobody
@@ -927,7 +932,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             valueWidget.callback(valueWidget.value);
         }
         close();
-        onPicked?.(picked);
+        onPicked?.(picked, shelfId);
     }
 
     // The search box filters the fetched array rather than re-querying — the
@@ -963,6 +968,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
 
     try {
         const data = await proxyFetch(shelf.path, credentials, buildAdapterQuery(filters));
+        shelfId = typeof data?.shelf === "string" ? data.shelf : "";
         let rows = data?.[shelf.listKey];
         rows = Array.isArray(rows) ? rows : [];
         if (filters?.workflowSetId) {

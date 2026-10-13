@@ -198,6 +198,25 @@ node, which is normally one — but a node fed from something with
 so the list can hold several and indexing `[0]` would record one resolution out
 of N.
 
+### Whose an id is
+
+The Picture Loader and the Checkpoint Loader address what they load by a row
+id, and an id means nothing outside the library or the shelf it was picked
+from: ids start at 1 in every one. So each keeps, in a hidden widget beside
+the id, whose it is. The Picture Loader's `library` is the uuid of the library
+its `picture_ids` are from; the Checkpoint Loader's `shelf` is the id of the
+shelf its `checkpoint_id` is a row of (`GET /checkpoints` answers it as
+`shelf`). The Browse buttons write them, and so does PixlStash when it opens a
+workflow here.
+
+They reach the API `prompt`, and so every picture the workflow makes. PixlStash
+reads the ids back out of such a picture (to run the workflow again, or to
+find what the picture was made from) only when they name the library and the
+shelf it has open. The nodes themselves load by id alone. A workflow saved
+before these widgets has them empty; pick again to fill them. PixlStash
+names the library on its picture list for the owner's key and the one it
+hands ComfyUI; with a share link's key the pick lands without it.
+
 ### Opened from PixlStash
 
 PixlStash's Workflow tab has an **Open in ComfyUI** button. A workflow opened
@@ -226,11 +245,17 @@ with it is linked to the PixlStash workflow it came from:
   workflow, and the next *Open in ComfyUI* opens it the way you left it, with
   the workflow's current values written over it. The layout is used only when
   it turns out to be the same graph PixlStash has; a workflow never saved
-  from ComfyUI, or rewired in PixlStash since, opens auto-arranged.
+  from ComfyUI, or rewired in PixlStash since, opens auto-arranged. A node
+  PixlStash has since put one of its own in place of (below) is replaced
+  where it stands, so the layout is kept across that.
 - **It opens with PixlStash nodes in it.** Save Image and Save Video open as
   the PixlStash Picture Saver and Video Saver, so what you queue here comes
   back to PixlStash, and a LoRA loader whose file is on PixlStash's shelf
-  opens as the Adapter Loader. Nothing else about the graph changes, and
+  opens as the Adapter Loader. A Load Image with a picture pinned to it in
+  PixlStash, or holding one a run uploaded, opens as the Picture Loader on
+  that picture, and, where ComfyUI and
+  PixlStash are on one computer, a Load Checkpoint whose file is on the shelf
+  opens as the Checkpoint Loader. Nothing else about the graph changes, and
   saving it untouched saves nothing new. **Open original in ComfyUI**, in the
   Workflow tab's *More* menu, opens the workflow with its own nodes instead.
   Needs PixlStash 1.12.

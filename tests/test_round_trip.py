@@ -30,7 +30,7 @@ OTHER = "manual:" + "b" * 32
 
 DRIVER = r"""
 import { app } from "../../scripts/app.js";
-import { differsFrom, fileStem, placePeopleLoader } from "./open_workflow.js";
+import { differsFrom, fileStem, placePeopleLoader, swapNodes } from "./open_workflow.js";
 import { saveToPixlStash } from "./save_workflow.js";
 import { FILE_TAG, TAG, isUnsent, openings, quietly } from "./workflow_link.js";
 
@@ -461,6 +461,96 @@ results.switched_while_converting = await save({
     results.no_hook = { toasts, commands: saver.commands.map((c) => c.label), menu: saver.menuCommands };
 }
 {
+    // A layout saved with stock nodes, opened on a graph that has this pack's
+    // in their place: each is replaced where it stands, wired as it was.
+    const SLOTS = {
+        CheckpointLoaderSimple: [[], ["MODEL", "CLIP", "VAE"]],
+        PixlStashCheckpointLoader: [[], ["MODEL", "CLIP", "VAE"]],
+        LoraLoader: [["model", "clip"], ["MODEL", "CLIP"]],
+        PixlStashAdapterLoader: [["model", "clip", "pixlstash_set"], ["MODEL", "CLIP", "STRING"]],
+        CLIPTextEncode: [["clip"], ["CONDITIONING"]],
+        VAEDecode: [["samples", "vae"], ["IMAGE"]],
+        SaveImage: [["images"], []],
+        PixlStashPictureSaver: [["images", "pixlstash_set"], ["STRING"]],
+        // A node of another shape: no input by the name the old one read.
+        OtherSaver: [["frames"], []],
+    };
+    const links = new Map();
+    let nextLink = 1;
+    const linked = (id, type, title) => ({
+        id, type, title: title ?? `Load ${type}`, constructor: { title: `Load ${type}` }, mode: 0,
+        pos: [id * 10, 7], size: [type.startsWith("PixlStash") ? 260 : 320, 80],
+        inputs: SLOTS[type][0].map((name) => ({ name, link: null })),
+        outputs: SLOTS[type][1].map((name) => ({ name, links: [] })),
+        findInputSlot(name) { return this.inputs.findIndex((i) => i.name === name); },
+        connect(slot, target, to) {
+            const input = typeof to === "number" ? to : target.findInputSlot(to);
+            if (input < 0) return null;
+            const link = { id: nextLink++, origin_id: this.id, origin_slot: slot, target_id: target.id, target_slot: input };
+            links.set(link.id, link);
+            this.outputs[slot].links.push(link.id);
+            target.inputs[input].link = link.id;
+            return link;
+        },
+    });
+    const graph = {
+        links, nodes: [],
+        getNodeById(id) { return this.nodes.find((n) => n.id === id) ?? null; },
+        add(node) { if (node.id == null || node.id === -1) node.id = 99; this.nodes.push(node); },
+        remove(node) {
+            for (const [id, link] of [...links]) {
+                if (link.origin_id !== node.id && link.target_id !== node.id) continue;
+                links.delete(id);
+                const from = this.getNodeById(link.origin_id), to = this.getNodeById(link.target_id);
+                if (from) from.outputs[link.origin_slot].links = from.outputs[link.origin_slot].links.filter((l) => l !== id);
+                if (to) to.inputs[link.target_slot].link = null;
+            }
+            this.nodes = this.nodes.filter((n) => n !== node);
+        },
+    };
+    const lite = {
+        createNode: (type) => (type === "NotInstalled" ? null : { ...linked(-1, type), pos: [0, 0] }),
+    };
+    const [ckpt, lora, text, decode, save, copy, gone] = [
+        linked(1, "CheckpointLoaderSimple"), linked(2, "LoraLoader"), linked(6, "CLIPTextEncode"),
+        linked(8, "VAEDecode"), linked(9, "SaveImage", "Final"), linked(10, "SaveImage"), linked(11, "SaveImage"),
+    ];
+    for (const node of [ckpt, lora, text, decode, save, copy, gone]) graph.add(node);
+    ckpt.connect(0, lora, "model");
+    ckpt.connect(1, lora, "clip");
+    lora.connect(1, text, "clip");
+    ckpt.connect(2, decode, "vae");
+    decode.connect(0, save, "images");
+    decode.connect(0, copy, "images");
+    decode.connect(0, gone, "images");
+    save.mode = 4;
+    const api = {
+        1: { class_type: "PixlStashCheckpointLoader" },
+        2: { class_type: "PixlStashAdapterLoader" },
+        6: { class_type: "CLIPTextEncode" },
+        8: { class_type: "VAEDecode" },
+        9: { class_type: "PixlStashPictureSaver" },
+        10: { class_type: "NotInstalled" },
+        11: { class_type: "OtherSaver" },
+        "75:3": { class_type: "PixlStashPictureSaver" },
+    };
+    const wires = () => [...links.values()]
+        .map((l) => [l.origin_id, l.origin_slot, l.target_id, graph.getNodeById(l.target_id).inputs[l.target_slot].name])
+        .sort();
+    const before = wires();
+    const swapped = swapNodes(graph, api, lite);
+    const at = (id) => graph.getNodeById(id);
+    results.swapped = {
+        swapped, before, after: wires(),
+        types: graph.nodes.map((n) => [n.id, n.type]).sort((a, b) => a[0] - b[0]),
+        pos: [at(1).pos, at(2).pos, at(9).pos],
+        // No narrower than it was laid out.
+        width: at(2).size[0],
+        titles: [at(9).title, at(2).title],
+        mode: at(9).mode,
+    };
+}
+{
     // PixlStash's "Open original in ComfyUI": the workflow's own nodes.
     comfy();
     await saver.setup();
@@ -586,6 +676,41 @@ class RoundTripTests(unittest.TestCase):
                 # The graph itself is what is on the canvas.
                 self.assertEqual(result["nodes"], [1, 3, 6])
                 self.assertEqual(result["toasts"], [])
+
+    def test_a_layouts_stock_node_becomes_the_packs_where_it_stands(self):
+        """A layout holds the nodes it was saved with; PixlStash may since
+        open the workflow with one of this pack's in a stock node's place.
+        The node is replaced under its id, where it was, wired as it was."""
+        result = self.results["swapped"]
+        self.assertEqual(result["swapped"], ["1", "2", "9", "11"])
+        self.assertEqual(
+            result["types"],
+            [
+                [1, "PixlStashCheckpointLoader"],
+                [2, "PixlStashAdapterLoader"],
+                [6, "CLIPTextEncode"],
+                [8, "VAEDecode"],
+                [9, "PixlStashPictureSaver"],
+                # A class this ComfyUI does not have: the node is left, and
+                # the canvas then converts to another graph, which costs the
+                # layout and nothing else.
+                [10, "SaveImage"],
+                [11, "OtherSaver"],
+            ],
+        )
+        # Every wire is where it was, but the one the new node has no input
+        # for: that is a canvas the caller's check does not take for the graph.
+        lost = [8, 0, 11, "images"]
+        self.assertIn(lost, result["before"])
+        self.assertEqual(
+            result["after"], [wire for wire in result["before"] if wire != lost]
+        )
+        self.assertEqual(result["pos"], [[10, 7], [20, 7], [90, 7]])
+        self.assertEqual(result["width"], 320)
+        # A name the owner gave stays; the stock node's own name does not.
+        self.assertEqual(result["titles"], ["Final", "Load PixlStashAdapterLoader"])
+        # Bypassed stays bypassed.
+        self.assertEqual(result["mode"], 4)
 
     def test_what_makes_a_canvas_another_graph(self):
         differs = self.results["differs"]
