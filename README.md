@@ -227,6 +227,13 @@ with it is linked to the PixlStash workflow it came from:
   the workflow's current values written over it. The layout is used only when
   it turns out to be the same graph PixlStash has; a workflow never saved
   from ComfyUI, or rewired in PixlStash since, opens auto-arranged.
+- **It opens with PixlStash nodes in it.** Save Image and Save Video open as
+  the PixlStash Picture Saver and Video Saver, so what you queue here comes
+  back to PixlStash, and a LoRA loader whose file is on PixlStash's shelf
+  opens as the Adapter Loader. Nothing else about the graph changes, and
+  saving it untouched saves nothing new. **Open original in ComfyUI**, in the
+  Workflow tab's *More* menu, opens the workflow with its own nodes instead.
+  Needs PixlStash 1.12.
 - **A loader for people is put beside the model**: a Multi Adapter Loader set
   to *People who fit*, offering the people PixlStash's Run popup offers for
   the workflow, wired where a run from PixlStash would put a person's LoRA.

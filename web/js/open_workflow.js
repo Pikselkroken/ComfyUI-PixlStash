@@ -25,6 +25,12 @@
  *   loaded under the name of, so the graph is loaded as `pixlstash/<name>`
  *   and saved once.
  *
+ * - **With this pack's nodes** where PixlStash can put one in place of a
+ *   stock node (`pixlstash_nodes`): its savers for Save Image and Save Video,
+ *   so what is queued here comes back to PixlStash, and its Adapter Loader
+ *   for a LoRA its shelf holds. A link that also carries `pixlstash_original`
+ *   (PixlStash's *Open original in ComfyUI*) opens the workflow's own nodes.
+ *
  * The key is taken off the address at once, so reloading the tab does not
  * fetch the graph again over whatever the reader has changed since.
  */
@@ -36,6 +42,8 @@ import {
 } from "./workflow_link.js";
 
 const PARAM = "pixlstash_workflow";
+// Beside it in the link: open the workflow's own nodes, none of this pack's.
+const ORIGINAL = "pixlstash_original";
 // The folder of ComfyUI's workflows that opened workflows are saved in.
 const FOLDER = "workflows/pixlstash/";
 
@@ -48,9 +56,11 @@ function takeKeyFromUrl() {
     const url = new URL(window.location.href);
     const key = url.searchParams.get(PARAM);
     if (key === null) return null;
+    const original = url.searchParams.has(ORIGINAL);
     url.searchParams.delete(PARAM);
+    url.searchParams.delete(ORIGINAL);
     window.history.replaceState(window.history.state, "", url.toString());
-    return key;
+    return { key, original };
 }
 
 /**
@@ -385,7 +395,7 @@ function unsavedTabOf(key) {
     ) ?? null;
 }
 
-async function openFromUrl(key) {
+async function openFromUrl(key, original = false) {
     if (!KEY_RE.test(key)) {
         notify("error", "That is not a PixlStash workflow link.");
         return;
@@ -404,6 +414,9 @@ async function openFromUrl(key) {
         // the graph, and come back in the version saved here. `all_stages`:
         // a stage cut out of a graph saved back could not be switched on again.
         const query = new URLSearchParams({ workflow_key: key, waiting: "true", all_stages: "true" });
+        // This pack's savers and Adapter Loader in place of the stock nodes,
+        // unless the link asks for the workflow as it is.
+        if (!original) query.set("pixlstash_nodes", "true");
         const resp = await fetch(`/pixlstash/workflow_graph?${query}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
@@ -515,11 +528,11 @@ app.registerExtension({
     name: "ComfyUI.PixlStash.OpenWorkflow",
 
     async setup() {
-        const key = takeKeyFromUrl();
+        const { key, original } = takeKeyFromUrl() ?? {};
         // Not awaited: `setup` is awaited by ComfyUI's start-up, and this has
         // to wait for the rest of that start-up to finish.
-        if (key !== null) {
-            openFromUrl(key).catch((err) => {
+        if (key != null) {
+            openFromUrl(key, original).catch((err) => {
                 console.error("[PixlStash] could not open workflow", key, err);
                 notify("error", `Could not open that workflow: ${err.message}`);
             });
