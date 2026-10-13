@@ -436,7 +436,7 @@ _NEEDS_BOTH = "workflow and output must both be JSON objects."
 
 
 async def proxy_workflow_convert(request: web.Request) -> web.Response:
-    """Forward *Export to PixlStash*'s ``{name, workflow, output}`` to PixlStash."""
+    """Forward *Save as new workflow in PixlStash*'s ``{name, workflow, output}`` to PixlStash."""
     body = await _both_documents(request)
     if body is None:
         return _err(_NEEDS_BOTH, status=400)

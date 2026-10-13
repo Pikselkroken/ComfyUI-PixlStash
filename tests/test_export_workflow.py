@@ -1,10 +1,11 @@
-"""*Export to PixlStash* (``web/js/convert_workflow.js``): which document goes.
+"""*Save as new workflow in PixlStash* (``web/js/convert_workflow.js``): which document goes.
 
 What is pinned: a workflow never saved, or changed since its save, is exported
 as the canvas stands rather than refused; a saved file with no changes goes as
 the file's own content, which is what PixlStash matches on; a tab switch while
-ComfyUI converts sends nothing; the menu command is the plain export under
-its new name; and a LoRA PixlStash left out because it is somebody's is said.
+ComfyUI converts sends nothing; the menu command is the plain export, named
+as the second of a pair with *Save to PixlStash* and listed after it; and a
+LoRA PixlStash left out because it is somebody's is said.
 
 The command is run in Node against a stand-in for ComfyUI's ``app``, so this
 is skipped where there is no ``node``.
@@ -26,6 +27,7 @@ OUTPUT = {"1": {"class_type": "canvas", "inputs": {}}}
 DRIVER = """
 import { app } from "../../scripts/app.js";
 import { exportActiveWorkflow } from "./convert_workflow.js";
+import "./save_workflow.js";
 
 const [canvas, file, output] = JSON.parse(process.argv[2]);
 const saved = () => ({ filename: "wf", isTemporary: false, isModified: false, originalContent: JSON.stringify(file) });
@@ -64,7 +66,7 @@ for (const [name, s] of Object.entries(scenarios)) {
 }
 
 // The menu command, called as ComfyUI calls it: with its own argument.
-const command = app.extensions[0].commands[0];
+const command = app.extensions[0].commands.find((c) => c.id === "PixlStash.ConvertWorkflow");
 results.command = { label: command.label, menu: app.extensions[0].menuCommands, sent: null };
 app.extensionManager = { workflow: { activeWorkflow: { ...saved(), isModified: true } } };
 globalThis.fetch = async (url, init) => {
@@ -92,7 +94,7 @@ class ExportWorkflowTests(unittest.TestCase):
                 "    registerExtension(extension) { this.extensions.push(extension); },\n"
                 "};\n"
             )
-            for name in ("convert_workflow.js", "workflow_link.js"):
+            for name in ("convert_workflow.js", "save_workflow.js", "workflow_link.js"):
                 shutil.copy(ROOT / "web" / "js" / name, js)
             (js / "driver.js").write_text(DRIVER)
             done = subprocess.run(
@@ -164,10 +166,17 @@ class ExportWorkflowTests(unittest.TestCase):
 
     def test_the_menu_command_is_the_plain_export(self):
         command = self.results["command"]
-        self.assertEqual(command["label"], "Export to PixlStash")
+        self.assertEqual(command["label"], "Save as new workflow in PixlStash")
+        # One group with *Save to PixlStash* first: two groups came out in
+        # whichever order ComfyUI happened to load the two files.
         self.assertEqual(
             command["menu"],
-            [{"path": ["PixlStash"], "commands": ["PixlStash.ConvertWorkflow"]}],
+            [
+                {
+                    "path": ["PixlStash"],
+                    "commands": ["PixlStash.SaveWorkflow", "PixlStash.ConvertWorkflow"],
+                }
+            ],
         )
         # Unsaved changes go, whatever ComfyUI hands the command.
         self.assertEqual(command["sent"], CANVAS)
