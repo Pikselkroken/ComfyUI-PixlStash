@@ -262,12 +262,12 @@ class ControlNetLoadTests(unittest.TestCase):
         asked = []
 
         def fake_resolve(sha, **kwargs):
-            asked.append((sha, kwargs["folder_key"]))
+            asked.append((sha, kwargs["folder_key"], kwargs["min_server_version"]))
             return ({"sha256": sha, "filename": "canny.safetensors"}, path)
 
         with mock.patch.object(shelf_file, "resolve", fake_resolve):
             out = CN().load_controlnet(SHA)
-        self.assertEqual(asked, [(SHA, "controlnet")])
+        self.assertEqual(asked, [(SHA, "controlnet", "1.12.0")])
         return out
 
     def test_loads_the_resolved_file_and_reports_it(self):
@@ -281,6 +281,20 @@ class ControlNetLoadTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             self._load("/models/controlnet/broken.safetensors")
         self.assertIn("not a ControlNet", str(ctx.exception))
+
+    def test_resolve_hands_the_floor_to_the_client(self):
+        floors = []
+
+        def client_for(label, *, min_server_version):
+            floors.append(min_server_version)
+            raise RuntimeError("stop before the network")
+
+        with mock.patch.object(shelf_file, "client_for", client_for):
+            with self.assertRaises(RuntimeError):
+                shelf_file.resolve(
+                    SHA, label="x", folder_key="controlnet", min_server_version="1.12.0"
+                )
+        self.assertEqual(floors, ["1.12.0"])
 
 
 class _Client:

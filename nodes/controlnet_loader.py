@@ -23,6 +23,9 @@ from . import lock, shelf_file
 log = logging.getLogger(__name__)
 
 LABEL = "PixlStash ControlNet Loader"
+# The shelf's `controlnet` kind: an older server files a ControlNet as a
+# checkpoint and refuses to serve its bytes.
+MIN_SERVER_VERSION = "1.12.0"
 
 
 def load_file(path: str):
@@ -78,7 +81,10 @@ class PixlStashControlNetLoader:
 
     def load_controlnet(self, control_net_sha256: str):
         record, path = shelf_file.resolve(
-            control_net_sha256, label=LABEL, folder_key="controlnet"
+            control_net_sha256,
+            label=LABEL,
+            folder_key="controlnet",
+            min_server_version=MIN_SERVER_VERSION,
         )
         return lock.report(
             (load_file(path),),

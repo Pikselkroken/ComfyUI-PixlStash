@@ -362,7 +362,7 @@ class SuffixTests(unittest.TestCase):
             return "/cache/x"
 
         with (
-            mock.patch.object(shelf_file, "client_for", lambda label: object()),
+            mock.patch.object(shelf_file, "client_for", lambda label, **kw: object()),
             mock.patch.object(shelf_file, "fetch_record", lambda c, s, label: record),
             mock.patch.object(shelf_file, "cached_download", cached_download),
         ):
