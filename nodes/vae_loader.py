@@ -14,7 +14,8 @@ Deliberately *not* ported from the built-in: the TAESD / ``pixel_space`` /
 decoder files in ComfyUI's own ``vae_approx`` folder, and PixlStash's scanner
 excludes ``approxvae`` from the ``vae`` kind on purpose ("they live beside real
 autoencoders and are not one").  There is therefore no shelf row that could
-reach those branches, and the metadata argument they need goes with them.
+reach those branches.  The file's own metadata is passed on as the built-in
+passes it: an LTX video or audio VAE reads its config from there.
 """
 
 from __future__ import annotations
@@ -34,8 +35,10 @@ def load_file(path: str):
     import comfy.utils  # noqa: PLC0415
 
     # safe_load, as everywhere in this package: the path came off the wire.
-    sd = comfy.utils.load_torch_file(path, safe_load=True)
-    vae = comfy.sd.VAE(sd=sd)
+    sd, metadata = comfy.utils.load_torch_file(
+        path, safe_load=True, return_metadata=True
+    )
+    vae = comfy.sd.VAE(sd=sd, metadata=metadata)
     # Turns "a file that is not a VAE" into an error here rather than a
     # tensor-shape crash three nodes later. Guarded because it is a newer
     # addition to ComfyUI than this node's minimum.

@@ -140,6 +140,35 @@ class ClipTypeTests(unittest.TestCase):
         self.assertTrue(CLIP.VALIDATE_INPUTS(type="whatever_ships_next"))
 
 
+class VaeMetadataTests(unittest.TestCase):
+    """The file's metadata reaches the VAE, as the built-in loader passes it:
+    an LTX audio VAE refuses to build without its config from there."""
+
+    def test_the_files_metadata_is_passed_to_the_vae(self):
+        seen = {}
+        comfy = types.ModuleType("comfy")
+        comfy.__path__ = []
+        sd = types.ModuleType("comfy.sd")
+        utils = types.ModuleType("comfy.utils")
+
+        def load_torch_file(path, safe_load=False, return_metadata=False):
+            weights = {"w": 1}
+            return (weights, {"config": "{}"}) if return_metadata else weights
+
+        class FakeVAE:
+            def __init__(self, sd=None, metadata=None):
+                seen["sd"], seen["metadata"] = sd, metadata
+
+        utils.load_torch_file = load_torch_file
+        sd.VAE = FakeVAE
+        comfy.sd, comfy.utils = sd, utils
+        with mock.patch.dict(
+            sys.modules, {"comfy": comfy, "comfy.sd": sd, "comfy.utils": utils}
+        ):
+            vae_loader.load_file("/models/vae/v.safetensors")
+        self.assertEqual(seen, {"sd": {"w": 1}, "metadata": {"config": "{}"}})
+
+
 class ClipPathTests(unittest.TestCase):
     """One file or two, and nothing in between."""
 
