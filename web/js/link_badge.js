@@ -3,7 +3,9 @@
  *
  * Shown only on the file PixlStash opened (`linkState` is `"linked"`), which
  * is where a plain save goes back to the workflow: without it nothing on
- * screen tells that file from any other.
+ * screen tells that file from any other. Not on a run opened from the Run
+ * popup (`"new"`): a save of that makes a new workflow, which the sign's
+ * words would deny.
  *
  * It is this pack's own element. ComfyUI's top-bar badges are read once from
  * each extension when it registers, so they cannot follow the canvas.

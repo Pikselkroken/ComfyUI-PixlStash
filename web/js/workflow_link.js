@@ -19,6 +19,14 @@ import { app } from "../../scripts/app.js";
 export const TAG = "pixlstash_workflow_id";
 /** The file, under ComfyUI's user folder, that PixlStash opened the workflow as. */
 export const FILE_TAG = "pixlstash_file";
+/**
+ * On a canvas opened from PixlStash's Run popup (`open_run.js`): it is the
+ * workflow with one run's changes in it, so a save of it is sent as a NEW
+ * workflow and never over the one it came from. Written into the graph like
+ * the other two, so it outlives a reload; taken off once that new workflow
+ * exists, when the canvas is linked to it instead.
+ */
+export const NEW_TAG = "pixlstash_save_as_new";
 
 /** A workflow id: `auto:` and the core hash, or `manual:` and a uuid hex. */
 export const KEY_RE = /^(?:auto:[0-9a-f]{64}|manual:[0-9a-f]{32})$/;
@@ -60,14 +68,17 @@ export function linkedFile(graph = rootGraph()) {
 
 /**
  * How the canvas stands with PixlStash: `"linked"` when it is the file
- * PixlStash opened, so saving it saves to its workflow; `"copy"` when it
- * carries a workflow's id and is another file, which only *Save to PixlStash*
- * sends; null when it carries none.
+ * PixlStash opened, so saving it saves to its workflow; `"new"` when it is
+ * that file and a run from the Run popup (`NEW_TAG`), so saving it makes a
+ * new workflow and the one it names is left alone; `"copy"` when it carries a
+ * workflow's id and is another file, which only *Save to PixlStash* sends;
+ * null when it carries none.
  */
 export function linkState() {
     if (!linkedWorkflow()) return null;
     const path = app.extensionManager?.workflow?.activeWorkflow?.path ?? "";
-    return linkedFile() === path ? "linked" : "copy";
+    if (linkedFile() !== path) return "copy";
+    return rootGraph()?.extra?.[NEW_TAG] ? "new" : "linked";
 }
 
 /**

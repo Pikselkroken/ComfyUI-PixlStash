@@ -113,6 +113,40 @@ class SaveProxyTests(unittest.TestCase):
         )
         self.assertEqual(sent["source"], "comfyui")
 
+    def test_a_run_opened_from_pixlstash_is_sent_as_a_new_workflow(self):
+        """The route says so, never the body: a flag in the body is what a
+        ComfyUI still running the older routes would drop."""
+        client, resp = self._call(proxy.proxy_workflow_save_new, _Request(BODY))
+        [(method, path, kwargs)] = client.calls
+        self.assertEqual((method, path, kwargs["is_write"]), ("PUT", PATH, True))
+        self.assertIs(kwargs["json"]["as_new"], True)
+        self.assertEqual(kwargs["json"]["workflow"], OUTPUT)
+        self.assertEqual(body_of(resp), {"version": 4})
+        client, _ = self._call(
+            proxy.proxy_workflow_save, _Request({**BODY, "as_new": True})
+        )
+        self.assertNotIn("as_new", client.calls[0][2]["json"])
+
+    def test_a_run_goes_on_with_the_query_and_only_what_is_one(self):
+        """The Run popup's link: PixlStash is asked for the run by its id."""
+        run = "c" * 32
+        client, _ = self._call(
+            proxy.proxy_workflow_graph,
+            _Request(query={"workflow_key": KEY, "run": run}),
+        )
+        [(method, path, kwargs)] = client.calls
+        self.assertEqual((method, path), ("GET", f"/api/v1/workflows/{KEY}/graph"))
+        self.assertEqual(kwargs["params"]["run"], run)
+        for bad in ("", "c" * 31, "c" * 33, "C" * 32, f"{run}&waiting=true", "../x"):
+            with self.subTest(bad=bad):
+                client, resp = self._call(
+                    proxy.proxy_workflow_graph,
+                    _Request(query={"workflow_key": KEY, "run": bad}),
+                )
+                self.assertEqual(resp.kwargs.get("status"), 400)
+                self.assertIn("run must be", body_of(resp)["error"])
+                self.assertEqual(client.calls, [])
+
     def test_a_version_that_is_not_known_is_not_sent(self):
         """Its absence is what tells PixlStash the graph was read at none."""
         for unknown in (None, "3", True, 2.5):
@@ -169,6 +203,7 @@ class SaveProxyTests(unittest.TestCase):
             (proxy.proxy_workflow_people, _Request(query=key)),
             (proxy.proxy_workflow_convert, _Request(BODY)),
             (proxy.proxy_workflow_save, _Request(BODY)),
+            (proxy.proxy_workflow_save_new, _Request(BODY)),
         ):
             with self.subTest(handler=handler.__name__):
                 client, _ = self._call(handler, request)
