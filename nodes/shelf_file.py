@@ -345,11 +345,13 @@ def resolve(
     folder_key: str,
     download: bool = True,
     suffixes: tuple[str, ...] = SAFETENSORS,
+    min_server_version: str = "1.10.0",
 ):
     """``(record, path)`` for a hash-addressed shelf file.
 
     The one entry point the nodes call: everything above is reachable on its
-    own for the checkpoint loader, which has no hash to address by.
+    own for the checkpoint loader, which has no hash to address by. A node
+    whose file kind is newer than the shelf passes its own floor.
     """
     sha256 = (sha256 or "").strip().lower()
     if not sha256:
@@ -363,7 +365,7 @@ def resolve(
             f"digest (got {sha256!r})."
         )
 
-    client = client_for(label)
+    client = client_for(label, min_server_version=min_server_version)
     record = fetch_record(client, sha256, label=label)
     # Refused here, before a local lookup or a download of gigabytes: this is
     # how a node that cannot load a GGUF says so when handed one.
