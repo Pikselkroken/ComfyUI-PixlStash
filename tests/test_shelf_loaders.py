@@ -1,4 +1,4 @@
-"""The VAE, CLIP and Checkpoint loaders — contract, and the logic each adds.
+"""The VAE, CLIP, ControlNet and Checkpoint loaders — contract, and the logic each adds.
 
 Resolution itself is `shelf_file`'s and is covered by test_adapter_path.py /
 test_adapter_download.py / test_adapter_resolve.py. What is left per node is
@@ -21,10 +21,12 @@ shelf_file = boot.load("nodes.shelf_file")
 vae_loader = boot.load("nodes.vae_loader")
 clip_loader = boot.load("nodes.clip_loader")
 checkpoint_loader = boot.load("nodes.checkpoint_loader")
+controlnet_loader = boot.load("nodes.controlnet_loader")
 
 VAE = vae_loader.PixlStashVAELoader
 CLIP = clip_loader.PixlStashCLIPLoader
 CKPT = checkpoint_loader.PixlStashCheckpointLoader
+CN = controlnet_loader.PixlStashControlNetLoader
 
 SHA = "a" * 64
 
@@ -44,7 +46,7 @@ def _display_names():
 
 class ContractTests(unittest.TestCase):
     def test_each_node_is_a_pixlstash_node_with_a_callable_function(self):
-        for cls in (VAE, CLIP, CKPT):
+        for cls in (VAE, CLIP, CKPT, CN):
             with self.subTest(node=cls.__name__):
                 self.assertEqual(cls.CATEGORY, "PixlStash")
                 self.assertTrue(callable(getattr(cls, cls.FUNCTION, None)))
@@ -53,7 +55,7 @@ class ContractTests(unittest.TestCase):
     def test_output_tooltips_line_up_with_the_outputs(self):
         # Paired BY INDEX by ComfyUI, so a short tuple moves every later
         # tooltip onto the wrong socket instead of raising.
-        for cls in (VAE, CLIP, CKPT):
+        for cls in (VAE, CLIP, CKPT, CN):
             with self.subTest(node=cls.__name__):
                 self.assertEqual(len(cls.RETURN_TYPES), len(cls.RETURN_NAMES))
                 self.assertEqual(len(cls.OUTPUT_TOOLTIPS), len(cls.RETURN_NAMES))
@@ -62,6 +64,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(VAE.RETURN_TYPES, ("VAE",))
         self.assertEqual(CLIP.RETURN_TYPES, ("CLIP",))
         self.assertEqual(CKPT.RETURN_TYPES, ("MODEL", "CLIP", "VAE"))
+        self.assertEqual(CN.RETURN_TYPES, ("CONTROL_NET",))
 
     def test_the_widgets_the_js_drives_by_name_exist(self):
         # combo_widgets.js finds these with widgets.find(w => w.name === …).
@@ -71,6 +74,9 @@ class ContractTests(unittest.TestCase):
             (CLIP, "clip_sha256", "required"),
             (CLIP, "clip_sha256_2", "optional"),
             (CKPT, "checkpoint_id", "required"),
+            # PixlStash writes this one by name when it swaps the node in for
+            # a Load ControlNet Model (`swap_in_pack_nodes`).
+            (CN, "control_net_sha256", "required"),
             # Whose the id is. Optional, so a workflow saved before it was
             # there still validates.
             (CKPT, "shelf", "optional"),
@@ -88,7 +94,7 @@ class ContractTests(unittest.TestCase):
     def test_no_credential_widgets(self):
         # Credentials are resolved server-side from ComfyUI Settings; a widget
         # here would put the token in the prompt and the saved workflow.
-        for cls in (VAE, CLIP, CKPT):
+        for cls in (VAE, CLIP, CKPT, CN):
             spec = cls.INPUT_TYPES()
             declared = set(spec["required"]) | set(spec.get("optional", {}))
             for forbidden in ("url", "token", "api_token", "verify_ssl"):
@@ -101,6 +107,7 @@ class ContractTests(unittest.TestCase):
             "PixlStashVAELoader",
             "PixlStashCLIPLoader",
             "PixlStashCheckpointLoader",
+            "PixlStashControlNetLoader",
         ):
             with self.subTest(node=key):
                 self.assertIn(key, names)
@@ -228,6 +235,52 @@ class ClipPathTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 CLIP().load_clip("", "flux", "")
         self.assertIn("no text encoder selected", str(ctx.exception))
+
+
+class ControlNetLoadTests(unittest.TestCase):
+    """Resolved under the controlnet folder; a file ComfyUI cannot read is an error."""
+
+    def setUp(self):
+        self.loaded = []
+        comfy = types.ModuleType("comfy")
+        comfy.__path__ = []
+        controlnet = types.ModuleType("comfy.controlnet")
+
+        def load_controlnet(path):
+            self.loaded.append(path)
+            return None if "broken" in path else "CONTROL_NET"
+
+        controlnet.load_controlnet = load_controlnet
+        comfy.controlnet = controlnet
+        patch = mock.patch.dict(
+            sys.modules, {"comfy": comfy, "comfy.controlnet": controlnet}
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _load(self, path):
+        asked = []
+
+        def fake_resolve(sha, **kwargs):
+            asked.append((sha, kwargs["folder_key"]))
+            return ({"sha256": sha, "filename": "canny.safetensors"}, path)
+
+        with mock.patch.object(shelf_file, "resolve", fake_resolve):
+            out = CN().load_controlnet(SHA)
+        self.assertEqual(asked, [(SHA, "controlnet")])
+        return out
+
+    def test_loads_the_resolved_file_and_reports_it(self):
+        out = self._load("/models/controlnet/canny.safetensors")
+        self.assertEqual(out["result"], ("CONTROL_NET",))
+        self.assertEqual(self.loaded, ["/models/controlnet/canny.safetensors"])
+        (entry,) = out["ui"]["pixlstash_lock"][0]["models"]
+        self.assertEqual((entry["kind"], entry["sha256"]), ("controlnet", SHA))
+
+    def test_a_file_comfyui_cannot_load_is_an_error_not_none(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            self._load("/models/controlnet/broken.safetensors")
+        self.assertIn("not a ControlNet", str(ctx.exception))
 
 
 class _Client:

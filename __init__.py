@@ -31,6 +31,7 @@ from .nodes.multi_adapter_loader import PixlStashMultiAdapterLoader
 from .nodes.checkpoint_loader import PixlStashCheckpointLoader
 from .nodes.clip_loader import PixlStashCLIPLoader
 from .nodes.vae_loader import PixlStashVAELoader
+from .nodes.controlnet_loader import PixlStashControlNetLoader
 from .nodes.workflow_set_loader import PixlStashWorkflowSetLoader
 from .proxy_routes import register_routes
 from .serve_routes import register_routes as register_serve_routes
@@ -56,6 +57,7 @@ NODE_CLASS_MAPPINGS = {
     "PixlStashCheckpointLoader": PixlStashCheckpointLoader,
     "PixlStashVAELoader": PixlStashVAELoader,
     "PixlStashCLIPLoader": PixlStashCLIPLoader,
+    "PixlStashControlNetLoader": PixlStashControlNetLoader,
     "PixlStashWorkflowSetLoader": PixlStashWorkflowSetLoader,
 }
 
@@ -79,6 +81,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixlStashCheckpointLoader": "PixlStash Checkpoint Loader",
     "PixlStashVAELoader": "PixlStash VAE Loader",
     "PixlStashCLIPLoader": "PixlStash CLIP Loader",
+    "PixlStashControlNetLoader": "PixlStash ControlNet Loader",
     "PixlStashWorkflowSetLoader": "PixlStash Workflow Set Loader",
 }
 

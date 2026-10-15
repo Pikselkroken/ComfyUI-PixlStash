@@ -58,6 +58,8 @@ const NODE_MIN_VERSION = {
     "PixlStashCheckpointLoader": "1.10.0",
     "PixlStashVAELoader":        "1.10.0",
     "PixlStashCLIPLoader":       "1.10.0",
+    // The shelf's `controlnet` kind (GET /adapters?file_kind=controlnet): 1.12.0.
+    "PixlStashControlNetLoader": "1.12.0",
     // Hand-made workflow sets (GET /models/workflow-sets → hand_made): 1.12.0.
     "PixlStashWorkflowSetLoader": "1.12.0",
 };
@@ -1654,6 +1656,9 @@ app.registerExtension({
             "PixlStashCLIPLoader": [
                 { widget: "clip_sha256",   fileKind: "text_encoder", browse: "Browse text encoders…",      picked: "Encoder" },
                 { widget: "clip_sha256_2", fileKind: "text_encoder", browse: "Second encoder (optional)…", picked: "Encoder 2" },
+            ],
+            "PixlStashControlNetLoader": [
+                { widget: "control_net_sha256", fileKind: "controlnet", browse: "Browse ControlNets…", picked: "ControlNet" },
             ],
             "PixlStashCheckpointLoader": [
                 { widget: "checkpoint_id", fileKind: "checkpoint", browse: "Browse checkpoints…", picked: "Checkpoint", from: "shelf" },
