@@ -194,6 +194,9 @@ async def proxy_pictures(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/pictures", pass_on=(LIBRARY_HEADER,))
 
 
+# No `pass_on` for these two: LIBRARY_HEADER is a header PixlStash ANSWERS
+# with, not one that scopes the request, and it names the library on the
+# picture list only. The picker reads it from the list.
 async def proxy_picture_search(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/pictures/search")
 

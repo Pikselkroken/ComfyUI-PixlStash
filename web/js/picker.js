@@ -453,6 +453,7 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     Promise.all([
         listOr("/pixlstash/projects", { include_counts: "true" }),
         charactersReq,
+        // Sets carry `picture_count` always; there is no `include_counts` to ask.
         listOr("/pixlstash/picture_sets"),
     ]).then(([projects, characters, sets]) => {
         groups = railGroups(projects, characters, sets);
