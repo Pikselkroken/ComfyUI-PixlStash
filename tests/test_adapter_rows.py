@@ -134,7 +134,7 @@ class AdapterRowsTests(unittest.TestCase):
     def setUpClass(cls):
         with tempfile.TemporaryDirectory() as tmp:
             pathlib.Path(tmp, "package.json").write_text('{"type": "module"}')
-            for name in ("adapter_rows.js", "adapter_picker.js", "modal_dom.js"):
+            for name in ("adapter_rows.js", "adapter_picker.js", "modal_dom.js", "model_mark.js"):
                 shutil.copy(ROOT / "web" / "js" / name, tmp)
             pathlib.Path(tmp, "driver.js").write_text(DRIVER)
             done = subprocess.run(

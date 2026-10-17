@@ -18,9 +18,10 @@
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
 import {
-    collapseStacks, fetchFaceUrl, initialsOf, nameOf, openAdapterPicker, personOf,
+    collapseStacks, fetchFaceUrl, nameOf, openAdapterPicker, personOf,
     shelfRecordFor, triggerText,
 } from "./adapter_picker.js";
+import { paintMark } from "./model_mark.js";
 import { ROWS, readRows, rowField, withPicks, writeRows } from "./adapter_rows.js";
 import { el, fitLabel } from "./modal_dom.js";
 import { linkedWorkflow } from "./workflow_link.js";
@@ -683,14 +684,36 @@ function pinNodeWidth(widget) {
     return widget;
 }
 
-/** One `<img>`-backed DOM widget for the Adapter Loader's picked-file thumbnail. */
+/**
+ * One DOM widget for the Adapter Loader's picked-file thumbnail: the file's
+ * picture, or the generated mark PixlStash's shelf draws for it when it has
+ * none, as a square as large as the widget allows.
+ */
 function addShelfFaceWidget(node, name) {
     const box = document.createElement("div");
-    box.style.cssText = "display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:"
+    box.style.cssText = "position:relative; display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:"
         + THUMB_MIN_SIDE + "px;";
     const img = document.createElement("img");
     img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
-    box.appendChild(img);
+    // A picture the browser cannot decode leaves the mark under it showing.
+    // Only when the CURRENT `src` is the one that broke (complete, no pixels):
+    // an error queued for a picture since replaced, or one after `src` was
+    // removed to clear the square, says nothing about what is shown now.
+    img.addEventListener("error", () => {
+        if (!img.getAttribute("src") || !img.complete || img.naturalWidth) return;
+        img.style.display = "none";
+        if (mark.childNodes.length) markArea.style.display = "flex";
+    });
+    // The mark is the largest square that fits, measured off an overlay of its
+    // own: size containment on `box` would stop the picture sizing it.
+    const markArea = document.createElement("div");
+    markArea.style.cssText = "position:absolute; inset:0; container-type:size; display:none; "
+        + "align-items:center; justify-content:center; pointer-events:none;";
+    const mark = document.createElement("div");
+    mark.style.cssText = "width:min(100cqw,100cqh); height:min(100cqw,100cqh); border-radius:3px; display:flex; "
+        + "align-items:center; justify-content:center; font-weight:700;";
+    markArea.appendChild(mark);
+    box.append(img, markArea);
 
     const widget = addShelfDOMWidget(node, name, box);
     widget.computeLayoutSize = () => ({ minHeight: THUMB_MIN_SIDE, maxHeight: THUMB_MAX_SIDE, minWidth: THUMB_MIN_SIDE });
@@ -699,12 +722,24 @@ function addShelfFaceWidget(node, name) {
     widget.onRemove = () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
 
     return {
-        /** `null` clears the square — a picture of the file a node used to hold is worse than none. */
+        /**
+         * The file's mark, and no picture. `null` clears the square — a
+         * picture of the file a node used to hold is worse than none.
+         */
+        setRecord(record) {
+            this.setUrl(null);
+            // As large as the square allows, inside it: the widget clips.
+            if (record) paintMark(mark, record, { tab: "max(15px, calc(min(100cqw, 100cqh) * 0.2))", inside: true });
+            markArea.style.display = record ? "flex" : "none";
+        },
+        /** The file's own picture, over its mark. */
         setUrl(url) {
             if (currentUrl) URL.revokeObjectURL(currentUrl);
             currentUrl = url;
-            img.src = url ?? "";
+            if (url) img.src = url;
+            else img.removeAttribute("src");
             img.style.display = url ? "" : "none";
+            if (url) markArea.style.display = "none";
             node.setDirtyCanvas?.(true, true);
         },
     };
@@ -770,7 +805,7 @@ function addShelfBrowseButton(node, valueWidget, opts) {
     let faceWidget;
 
     const showFace = (record) => {
-        faceWidget.setUrl(null);
+        faceWidget.setRecord(record);
 
         const creds = getSettingsCredentials();
         if (!record || !creds.url || !creds.token) return;
@@ -802,7 +837,11 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         }
         forgetStaleModel(node, valueWidget.name, lockKind(fileKind), v);
         const creds = getSettingsCredentials();
-        if (!creds.url || !creds.token) return;
+        // No lookup, so no face: the one showing is the previous file's.
+        if (!creds.url || !creds.token) {
+            showFace(null);
+            return;
+        }
         shelfRecordFor(v, creds, fileKind).then(record => {
             // The user may have picked something else while this was in
             // flight; labelling with the old file's name would be a lie, and
@@ -900,7 +939,21 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     img.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
         + "object-fit:cover; border-radius:3px; display:none;";
 
-    row.append(btn, img);
+    // The generated mark, while the file has no picture of its own.
+    const mark = document.createElement("span");
+    mark.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
+        + "border-radius:3px; display:none; align-items:center; justify-content:center; "
+        + "font-weight:700;";
+
+    // A picture the browser cannot decode leaves the mark showing, but only
+    // when the current `src` is the one that broke (see addShelfFaceWidget).
+    img.addEventListener("error", () => {
+        if (!img.getAttribute("src") || !img.complete || img.naturalWidth) return;
+        img.style.display = "none";
+        if (mark.childNodes.length) mark.style.display = "flex";
+    });
+
+    row.append(btn, img, mark);
     addShelfDOMWidget(node, `${valueWidget.name}_browse`, row);
 
     const setLabel = (text) => {
@@ -913,8 +966,10 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     const showFace = (record) => {
         if (currentUrl) URL.revokeObjectURL(currentUrl);
         currentUrl = null;
-        img.src = "";
+        img.removeAttribute("src");
         img.style.display = "none";
+        if (record) paintMark(mark, record);
+        mark.style.display = record ? "flex" : "none";
 
         const creds = getSettingsCredentials();
         if (!record || !creds.url || !creds.token) return;
@@ -928,6 +983,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
             currentUrl = url;
             img.src = url;
             img.style.display = "";
+            mark.style.display = "none";
             node.setDirtyCanvas?.(true, true);
         }).catch(() => {});
     };
@@ -943,7 +999,11 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         }
         forgetStaleModel(node, valueWidget.name, lockKind(fileKind), v);
         const creds = getSettingsCredentials();
-        if (!creds.url || !creds.token) return;
+        // No lookup, so no face: the one showing is the previous file's.
+        if (!creds.url || !creds.token) {
+            showFace(null);
+            return;
+        }
         shelfRecordFor(v, creds, fileKind).then(record => {
             if (String(valueWidget.value ?? "").trim() !== v) return;
             // Nor if the server changed while it was in flight: this is the
@@ -1227,10 +1287,15 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
 
             name.textContent = nameOf(record) || name.textContent;
             name.title       = record.filename || "";
-            face.textContent = initialsOf(record);
+            // The face clips its picture's corners, so the tab sits inside.
+            paintMark(face, record, { inside: true });
             faceFor(record, creds).then(url => {
                 if (!url || mine !== generation) return;
-                face.replaceChildren(el("img", { src: url, style: "width:100%; height:100%; object-fit:cover; display:block;" }));
+                const picture = el("img", { src: url, style: "width:100%; height:100%; object-fit:cover; display:block;" });
+                // One the browser cannot decode puts the mark back.
+                picture.addEventListener("error", () => paintMark(face, record, { inside: true }));
+                face.style.background = "";
+                face.replaceChildren(picture);
             });
 
             const words = triggerText(record);
