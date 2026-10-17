@@ -90,6 +90,7 @@ export async function updateNodePreviews(node, pictureIds, credentials) {
         for (const u of node._pixlstashUrls) URL.revokeObjectURL(u);
     }
     node._pixlstashUrls = [];
+    node._pixlstashIds = pictureIds.join(",");
 
     if (!pictureIds.length) {
         node.imgs = null;

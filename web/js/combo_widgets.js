@@ -672,6 +672,28 @@ const SHELF_ICON_SIZE = 20;  // inline favicon: fixed, both edges
 const THUMB_MIN_SIDE  = 48;  // Adapter Loader: floor a user can shrink to
 const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
 
+/**
+ * Run `sync` when `node` is drawn and `read()` is no longer what `sync` last
+ * drew; returns the function that records what was drawn.
+ *
+ * A shelf loader's state is a hidden widget, and not everything that writes
+ * one says so: ComfyUI's API loader sets the values of nodes it has already
+ * made, and an opened workflow's values are written over its layout
+ * (`writeValues`), neither through `onConfigure`. Whether a later reload of
+ * the graph came along to fix the label depended on how the workflow was
+ * opened, so a loader read "Browse checkpoints…" over a checkpoint it held,
+ * sometimes. Following the value on draw covers every writer.
+ */
+function followOnDraw(node, read, sync) {
+    let drawn;
+    const prev = node.onDrawForeground;
+    node.onDrawForeground = function (ctx) {
+        prev?.call(this, ctx);
+        if (read() !== drawn) sync();
+    };
+    return () => { drawn = read(); };
+}
+
 /** One `<img>`-backed DOM widget for the Adapter Loader's picked-file thumbnail. */
 function addShelfFaceWidget(node, name) {
     const box = document.createElement("div");
@@ -743,6 +765,7 @@ function addShelfBrowseButton(node, valueWidget, opts) {
     };
     const setLabel = (text) => {
         fullLabel = text ? `${picked}: ${text}` : browse;
+        drawn();
         render();
     };
 
@@ -806,6 +829,7 @@ function addShelfBrowseButton(node, valueWidget, opts) {
             showFace(record);
         });
     };
+    const drawn = followOnDraw(node, () => String(valueWidget.value ?? "").trim(), labelFromValue);
 
     const prevConfigure = node.onConfigure;
     node.onConfigure = function (data) {
@@ -896,6 +920,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         const fullLabel = text ? `${picked}: ${text}` : browse;
         btn.textContent = fullLabel;
         btn.title = fullLabel;
+        drawn();
     };
 
     let currentUrl = null;
@@ -944,6 +969,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
             showFace(record);
         });
     };
+    const drawn = followOnDraw(node, () => String(valueWidget.value ?? "").trim(), labelFromValue);
 
     const prevConfigure = node.onConfigure;
     node.onConfigure = function (data) {
@@ -1134,6 +1160,7 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
             if (input.value !== "" && Number.isFinite(typed)) {
                 w.value = Math.min(100, Math.max(-100, typed));
                 w.callback?.(w.value);
+                drawn();   // this row shows it already: no rebuild under the cursor
             }
             input.value = Number(w.value).toFixed(2);
             node.setDirtyCanvas?.(true, true);
@@ -1318,6 +1345,7 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
         // Packs the rows: a gap that something other than this widget wrote
         // closes here, so the canvas never draws one.
         writeRows(widgets, rows);
+        drawn();
         shown = Math.min(ROWS, Math.max(shown, rows.length));
         const people = isPeople();
         const creds = getSettingsCredentials();
@@ -1383,6 +1411,9 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
         node.setSize([Math.max(node.size?.[0] ?? 0, size[0]), size[1]]);
         node.setDirtyCanvas?.(true, true);
     }
+
+    // Rows an opened workflow fills after the node is made are drawn too.
+    const drawn = followOnDraw(node, () => `${showWidget.value}|${JSON.stringify(readRows(widgets))}`, render);
 
     const prevShow = showWidget.callback;
     showWidget.callback = (...args) => {
@@ -1550,19 +1581,28 @@ app.registerExtension({
                 const picIdsWidget = this.widgets?.find(w => w.name === "picture_ids");
                 if (!picIdsWidget) return;
 
-                // Re-load inline previews when a saved workflow is restored.
-                const prevConfigure = this.onConfigure;
-                this.onConfigure = function (data) {
-                    prevConfigure?.call(this, data);
-                    const ids = (picIdsWidget.value ?? "")
-                        .split(",")
-                        .map(s => Number(s.trim()))
-                        .filter(n => n > 0);
-
+                // Re-load inline previews when a saved workflow is restored,
+                // and when an opened one fills the ids in after the node is
+                // made. The picker loads its own pick's (`_pixlstashIds`).
+                const idsOf = () => (picIdsWidget.value ?? "")
+                    .split(",")
+                    .map(s => Number(s.trim()))
+                    .filter(n => n > 0);
+                const showPreviews = () => {
+                    drawn();
+                    const ids = idsOf();
+                    if (this._pixlstashIds === ids.join(",")) return;
                     const creds = getSettingsCredentials();
                     if (creds.url && creds.token) {
                         updateNodePreviews(this, ids, creds).catch(() => {});
                     }
+                };
+                const drawn = followOnDraw(this, () => idsOf().join(","), showPreviews);
+                drawn();   // a new node has nothing to show yet
+                const prevConfigure = this.onConfigure;
+                this.onConfigure = function (data) {
+                    prevConfigure?.call(this, data);
+                    showPreviews();
                 };
 
                 // Hide the raw text widget \u2014 values are managed by the Browse button.
