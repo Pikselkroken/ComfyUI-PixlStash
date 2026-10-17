@@ -262,7 +262,8 @@ for (const [name, canvas] of Object.entries(refused)) {
     };
 }
 {
-    // PixlStash cannot place the loader: said, and the canvas left as it is.
+    // PixlStash cannot place the loader, nor is there a model on the canvas to
+    // put it after: said, and the canvas left as it is.
     const { toasts } = comfy();
     await openLink(AUTO, { name: "Two models", workflow: API, people_loader: { reason: "It loads two models." } });
     results.unplaceable = { toasts, wires: app.wires, nodes: app.rootGraph.nodes.length };
@@ -386,6 +387,36 @@ const TWICE = {
     const lost = { ...TWICE.places[1], rewires: [{ node_id: "14", field: "model", type: "MODEL" }] };
     const placed = placePeopleLoader(graph, { ...TWICE, places: [TWICE.places[0], lost] });
     results.copy_lost = { toasts, placed, wires: app.wires, nodes: graph.nodes.length };
+}
+{
+    // A base model and its refiner: PixlStash sends only why it could not
+    // choose, and a loader goes after each model the canvas loads. Not after
+    // a LoRA loader (it reads a model), a muted checkpoint, or a model nothing
+    // reads; and a bypassed sampler keeps reading the checkpoint.
+    const { toasts } = comfy();
+    const typed = (node, inputs, outputs = []) => {
+        node.inputs.forEach((input, at) => { input.type = inputs[at]; });
+        node.outputs = outputs.map((type) => ({ type, links: [] }));
+        return node;
+    };
+    const checkpoint = (id, mode = 0) =>
+        typed(makeNode(id, "CheckpointLoaderSimple", {}, [], mode), [], ["MODEL", "CLIP", "VAE"]);
+    const graph = makeGraph([
+        checkpoint(4), typed(makeNode(7, "LoraLoader", {}, ["model"]), ["MODEL"], ["MODEL"]),
+        typed(makeNode(5, "KSamplerAdvanced", {}, ["model"]), ["MODEL"]),
+        typed(makeNode(6, "CLIPTextEncode", {}, ["clip"]), ["CLIP"]),
+        checkpoint(12), typed(makeNode(15, "KSamplerAdvanced", {}, ["model"]), ["MODEL"]),
+        typed(makeNode(16, "CLIPTextEncode", {}, ["clip"]), ["CLIP"]),
+        typed(makeNode(17, "KSampler", {}, ["model"], 4), ["MODEL"]),
+        checkpoint(20),
+        checkpoint(30, 2), typed(makeNode(31, "KSampler", {}, ["model"]), ["MODEL"]),
+    ]);
+    graph.links = new Map([[4, 0, 7], [4, 1, 6], [7, 0, 5], [12, 0, 15], [12, 1, 16], [12, 0, 17], [30, 0, 31]]
+        .map(([origin_id, origin_slot, target_id], id) => [id, { origin_id, origin_slot, target_id, target_slot: 0 }]));
+    const placed = placePeopleLoader(graph, { reason: "This workflow loads 2 models." });
+    results.base_and_refiner = { toasts: [...toasts], placed: placed?.id, wires: [...app.wires], loaders: loaders(graph).length };
+    // Without PixlStash's word that somebody could go in, none more goes on.
+    results.no_place = placePeopleLoader(graph, undefined) === null && loaders(graph).length;
 }
 {
     // An extension that wraps the API loader and drops its promise (rgthree
@@ -1223,6 +1254,29 @@ class RoundTripTests(unittest.TestCase):
         )
         self.assertEqual(
             (result["placed"], result["wires"], result["nodes"]), (None, [], 6)
+        )
+
+    def test_no_place_from_pixlstash_puts_no_loader_on(self):
+        self.assertEqual(self.results["no_place"], 2)
+
+    def test_a_base_model_and_its_refiner_get_a_loader_each(self):
+        self.assertEqual(
+            self.results["base_and_refiner"],
+            {
+                "toasts": [],
+                "placed": 99,
+                "wires": [
+                    [4, 0, 99, "model"],
+                    [4, 1, 99, "clip"],
+                    [99, 0, 7, "model"],
+                    [99, 1, 6, "clip"],
+                    [12, 0, 100, "model"],
+                    [12, 1, 100, "clip"],
+                    [100, 0, 15, "model"],
+                    [100, 1, 16, "clip"],
+                ],
+                "loaders": 2,
+            },
         )
 
     def test_a_load_whose_promise_was_dropped_is_waited_for(self):

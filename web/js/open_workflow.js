@@ -24,7 +24,8 @@
  * - **With a loader for people**, where PixlStash says a run would splice a
  *   person's LoRA: straight after the model source, with nobody picked, so a
  *   workflow opened and queued untouched runs as the workflow alone. One
- *   after every copy, where the workflow loads the same model several times.
+ *   after every copy, where the workflow loads the same model several times,
+ *   and one after every model where it loads several that differ.
  * - **As a saved file** in `pixlstash/` of ComfyUI's workflows, so Ctrl+S
  *   saves and never asks for a filename. ComfyUI makes a tab the file it is
  *   loaded under the name of, so the graph is loaded as `pixlstash/<name>`
@@ -374,12 +375,43 @@ async function loadApi(workflow, loadAs, tabbed) {
 }
 
 /**
+ * Where the loader for people goes when PixlStash could not say: after every
+ * running node on the canvas that hands out a MODEL and reads none (a
+ * checkpoint, a UNET loader), taking that node's own CLIP too where it hands
+ * one out. A base model and its refiner each get one, and the owner picks the
+ * person in the one that should have them. A model nothing reads gets none.
+ * Nodes inside a subgraph are not reached.
+ */
+function canvasSplices(graph) {
+    return (graph.nodes ?? graph._nodes ?? []).flatMap((source) => {
+        if (source.mode || (source.inputs ?? []).some((input) => input.type === "MODEL")) return [];
+        const slotOf = (type) => (source.outputs ?? []).findIndex((output) => output.type === type);
+        const [model, clip] = [slotOf("MODEL"), slotOf("CLIP")];
+        if (model < 0) return [];
+        const rewires = linksOf(graph).flatMap((link) => {
+            const ours = String(link.origin_id) === String(source.id) && [model, clip].includes(link.origin_slot);
+            const reader = ours ? ownNode(graph, link.target_id) : null;
+            // Not into a bypassed or muted node, which is in no graph.
+            return reader && !reader.mode
+                ? [{ reader, slot: link.target_slot, type: source.outputs[link.origin_slot].type }]
+                : [];
+        });
+        if (!rewires.some(({ type }) => type === "MODEL")) return [];
+        const own = clip < 0 ? null : { output: clip };
+        return [{ model: { output: model }, clip: own, where: graph, source, clipSource: own && source, rewires }];
+    });
+}
+
+/**
  * Put the loader for people on the canvas where `place` says: reading the
  * model source's MODEL (and CLIP), with every input that read those reading
  * the loader's instead. A workflow that loads the same model several times
  * gets one after every copy (`place.places`), or the copies without one would
  * run without the person. A PixlStash from before `places` sends the one
- * place as `place` itself. Returns the first loader, or null with `why` said.
+ * place as `place` itself. Where PixlStash sends only the reason it could not
+ * place it (several models that differ: a base model and its refiner), one
+ * goes after every model the canvas loads (`canvasSplices`). Returns the
+ * first loader, or null with `why` said.
  *
  * In a subgraph, or read past one's edge, an input cannot be rewired from
  * here; the wires out of the source are moved to the loader in the graph the
@@ -394,11 +426,8 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
         notify("warn", `This workflow opened without the PixlStash loader for people: ${why}`);
         return null;
     };
-    const places = place?.places?.length ? place.places : place?.model ? [place] : [];
-    if (!places.length) {
-        return refuse(place?.reason || "PixlStash could not tell where it goes.");
-    }
-    const splices = places.map(({ model, clip, rewires }) => {
+    const places = place?.places?.length ? place.places : place?.model ? [place] : null;
+    const splices = places?.map(({ model, clip, rewires }) => {
         const source = model ? nodeAt(graph, model.node_id) : null;
         const clipSource = clip ? nodeAt(graph, clip.node_id) : null;
         const readers = (rewires ?? []).map((rewire) => {
@@ -431,7 +460,10 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
             apart: clipSource && clipSource.graph !== where,
             rewires: direct ? readers : null,
         };
-    });
+    }) ?? (place ? canvasSplices(graph) : []);   // no `place`: nothing says anybody could go in
+    if (!splices.length) {
+        return refuse(place?.reason || "PixlStash could not tell where it goes.");
+    }
     if (splices.some(({ source, clip, clipSource }) => !source || (clip && !clipSource))) {
         return refuse("its model or CLIP source is not on the canvas.");
     }
