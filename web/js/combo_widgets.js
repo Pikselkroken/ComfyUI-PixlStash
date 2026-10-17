@@ -701,7 +701,7 @@ function addShelfFaceWidget(node, name) {
         + "align-items:center; justify-content:center; pointer-events:none;";
     const mark = document.createElement("div");
     mark.style.cssText = "width:min(100cqw,100cqh); height:min(100cqw,100cqh); border-radius:3px; display:flex; "
-        + "align-items:center; justify-content:center; font-weight:700; font-size:min(30cqw,30cqh);";
+        + "align-items:center; justify-content:center; font-weight:700;";
     markArea.appendChild(mark);
     box.append(img, markArea);
 
@@ -932,7 +932,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     const mark = document.createElement("span");
     mark.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
         + "border-radius:3px; display:none; align-items:center; justify-content:center; "
-        + "font-size:9px; font-weight:700;";
+        + "font-weight:700;";
 
     row.append(btn, img, mark);
     addShelfDOMWidget(node, `${valueWidget.name}_browse`, row);

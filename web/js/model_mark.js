@@ -119,10 +119,12 @@ export function markInitials(text) {
     return words.length ? words[0].slice(0, 2).toUpperCase() : "?";
 }
 
-/** The tab's digits: the name's first number, dots dropped, at most two. */
+/** The tab's version: the name's first number, `x.y` kept with its dot, else two digits at most. */
 function versionOf(text) {
-    const match = /\d+(?:\.\d+)*/.exec(String(text || ""));
-    return match ? match[0].replace(/\./g, "").slice(0, 2) : "";
+    const match = /(\d+)(?:\.(\d))?/.exec(String(text || ""));
+    if (!match) return "";
+    const [, major, minor] = match;
+    return major.length === 1 && minor ? `${major}.${minor}` : major.slice(0, 2);
 }
 
 /**
@@ -148,13 +150,21 @@ export function generatedMark(row) {
  * Paint `box` as a row's mark: its initials, on its tile, in its ink, and the
  * version on a tab at the corner, the tile's own pair inverted as on the shelf.
  *
+ * The letters are 55% of the tile, as on the shelf, so they fill it at any
+ * size: `box` becomes a size container for them, which every caller's box can
+ * be because each has a size of its own.
+ *
  * `tab` is the tab's height as a CSS length, 15px at least: smaller digits do
  * not read. The tab hangs past the corner, unless `inside` keeps it within a
  * box that clips.
  */
 export function paintMark(box, row, { tab = "15px", inside = false } = {}) {
     const mark = generatedMark(row);
-    box.replaceChildren(mark.initials);
+    const initials = document.createElement("span");
+    initials.textContent = mark.initials;
+    initials.style.cssText = "font-size:55cqmin; letter-spacing:-0.02em; line-height:1;";
+    box.style.containerType = "size";
+    box.replaceChildren(initials);
     box.style.background = mark.color;
     box.style.color = mark.ink;
     if (!mark.version) return;
