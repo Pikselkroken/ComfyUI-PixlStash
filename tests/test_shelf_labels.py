@@ -31,7 +31,7 @@ const turns = () => new Promise((resolve) => setTimeout(resolve, 20));
 const element = () => ({
     style: {}, textContent: "", title: "",
     append(...children) { this.button = children[0]; },
-    appendChild() {}, addEventListener() {},
+    appendChild() {}, addEventListener() {}, setAttribute() {}, removeAttribute() {}, replaceChildren() {},
 });
 globalThis.document = { createElement: element };
 globalThis.fetch = async (url) => {

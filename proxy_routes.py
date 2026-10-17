@@ -242,7 +242,7 @@ async def proxy_adapters(request: web.Request) -> web.Response:
     Filters ride through ``_proxy_get``'s query forwarding rather than being
     enumerated here, so this route needs no changes when the caller starts
     sending a different set.  The picker currently sends ``file_kind``,
-    ``kind``, ``base_model`` and one of ``character_id`` / ``set_id``; it
+    ``kind``, ``base_model_family`` and one of ``character_id`` / ``set_id``; it
     searches client-side over the one response rather than sending ``q``.
     """
     return await _proxy_get(request, "/api/v1/adapters")

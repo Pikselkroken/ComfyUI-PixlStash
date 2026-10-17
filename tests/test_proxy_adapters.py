@@ -214,7 +214,7 @@ class AdapterListProxyTests(unittest.TestCase):
         client, _ = self._call(
             file_kind="adapter",
             kind="lokr",
-            base_model="SDXL",
+            base_model_family="Krea 2",
             character_id="7",
             q="hair",
         )
@@ -223,7 +223,7 @@ class AdapterListProxyTests(unittest.TestCase):
             {
                 "file_kind": "adapter",
                 "kind": "lokr",
-                "base_model": "SDXL",
+                "base_model_family": "Krea 2",
                 "character_id": "7",
                 "q": "hair",
             },

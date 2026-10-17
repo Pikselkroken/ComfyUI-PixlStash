@@ -148,13 +148,15 @@ export async function fetchFaceUrl(record, credentials) {
  * 400), so a wired character wins and the set is ignored — the same rule the
  * node's docstring records.
  */
-function buildAdapterQuery({ fileKind, kind, baseModel, characterId, setId } = {}) {
+export function buildAdapterQuery({ fileKind, kind, baseModel, characterId, setId } = {}) {
     const q = {};
-    if (baseModel) q.base_model = baseModel;
     // `GET /checkpoints` takes base_model, q, sort and direction and nothing
     // else — sending it a file_kind or an attachment is a 422, not a filter.
     if (SHELF_KINDS[fileKind]?.byId) return q;
     q.file_kind = fileKind || "adapter";
+    // By family, as PixlStash fits a LoRA to a checkpoint: "Krea 2" takes
+    // the Raw and Turbo adapters too.
+    if (baseModel) q.base_model_family = baseModel;
     if (kind)      q.kind         = kind;
     if (characterId)  q.character_id = characterId;
     else if (setId)   q.set_id      = setId;
@@ -875,7 +877,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
 
             const counts = new Map();
             for (const r of attached) {
-                const key = r.base_model || "no base model";
+                const key = r.base_model_family_label || r.base_model || "no base model";
                 counts.set(key, (counts.get(key) ?? 0) + 1);
             }
             const breakdown = [...counts]

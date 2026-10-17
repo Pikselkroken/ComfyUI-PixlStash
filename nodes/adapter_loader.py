@@ -184,9 +184,11 @@ class PixlStashAdapterLoader:
                     ["(loading…)"],
                     {
                         "tooltip": (
-                            "Narrows the Browse grid to adapters trained against "
-                            "one base model. Populated live from your shelf; "
-                            "affects the grid only, not what is loaded."
+                            "Narrows the Browse grid to adapters for one base "
+                            "model family (Krea 2 takes Raw and Turbo too). "
+                            "Filled in from the checkpoint on a workflow opened "
+                            "from PixlStash; affects the grid only, not what is "
+                            "loaded."
                         ),
                     },
                 ),

@@ -360,10 +360,11 @@ async function fetchWorkflowSetOptions() {
 }
 
 /**
- * Distinct base models across the shelf's adapters.
+ * The base-model families across the shelf's adapters, as a person calls
+ * them ("Krea 2" for Krea 2, Raw and Turbo alike).
  *
- * These are raw strings, not `"<name> #<id>"` — the server matches
- * `base_model` exactly, so what is shown is what is sent.
+ * Labels, not `"<name> #<id>"`: the server's `base_model_family` filter takes
+ * the label, so what is shown is what is sent.
  *
  * ponytail: `GET /adapters` is unpaginated and the shelf has no facet
  * endpoint, so deriving this list costs one whole-shelf fetch (records,
@@ -375,7 +376,7 @@ async function fetchBaseModelOptions() {
     const data = await proxyFetch("/pixlstash/adapters", getSettingsCredentials(), {
         file_kind: "adapter",
     });
-    const names = [...new Set((data?.adapters ?? []).map(a => a.base_model).filter(Boolean))];
+    const names = [...new Set((data?.adapters ?? []).map(a => a.base_model_family_label).filter(Boolean))];
     names.sort((a, b) => a.localeCompare(b));
     return [NONE_LABEL, ...names];
 }
@@ -1127,6 +1128,26 @@ function rowLookup(key, path, extraParams) {
 }
 
 /**
+ * On a canvas opened from PixlStash, a `base_model` nobody picked takes the
+ * family of that workflow's checkpoint, so Browse opens on what fits it.
+ *
+ * Answered after the node holds its saved values (a graph sets them after
+ * creating the node), so a family somebody picked is never replaced.
+ */
+function fillBaseModelFromWorkflow(node, baseWidget) {
+    const key = linkedWorkflow();
+    const creds = getSettingsCredentials();
+    if (!key || !creds.url || !creds.token) return;
+    rowLookup(`people|${key}`, "/pixlstash/workflow_people", { workflow_key: key }).then(data => {
+        const label = typeof data?.family_label === "string" ? data.family_label : "";
+        if (!label || isRealComboValue(baseWidget.value)) return;
+        baseWidget.value = label;
+        baseWidget.callback?.(label);
+        node.setDirtyCanvas?.(true, false);
+    });
+}
+
+/**
  * Put `text` on the clipboard. `navigator.clipboard` exists only on a secure
  * origin, and a ComfyUI reached over plain http on a LAN is not one, so there
  * the old selection-based copy does it.
@@ -1745,6 +1766,7 @@ app.registerExtension({
                 if (!shaWidget || !kindWidget || !baseWidget) return;
 
                 bindDynamicValues(this, baseWidget, "base_models", () => null);
+                fillBaseModelFromWorkflow(this, baseWidget);
 
                 // adapter_kind / base_model are deliberately NOT chained to
                 // clear adapter_sha256. They only narrow the Browse grid — the
@@ -1783,6 +1805,7 @@ app.registerExtension({
                 if (!showWidget || !kindWidget || !baseWidget) return;
 
                 bindDynamicValues(this, baseWidget, "base_models", () => null);
+                fillBaseModelFromWorkflow(this, baseWidget);
                 addAdapterRows(this, { showWidget, kindWidget, baseWidget });
             };
         }
