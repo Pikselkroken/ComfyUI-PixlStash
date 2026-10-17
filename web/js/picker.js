@@ -500,7 +500,7 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     // The likeness sort's reference character. textContent, not innerHTML —
     // character names are server data.
     charactersReq.then(chars => likenessSel.replaceChildren(
-        ...chars.map(c => el("option", { value: String(c.id), textContent: String(c.name ?? c.id) })),
+        ...(Array.isArray(chars) ? chars : []).map(c => el("option", { value: String(c.id), textContent: String(c.name ?? c.id) })),
     ));
 
     // -----------------------------------------------------------------------
