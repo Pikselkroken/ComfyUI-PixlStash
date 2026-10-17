@@ -34,7 +34,7 @@ OTHER = "manual:" + "b" * 32
 
 DRIVER = r"""
 import { app } from "../../scripts/app.js";
-import { differsFrom, fileStem, placePeopleLoader, swapNodes } from "./open_workflow.js";
+import { differsFrom, fileStem, keptPeopleLoader, placePeopleLoader, swapNodes, writeValues } from "./open_workflow.js";
 import { saveToPixlStash } from "./save_workflow.js";
 import { FILE_TAG, NEW_TAG, TAG, isUnsent, linkState, openings, quietly } from "./workflow_link.js";
 import { refreshLinkBadge } from "./link_badge.js";
@@ -314,6 +314,73 @@ const TWICE = {
     };
 }
 {
+    // The model and its CLIP loaded inside a subgraph (node 48), the model read
+    // inside it and the CLIP past its output: the loader goes in the subgraph,
+    // and what read the two sources reads the loader, the subgraph's output too.
+    const { toasts } = comfy();
+    const OUT = "-20";
+    const inner = { links: new Map(), nodes: [], nextLink: 1 };
+    const wire = (from, slot, to, input) => {
+        const link = { id: inner.nextLink++, origin_id: from, origin_slot: slot, target_id: to, target_slot: input };
+        for (const [id, old] of inner.links) {
+            if (String(old.target_id) === String(to) && old.target_slot === input) inner.links.delete(id);
+        }
+        inner.links.set(link.id, link);
+    };
+    const node = (id, type, inputs, outputs) => ({
+        id, type, pos: [0, 0], inputs: inputs.map((name) => ({ name })), outputs: outputs.map((name) => ({ name })),
+        widgets: type === LOADER ? [{ name: "show", value: "" }] : [],
+        findInputSlot(name) { return this.inputs.findIndex((i) => i.name === name); },
+        connect(slot, target, to) { wire(this.id, slot, target.id, typeof to === "number" ? to : target.findInputSlot(to)); },
+    });
+    Object.assign(inner, {
+        getNodeById(id) { return this.nodes.find((n) => String(n.id) === String(id)) ?? null; },
+        add(n) { n.id ??= "99"; this.nodes.push(n); },
+        outputNode: { id: OUT, slots: [0, 1].map((at) => ({
+            connect(output, n) { wire(n.id, n.outputs.indexOf(output), OUT, at); },
+        })) },
+    });
+    inner.nodes.push(node("12", "UNETLoader", [], ["MODEL"]), node("10", "CLIPLoader", [], ["CLIP"]),
+        node("20", "LoraLoaderModelOnly", ["model"], ["MODEL"]));
+    wire("12", 0, "20", 0);
+    wire("20", 0, OUT, 0);
+    wire("10", 0, OUT, 1);
+    // A dangling wire, to a node no longer there: left as it is.
+    wire("10", 0, "77", 0);
+    // Used twice (48 and 49): one definition, so one loader for both copies.
+    const root = makeGraph([
+        { id: 48, type: "a-subgraph", subgraph: inner },
+        { id: 49, type: "a-subgraph", subgraph: inner },
+        makeNode(7, "CLIPTextEncode", {}, ["clip"]),
+    ]);
+    const lite = { createNode: (type) => ({ ...node(undefined, type, ["model", "clip"], ["MODEL", "CLIP"]) }) };
+    const copy = (at) => ({
+        model: { node_id: `${at}:12`, output: 0 },
+        clip: { node_id: `${at}:10`, output: 0 },
+        rewires: [{ node_id: `${at}:20`, field: "model", type: "MODEL" }, { node_id: "7", field: "clip", type: "CLIP" }],
+    });
+    const placed = placePeopleLoader(root, { places: [copy(48), copy(49)] }, lite);
+    results.inside_subgraph = {
+        toasts, placed: placed?.id, root: root.nodes.length, loaders: loaders(inner).length,
+        inner: [...inner.links.values()].map((l) => [l.origin_id, l.origin_slot, l.target_id, l.target_slot]).sort(),
+    };
+}
+{
+    // A loader two subgraphs down (instance 1, then 75): the graph's own when
+    // the graph names it "1:75:4", else the one a kept layout left there.
+    const SHOW = "People who fit";
+    const loader = { id: 4, type: LOADER, mode: 0, widgets: [{ name: "show", value: SHOW }] };
+    const inner = { nodes: [loader] };
+    const middle = { nodes: [{ id: 75, subgraph: inner }] };
+    const root = { nodes: [{ id: 1, subgraph: middle }], subgraphs: new Map([["a", middle], ["b", inner]]) };
+    results.kept_nested = {
+        kept: keptPeopleLoader(root, { 3: {} })?.id ?? null,
+        own: keptPeopleLoader(root, { "1:75:4": {} })?.id ?? null,
+        // Its own id at the root says nothing about it.
+        rootKey: keptPeopleLoader(root, { 4: {} })?.id ?? null,
+    };
+}
+{
     // A copy the canvas cannot be rewired at: no loader at all, not one of two.
     const { toasts } = comfy();
     const graph = copies();
@@ -323,30 +390,29 @@ const TWICE = {
 }
 {
     // A base model and its refiner: PixlStash sends only why it could not
-    // choose, and a loader goes after each model the canvas loads.
+    // choose, and a loader goes after each model the canvas loads. Not after
+    // a LoRA loader (it reads a model), a muted checkpoint, or a model nothing
+    // reads; and a bypassed sampler keeps reading the checkpoint.
     const { toasts } = comfy();
-    const links = {};
-    const loader = (id, reads) => {
-        const node = makeNode(id, "CheckpointLoaderSimple");
-        node.outputs = ["MODEL", "CLIP", "VAE"].map((type, at) => ({ type, links: [] }));
-        reads.forEach(([to, slot], at) => {
-            const linkId = id * 10 + at;
-            links[linkId] = { target_id: to, target_slot: slot };
-            node.outputs[at].links.push(linkId);
-        });
+    const typed = (node, inputs, outputs = []) => {
+        node.inputs.forEach((input, at) => { input.type = inputs[at]; });
+        node.outputs = outputs.map((type) => ({ type, links: [] }));
         return node;
     };
-    const reader = (id, type, input) => {
-        const node = makeNode(id, type, {}, [input]);
-        node.inputs[0].type = input.toUpperCase();
-        return node;
-    };
+    const checkpoint = (id, mode = 0) =>
+        typed(makeNode(id, "CheckpointLoaderSimple", {}, [], mode), [], ["MODEL", "CLIP", "VAE"]);
     const graph = makeGraph([
-        loader(4, [[5, 0], [6, 0]]), reader(5, "KSamplerAdvanced", "model"), reader(6, "CLIPTextEncode", "clip"),
-        loader(12, [[15, 0], [16, 0]]), reader(15, "KSamplerAdvanced", "model"), reader(16, "CLIPTextEncode", "clip"),
-        loader(20, []),
+        checkpoint(4), typed(makeNode(7, "LoraLoader", {}, ["model"]), ["MODEL"], ["MODEL"]),
+        typed(makeNode(5, "KSamplerAdvanced", {}, ["model"]), ["MODEL"]),
+        typed(makeNode(6, "CLIPTextEncode", {}, ["clip"]), ["CLIP"]),
+        checkpoint(12), typed(makeNode(15, "KSamplerAdvanced", {}, ["model"]), ["MODEL"]),
+        typed(makeNode(16, "CLIPTextEncode", {}, ["clip"]), ["CLIP"]),
+        typed(makeNode(17, "KSampler", {}, ["model"], 4), ["MODEL"]),
+        checkpoint(20),
+        checkpoint(30, 2), typed(makeNode(31, "KSampler", {}, ["model"]), ["MODEL"]),
     ]);
-    graph.links = links;
+    graph.links = new Map([[4, 0, 7], [4, 1, 6], [7, 0, 5], [12, 0, 15], [12, 1, 16], [12, 0, 17], [30, 0, 31]]
+        .map(([origin_id, origin_slot, target_id], id) => [id, { origin_id, origin_slot, target_id, target_slot: 0 }]));
     const placed = placePeopleLoader(graph, { reason: "This workflow loads 2 models." });
     results.base_and_refiner = { toasts, placed: placed?.id, wires: app.wires, loaders: loaders(graph).length };
 }
@@ -702,6 +768,8 @@ const LINKED = { [TAG]: AUTO, [FILE_TAG]: PATH };
     steps.linked = shown();
     steps.says = made[0].kids.filter((k) => typeof k === "string");
     steps.in_the_canvas_panel = panel.kids.includes(made[0]);
+    // At the foot of the canvas, out of the way of the graph.
+    steps.at_the_foot = /(^|;)bottom:8px;/.test(made[0].style.cssText) && !/(^|;)top:/.test(made[0].style.cssText);
     canvas(store, LINKED, "workflows/Copy.json");
     refreshLinkBadge();
     steps.a_copy = shown();
@@ -816,6 +884,94 @@ const LINKED = { [TAG]: AUTO, [FILE_TAG]: PATH };
         width: at(2).size[0],
         titles: [at(9).title, at(2).title],
         mode: at(9).mode,
+    };
+}
+{
+    // A layout whose saver and LoRA loader are inside a subgraph (node 75):
+    // each is replaced in the subgraph, wired to its inputs and outputs. As
+    // ComfyUI 1.53 keeps a subgraph: ids are strings, an output's `links`
+    // stays empty, and the saver's prefix is promoted onto node 75.
+    const SLOTS = {
+        LoraLoader: [["model", "clip"], ["MODEL", "CLIP"]],
+        PixlStashAdapterLoader: [["model", "clip", "pixlstash_set"], ["MODEL", "CLIP", "STRING"]],
+        SaveImage: [["images", "filename_prefix"], []],
+        PixlStashPictureSaver: [["images", "filename_prefix", "pixlstash_set"], ["STRING"]],
+    };
+    const IN = "-10", OUT = "-20";
+    const makeLinked = (graph, id, type) => ({
+        id, type, mode: 0, pos: [id, 1], size: [200, 80], graph,
+        inputs: SLOTS[type][0].map((name) => ({ name, link: null })),
+        outputs: SLOTS[type][1].map((name) => ({ name, links: [] })),
+        widgets: type === "PixlStashAdapterLoader" ? [{ name: "pixlstash_set", value: "" }]
+            : type.includes("Save") ? [{ name: "filename_prefix", value: "old" }] : [],
+        findInputSlot(name) { return this.inputs.findIndex((i) => i.name === name); },
+    });
+    const wire = (graph, from, slot, to, input) => {
+        const link = { id: graph.nextLink++, origin_id: from, origin_slot: slot, target_id: to, target_slot: input };
+        graph.links.set(link.id, link);
+        return link;
+    };
+    const makeGraph = () => {
+        const graph = {
+            links: new Map(), nodes: [], nextLink: 1,
+            getNodeById(id) { return this.nodes.find((n) => n.id === id) ?? null; },
+            add(node) { node.graph = this; this.nodes.push(node); },
+            remove(node) {
+                for (const [id, link] of [...this.links]) {
+                    if (link.origin_id === node.id || link.target_id === node.id) this.links.delete(id);
+                }
+                this.nodes = this.nodes.filter((n) => n !== node);
+            },
+        };
+        // The subgraph's own inputs and outputs, as `SubgraphInput.connect`
+        // and `SubgraphOutput.connect` wire them.
+        graph.inputNode = { id: IN, slots: [0, 1, 2].map((at) => ({
+            connect(input, node) { input.link = wire(graph, IN, at, node.id, node.inputs.indexOf(input)).id; },
+        })) };
+        graph.outputNode = { id: OUT, slots: [0, 1].map((at) => ({
+            connect(output, node) { wire(graph, node.id, node.outputs.indexOf(output), OUT, at); },
+        })) };
+        return graph;
+    };
+    const connect = function (slot, target, to) {
+        const input = typeof to === "number" ? to : target.findInputSlot(to);
+        if (input < 0) return null;
+        const link = wire(this.graph, this.id, slot, target.id, input);
+        target.inputs[input].link = link.id;
+        return link;
+    };
+    const root = makeGraph();
+    const inner = makeGraph();
+    const instance = {
+        id: 75, type: "uuid-of-the-subgraph", title: "Upscale", subgraph: inner,
+        inputs: [{ name: "model" }, { name: "images" }, { name: "filename_prefix", widget: { name: "filename_prefix" } }],
+        widgets: [{ name: "filename_prefix", value: "upscaled" }],
+    };
+    root.add(instance);
+    const lora = makeLinked(inner, "4", "LoraLoader");
+    const save = makeLinked(inner, "3", "SaveImage");
+    inner.add(lora);
+    inner.add(save);
+    inner.inputNode.slots[0].connect(lora.inputs[0], lora);
+    inner.inputNode.slots[1].connect(save.inputs[0], save);
+    inner.inputNode.slots[2].connect(save.inputs[1], save);
+    inner.outputNode.slots[1].connect(lora.outputs[1], lora);
+    const lite = { createNode: (type) => ({ ...makeLinked(null, -1, type), connect }) };
+    const api = {
+        "75:3": { class_type: "PixlStashPictureSaver", inputs: { filename_prefix: "PixlStash" } },
+        "75:4": { class_type: "PixlStashAdapterLoader", inputs: { pixlstash_set: "Faces" } },
+    };
+    const swapped = swapNodes(root, api, lite);
+    writeValues(root, api);
+    results.swapped_inside = {
+        swapped,
+        root: root.nodes.map((n) => n.id),
+        types: inner.nodes.map((n) => [n.id, n.type]).sort((a, b) => a[0] - b[0]),
+        wires: [...inner.links.values()]
+            .map((l) => [l.origin_id, l.origin_slot, l.target_id, l.target_slot]).sort(),
+        // The prompt reads the promoted prefix, and the loader's own set.
+        prefix: [instance.widgets[0].value, inner.getNodeById("3").widgets[0].value],
+        set: inner.getNodeById("4").widgets.find((w) => w.name === "pixlstash_set")?.value,
     };
 }
 {
@@ -983,6 +1139,33 @@ class RoundTripTests(unittest.TestCase):
         # Bypassed stays bypassed.
         self.assertEqual(result["mode"], 4)
 
+    def test_a_node_inside_a_subgraph_is_replaced_in_it(self):
+        """A layout's subgraph stays one: the stock node inside it becomes
+        the pack's where it stands, wired to the subgraph's own inputs and
+        outputs, and takes the graph's values. A layout dropped over it opens
+        the graph ComfyUI's API loader lays out, with no subgraph at all."""
+        result = self.results["swapped_inside"]
+        self.assertEqual(result["swapped"], ["75:3", "75:4"])
+        self.assertEqual(result["root"], [75])
+        self.assertEqual(
+            result["types"],
+            [["3", "PixlStashPictureSaver"], ["4", "PixlStashAdapterLoader"]],
+        )
+        # The subgraph's input 0 into the loader's model, 1 and 2 into the
+        # saver's images and prefix, and the loader's CLIP out as its output 1.
+        self.assertEqual(
+            result["wires"],
+            [
+                ["-10", 0, "4", 0],
+                ["-10", 1, "3", 0],
+                ["-10", 2, "3", 1],
+                ["4", 1, "-20", 1],
+            ],
+        )
+        # A promoted value goes on the subgraph's node, where a prompt reads it.
+        self.assertEqual(result["prefix"], ["PixlStash", "old"])
+        self.assertEqual(result["set"], "Faces")
+
     def test_what_makes_a_canvas_another_graph(self):
         differs = self.results["differs"]
         self.assertIsNone(differs["same"])
@@ -1033,9 +1216,40 @@ class RoundTripTests(unittest.TestCase):
             },
         )
 
+    def test_the_loader_goes_inside_the_subgraph_the_model_is_loaded_in(self):
+        """Wrong if the loader is refused, lands on the root canvas, or leaves
+        a reader of either source reading it past the loader."""
+        result = self.results["inside_subgraph"]
+        self.assertEqual(
+            (result["toasts"], result["placed"], result["root"], result["loaders"]),
+            ([], "99", 3, 1),
+        )
+        self.assertEqual(
+            result["inner"],
+            sorted(
+                [
+                    ["12", 0, "99", 0],
+                    ["10", 0, "99", 1],
+                    ["99", 0, "20", 0],
+                    ["20", 0, "-20", 0],
+                    ["99", 1, "-20", 1],
+                    ["10", 0, "77", 0],
+                ]
+            ),
+        )
+
+    def test_a_kept_loader_is_found_in_a_nested_subgraph(self):
+        """Wrong if a loader the graph holds as "1:75:4" counts as a kept one,
+        or one it does not hold is missed, which puts a second loader on."""
+        self.assertEqual(
+            self.results["kept_nested"], {"kept": 4, "own": None, "rootKey": 4}
+        )
+
     def test_a_copy_that_cannot_be_rewired_leaves_the_canvas_alone(self):
         result = self.results["copy_lost"]
-        self._one_toast("copy_lost", "warn", "inside a subgraph")
+        self._one_toast(
+            "copy_lost", "warn", "does not hold every node that reads its model"
+        )
         self.assertEqual(
             (result["placed"], result["wires"], result["nodes"]), (None, [], 6)
         )
@@ -1049,14 +1263,13 @@ class RoundTripTests(unittest.TestCase):
                 "wires": [
                     [4, 0, 99, "model"],
                     [4, 1, 99, "clip"],
-                    [99, 0, 5, "model"],
+                    [99, 0, 7, "model"],
                     [99, 1, 6, "clip"],
                     [12, 0, 100, "model"],
                     [12, 1, 100, "clip"],
                     [100, 0, 15, "model"],
                     [100, 1, 16, "clip"],
                 ],
-                # A model nothing reads gets none.
                 "loaders": 2,
             },
         )
@@ -1515,6 +1728,7 @@ class RoundTripTests(unittest.TestCase):
                 "linked": "flex",
                 "says": ["Linked to PixlStash"],
                 "in_the_canvas_panel": True,
+                "at_the_foot": True,
                 "a_copy": "none",
                 "a_run": "none",
                 "after_a_store_action": "flex",

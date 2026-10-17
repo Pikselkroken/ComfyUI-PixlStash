@@ -226,7 +226,7 @@ with it is linked to the PixlStash workflow it came from:
 - **It opens as a saved file**, in a `pixlstash` folder of your ComfyUI
   workflows, so Ctrl+S saves it and never asks for a filename.
 - **The canvas says so.** While that file is showing, a small *Linked to
-  PixlStash* sign sits at the top of the canvas. It is gone on any other
+  PixlStash* sign sits at the foot of the canvas. It is gone on any other
   workflow, a copy of this one included.
 - **Saving it saves a version in PixlStash.** No question is asked in either
   app, and a toast says what happened: `Saved to PixlStash: Portrait, version
@@ -273,7 +273,9 @@ with it is linked to the PixlStash workflow it came from:
   the workflow, wired where a run from PixlStash would put a person's LoRA.
   A workflow that loads several models (the same one several times, or a
   base model and its refiner) gets one beside each; pick the person in each
-  one that should have them.
+  one that should have them. Where the models differ, PixlStash cannot say
+  where a run would put the LoRA, so each loader takes its model and that
+  model's own CLIP; a CLIP loaded apart (a UNET workflow's) is left as it is.
   Pick one or several and queue. Nobody is picked when it opens, and what you
   pick is never saved into the workflow: `Nothing new to save. The people
   picked here stay in ComfyUI.` A person's LoRA in an ordinary loader is left

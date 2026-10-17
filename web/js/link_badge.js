@@ -29,7 +29,7 @@ function makeBadge() {
     el.title = TITLE;
     // ComfyUI's own palette variables, so it follows the colour theme.
     el.style.cssText =
-        "position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:10;pointer-events:auto;" +
+        "position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:10;pointer-events:auto;" +
         "display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;" +
         "font-size:12px;line-height:16px;white-space:nowrap;cursor:default;user-select:none;" +
         "background:var(--comfy-menu-bg);color:var(--descrip-text);border:1px solid var(--border-color);";
@@ -41,15 +41,15 @@ function makeBadge() {
 }
 
 /**
- * Where the sign goes: the part of the window the canvas shows through, which
- * ComfyUI narrows for its side and bottom panels, so the sign stays clear of
- * them and of the bars above. Its class is ComfyUI's own (checked against
- * frontend 1.53.10); without it the sign goes on the page, below those bars.
+ * Where the sign goes: the foot of the part of the window the canvas shows
+ * through, centred, below the graph and, unless the canvas is very narrow,
+ * clear of ComfyUI's canvas menu in the corner. ComfyUI narrows that part for
+ * its side and bottom panels, so the sign stays clear of them too. Its class
+ * is ComfyUI's own (checked against frontend 1.53.10); without it the sign
+ * goes at the foot of the page.
  */
 function place(el) {
-    const panel = document.querySelector(".graph-canvas-panel");
-    el.style.top = panel ? "8px" : "96px";
-    (panel ?? document.body).append(el);
+    (document.querySelector(".graph-canvas-panel") ?? document.body).append(el);
 }
 
 /** Show the sign when the canvas is the file PixlStash opened, else hide it. */
