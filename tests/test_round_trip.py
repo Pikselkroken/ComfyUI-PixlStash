@@ -34,7 +34,7 @@ OTHER = "manual:" + "b" * 32
 
 DRIVER = r"""
 import { app } from "../../scripts/app.js";
-import { differsFrom, fileStem, placePeopleLoader, swapNodes, writeValues } from "./open_workflow.js";
+import { differsFrom, fileStem, keptPeopleLoader, placePeopleLoader, swapNodes, writeValues } from "./open_workflow.js";
 import { saveToPixlStash } from "./save_workflow.js";
 import { FILE_TAG, NEW_TAG, TAG, isUnsent, linkState, openings, quietly } from "./workflow_link.js";
 import { refreshLinkBadge } from "./link_badge.js";
@@ -362,6 +362,21 @@ const TWICE = {
     results.inside_subgraph = {
         toasts, placed: placed?.id, root: root.nodes.length, loaders: loaders(inner).length,
         inner: [...inner.links.values()].map((l) => [l.origin_id, l.origin_slot, l.target_id, l.target_slot]).sort(),
+    };
+}
+{
+    // A loader two subgraphs down (instance 1, then 75): the graph's own when
+    // the graph names it "1:75:4", else the one a kept layout left there.
+    const SHOW = "People who fit";
+    const loader = { id: 4, type: LOADER, mode: 0, widgets: [{ name: "show", value: SHOW }] };
+    const inner = { nodes: [loader] };
+    const middle = { nodes: [{ id: 75, subgraph: inner }] };
+    const root = { nodes: [{ id: 1, subgraph: middle }], subgraphs: new Map([["a", middle], ["b", inner]]) };
+    results.kept_nested = {
+        kept: keptPeopleLoader(root, { 3: {} })?.id ?? null,
+        own: keptPeopleLoader(root, { "1:75:4": {} })?.id ?? null,
+        // Its own id at the root says nothing about it.
+        rootKey: keptPeopleLoader(root, { 4: {} })?.id ?? null,
     };
 }
 {
@@ -1150,6 +1165,13 @@ class RoundTripTests(unittest.TestCase):
                     ["10", 0, "77", 0],
                 ]
             ),
+        )
+
+    def test_a_kept_loader_is_found_in_a_nested_subgraph(self):
+        """Wrong if a loader the graph holds as "1:75:4" counts as a kept one,
+        or one it does not hold is missed, which puts a second loader on."""
+        self.assertEqual(
+            self.results["kept_nested"], {"kept": 4, "own": None, "rootKey": 4}
         )
 
     def test_a_copy_that_cannot_be_rewired_leaves_the_canvas_alone(self):

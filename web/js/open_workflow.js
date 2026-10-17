@@ -480,14 +480,23 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
  * showing people, and running. A loader the owner bypassed or muted is in no
  * graph either, and is theirs: its rows are not this code's to empty.
  */
-function keptPeopleLoader(graph, api) {
+export function keptPeopleLoader(graph, api) {
     // A subgraph's too: where the model is loaded inside one, so is the loader.
-    // In a subgraph the graph knows it as "<instance>:<id>".
+    // `subgraphs` is the root's map of every definition, a nested one too.
     const graphs = [graph, ...(graph.subgraphs?.values?.() ?? [])];
-    const inApi = (g, node) =>
-        g === graph
-            ? String(node.id) in (api ?? {})
-            : (graph.nodes ?? graph._nodes ?? []).some((n) => n.subgraph === g && `${n.id}:${node.id}` in (api ?? {}));
+    // In a subgraph the graph knows it by every instance on the way to it:
+    // "<outer>:<inner>:<id>".
+    const inApi = (g, node) => {
+        const pending = [[graph, []]];
+        while (pending.length) {
+            const [holder, path] = pending.pop();
+            if (holder === g && [...path, node.id].join(":") in (api ?? {})) return true;
+            for (const n of holder.nodes ?? holder._nodes ?? []) {
+                if (n.subgraph) pending.push([n.subgraph, [...path, n.id]]);
+            }
+        }
+        return false;
+    };
     return graphs.flatMap((g) => (g.nodes ?? g._nodes ?? []).map((node) => [g, node])).find(
         ([g, node]) =>
             node.type === PEOPLE_LOADER && !inApi(g, node) && !node.mode &&
