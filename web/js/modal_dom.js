@@ -1,11 +1,12 @@
 /**
  * The bits of modal chrome the PixlStash pickers share.
  *
- * Both `picker.js` (pictures) and `adapter_picker.js` (adapters) build a dark
- * overlay with the same buttons, rows and selects. The modals themselves are
- * different enough not to merge — one pages the network and is picture-shaped
- * throughout, the other filters a fetched array of shelf records — but these four are
- * pure DOM and there is no reason to carry two copies.
+ * `el` is shared by `picker.js` (pictures) and `adapter_picker.js`
+ * (adapters); the buttons, rows and selects are the adapter picker's. The
+ * modals themselves are different enough not to merge — one pages the network
+ * and is styled after PixlStash's own picture picker, the other filters a
+ * fetched array of shelf records — but these are pure DOM and there is no
+ * reason to carry two copies.
  *
  * `el` assigns properties rather than parsing markup, so server-supplied
  * strings passed as `textContent` are never interpreted as HTML.

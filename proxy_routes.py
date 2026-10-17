@@ -194,6 +194,14 @@ async def proxy_pictures(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/pictures", pass_on=(LIBRARY_HEADER,))
 
 
+async def proxy_picture_search(request: web.Request) -> web.Response:
+    return await _proxy_get(request, "/api/v1/pictures/search")
+
+
+async def proxy_picture_count(request: web.Request) -> web.Response:
+    return await _proxy_get(request, "/api/v1/pictures/count")
+
+
 async def proxy_thumbnail(request: web.Request) -> web.Response:
     """Proxy a picture thumbnail (binary WebP) from PixlStash.
 
@@ -571,6 +579,8 @@ def register_routes() -> None:
         r.get("/pixlstash/characters")(proxy_characters)
         r.get("/pixlstash/sort_mechanisms")(proxy_sort_mechanisms)
         r.get("/pixlstash/pictures")(proxy_pictures)
+        r.get("/pixlstash/pictures/search")(proxy_picture_search)
+        r.get("/pixlstash/pictures/count")(proxy_picture_count)
         r.get("/pixlstash/thumbnail")(proxy_thumbnail)
         r.get("/pixlstash/adapters")(proxy_adapters)
         r.get("/pixlstash/adapter")(proxy_adapter)
