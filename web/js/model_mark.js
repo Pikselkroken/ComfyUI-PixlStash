@@ -11,7 +11,8 @@
  * The colour is keyed on a hash of the row's folded base model (every spelling
  * of one base model is one colour), the initials on the name the shelf shows:
  * the given name, else the base model a checkpoint's filename matched, else the
- * filename with its quant postfix and training-step suffix stripped.
+ * filename with its quant postfix and training-step suffix stripped. The first
+ * number in that name rides on the corner as a version tab.
  */
 
 // `SET_COLORS` in PixlStash's `setAppearance.js`, in order: the hash indexes it.
@@ -103,36 +104,68 @@ function shownName(row) {
         || filename;
 }
 
-/** Up to two initials, skipping joining words so "World of Wordcraft" is WW. */
+/**
+ * Up to two letters: the first letters of the first two words that start with
+ * a letter, skipping joining words so "World of Wordcraft" is WW. So
+ * "sd3.5 large" is SL, and its 35 goes to the tab.
+ */
 export function markInitials(text) {
     const all = String(text || "").split(/[\s_\-.]+/).filter(Boolean);
     const significant = all.filter((word, i) => i === 0 || !FILLER_WORDS.has(word.toLowerCase()));
     const words = significant.length > 1 ? significant : all;
-    if (!words.length) return "?";
-    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-    return (words[0][0] + words[1][0]).toUpperCase();
+    const lettered = words.filter(word => /^\p{L}/u.test(word));
+    if (lettered.length > 1) return (lettered[0][0] + lettered[1][0]).toUpperCase();
+    if (lettered.length === 1) return lettered[0].replace(/\P{L}/gu, "").slice(0, 2).toUpperCase();
+    return words.length ? words[0].slice(0, 2).toUpperCase() : "?";
+}
+
+/** The tab's digits: the name's first number, dots dropped, at most two. */
+function versionOf(text) {
+    const match = /\d+(?:\.\d+)*/.exec(String(text || ""));
+    return match ? match[0].replace(/\./g, "").slice(0, 2) : "";
 }
 
 /**
  * The mark for one shelf row (a `/adapters` or `/checkpoints` record).
  *
- * @returns {{color: string, ink: string, initials: string}} `color` is an
- *   `hsl()` tile colour, `ink` the colour of the initials on it.
+ * @returns {{color: string, ink: string, initials: string, version: string}}
+ *   `color` is an `hsl()` tile colour, `ink` the colour of the initials on it,
+ *   `version` the tab's digits (`""`: no tab).
  */
 export function generatedMark(row) {
     const key = row?.base_model_canonical || row?.base_model_folded || row?.base_model || "";
     const hue = hueOf(PALETTE[hash32(key) % PALETTE.length]);
+    const name = shownName(row);
     return {
         color: `hsl(${hue} ${TINT_SATURATION}% ${TINT_LIGHTNESS}%)`,
         ink: INK,
-        initials: markInitials(shownName(row)),
+        initials: markInitials(name),
+        version: versionOf(name),
     };
 }
 
-/** Paint `box` as a row's mark: its initials, on its tile, in its ink. */
-export function paintMark(box, row) {
+/**
+ * Paint `box` as a row's mark: its initials, on its tile, in its ink, and the
+ * version on a tab at the corner, the tile's own pair inverted as on the shelf.
+ *
+ * `tab` is the tab's height as a CSS length, 15px at least: smaller digits do
+ * not read. The tab hangs past the corner, unless `inside` keeps it within a
+ * box that clips.
+ */
+export function paintMark(box, row, { tab = "15px", inside = false } = {}) {
     const mark = generatedMark(row);
     box.replaceChildren(mark.initials);
     box.style.background = mark.color;
     box.style.color = mark.ink;
+    if (!mark.version) return;
+    if (!box.style.position) box.style.position = "relative";
+    const edge = inside ? "4px" : `calc(${tab} * -0.4)`;
+    const version = document.createElement("span");
+    version.textContent = mark.version;
+    version.style.cssText = `position:absolute; right:${edge}; bottom:${edge}; z-index:1; `
+        + `box-sizing:border-box; min-width:${tab}; height:${tab}; padding:0 2px; `
+        + "display:inline-flex; align-items:center; justify-content:center; "
+        + `border:1px solid ${mark.color}; border-radius:999px; background:${mark.ink}; color:${mark.color}; `
+        + `font-size:max(11px, calc(${tab} * 0.72)); font-weight:700; line-height:1;`;
+    box.appendChild(version);
 }

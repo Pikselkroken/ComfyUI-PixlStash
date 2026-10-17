@@ -696,7 +696,8 @@ function addShelfFaceWidget(node, name) {
          */
         setRecord(record) {
             this.setUrl(null);
-            if (record) paintMark(mark, record);
+            // As large as the square allows, inside it: the widget clips.
+            if (record) paintMark(mark, record, { tab: "max(15px, calc(min(100cqw, 100cqh) * 0.2))", inside: true });
             markArea.style.display = record ? "flex" : "none";
         },
         /** The file's own picture, over its mark. */
@@ -1245,7 +1246,8 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
 
             name.textContent = nameOf(record) || name.textContent;
             name.title       = record.filename || "";
-            paintMark(face, record);
+            // The face clips its picture's corners, so the tab sits inside.
+            paintMark(face, record, { inside: true });
             faceFor(record, creds).then(url => {
                 if (!url || mine !== generation) return;
                 face.style.background = "";

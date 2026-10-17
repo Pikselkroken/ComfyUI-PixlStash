@@ -579,7 +579,8 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             `,
         });
         // A record with no icon draws a generated mark, not a broken image.
-        if (record) paintMark(iconInner, record);
+        // The square clips, so the version tab sits inside its corner.
+        if (record) paintMark(iconInner, record, { tab: "22px", inside: true });
         else iconInner.textContent = initials;
         iconBox.appendChild(iconInner);
         if (several) {
