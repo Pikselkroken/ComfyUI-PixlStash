@@ -266,6 +266,51 @@ class PictureListProxyTests(unittest.TestCase):
         self.assertFalse(resp.kwargs.get("headers"))
 
 
+class PictureSearchAndCountProxyTests(unittest.TestCase):
+    """The picker's search box and its Everything count."""
+
+    def _call(self, handler, payload, **params):
+        client = _FakeClient(_Response(payload=payload))
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
+            resp = asyncio.run(handler(_Request(**params)))
+        return client, resp
+
+    def test_search_hits_the_search_route_with_the_query_and_grouping(self):
+        client, resp = self._call(
+            proxy.proxy_picture_search,
+            [{"id": 3}],
+            query="red hat",
+            threshold="0.1",
+            limit="121",
+            set_id="5",
+            url="http://evil.example",
+            verify_ssl="false",
+        )
+        path, kwargs = client.calls[0]
+        self.assertEqual(path, "/api/v1/pictures/search")
+        self.assertEqual(
+            kwargs["params"],
+            {"query": "red hat", "threshold": "0.1", "limit": "121", "set_id": "5"},
+        )
+        self.assertEqual(json.loads(resp.kwargs["body"]), [{"id": 3}])
+
+    def test_count_hits_the_count_route(self):
+        client, resp = self._call(proxy.proxy_picture_count, {"count": 1142})
+        self.assertEqual(client.calls[0][0], "/api/v1/pictures/count")
+        self.assertEqual(json.loads(resp.kwargs["body"]), {"count": 1142})
+
+    def test_count_asks_for_the_server_it_first_shipped_in(self):
+        floors = []
+
+        def build(request, *args):
+            floors.extend(args)
+            return _FakeClient(_Response(payload={"count": 1}))
+
+        with mock.patch.object(proxy, "_build_client", build):
+            asyncio.run(proxy.proxy_picture_count(_Request()))
+        self.assertEqual(floors, ["1.3.0"])
+
+
 class WorkflowGraphProxyTests(unittest.TestCase):
     """``/pixlstash/workflow_graph`` puts ``workflow_key`` into an upstream path.
 

@@ -194,6 +194,18 @@ async def proxy_pictures(request: web.Request) -> web.Response:
     return await _proxy_get(request, "/api/v1/pictures", pass_on=(LIBRARY_HEADER,))
 
 
+# No `pass_on` for these two: LIBRARY_HEADER is a header PixlStash ANSWERS
+# with, not one that scopes the request, and it names the library on the
+# picture list only. The picker reads it from the list.
+async def proxy_picture_search(request: web.Request) -> web.Response:
+    return await _proxy_get(request, "/api/v1/pictures/search")
+
+
+async def proxy_picture_count(request: web.Request) -> web.Response:
+    # First shipped in PixlStash 1.3.0; search is as old as the floor.
+    return await _proxy_get(request, "/api/v1/pictures/count", min_server_version="1.3.0")
+
+
 async def proxy_thumbnail(request: web.Request) -> web.Response:
     """Proxy a picture thumbnail (binary WebP) from PixlStash.
 
@@ -571,6 +583,8 @@ def register_routes() -> None:
         r.get("/pixlstash/characters")(proxy_characters)
         r.get("/pixlstash/sort_mechanisms")(proxy_sort_mechanisms)
         r.get("/pixlstash/pictures")(proxy_pictures)
+        r.get("/pixlstash/pictures/search")(proxy_picture_search)
+        r.get("/pixlstash/pictures/count")(proxy_picture_count)
         r.get("/pixlstash/thumbnail")(proxy_thumbnail)
         r.get("/pixlstash/adapters")(proxy_adapters)
         r.get("/pixlstash/adapter")(proxy_adapter)
