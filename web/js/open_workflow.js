@@ -15,7 +15,8 @@
  *   ComfyUI's API loader (`app.loadApiJson`) arranges. A layout saved with
  *   a stock node where the graph now has one of this pack's (or the other
  *   way round) is still that layout: the node is replaced where it stands
- *   (`swapNodes`) before the check is made.
+ *   (`swapNodes`) before the check is made, inside a subgraph too, which
+ *   stays one; a toast names the subgraph, since nothing shows it outside.
  * - **Linked to its workflow**: the id and the file's own path go into the
  *   graph, for an automatic workflow as for a manual one, so a save of this
  *   file goes back to it (`save_workflow.js`) and pictures queued here are
@@ -113,6 +114,44 @@ const nodeById = (graph, id) =>
     graph.getNodeById(id) ?? graph.getNodeById(Number(id)) ??
     graph.getNodeById(String(id).replaceAll(":", "_")) ?? null;
 
+// Inside a subgraph a wire may come from its inputs or go to its outputs,
+// which LiteGraph keeps as these node ids.
+const SUBGRAPH_INPUT = "-10";
+const SUBGRAPH_OUTPUT = "-20";
+
+/**
+ * Every link on `graph`, whichever way this LiteGraph keeps them. Read off the
+ * graph and not the node's slots: inside a subgraph ComfyUI 1.53 leaves an
+ * output's `links` empty, and its ids are strings.
+ */
+const linksOf = (graph) =>
+    [...(typeof graph.links?.values === "function" ? graph.links.values() : Object.values(graph.links ?? {}))]
+        .filter(Boolean);
+
+const ownNode = (graph, id) => graph?.getNodeById(id) ?? graph?.getNodeById(Number(id)) ?? null;
+
+/**
+ * Node `id` of the API graph on the canvas, and the graph it is on.
+ *
+ * "75:3" is node 3 of the subgraph that node 75 is an instance of, so it is
+ * looked for inside that subgraph, as ComfyUI numbers it in a prompt; then
+ * as "75_3" on `graph`, where the API loader put it (`nodeById`). A subgraph
+ * is one definition however many instances use it: a node changed inside it
+ * is changed in every instance.
+ */
+export function nodeAt(graph, id) {
+    const steps = String(id).split(":");
+    let where = graph, instance = null;
+    for (const step of steps.slice(0, -1)) {
+        instance = ownNode(where, step);
+        where = instance?.subgraph;
+    }
+    const node = ownNode(where, steps.at(-1));
+    if (node) return { graph: where, node, instance };
+    const flat = ownNode(graph, String(id).replaceAll(":", "_"));
+    return flat ? { graph, node: flat } : null;
+}
+
 /**
  * Write the values of the API graph `api` over the canvas, node by node.
  *
@@ -122,28 +161,35 @@ const nodeById = (graph, id) =>
  * submit now, so its values are the ones to open with. A node the graph does
  * not hold (a note, a bypassed node) keeps its own.
  *
- * Nodes inside a subgraph ("12:3") are not reached, and a widget fed by
- * another node takes no value here. The caller converts the canvas afterwards
- * and uses the layout only if every value arrived (`differsFrom`), so a value
- * this could not write costs the layout, never the value.
+ * A node inside a subgraph ("12:3") is written in it (`nodeAt`), or, for an
+ * input wired to one of the subgraph's own inputs, on the widget ComfyUI
+ * shows for it on the subgraph's node, which is the value its prompt reads.
+ * A widget fed by another node takes no value here. The caller converts the
+ * canvas afterwards and uses the layout only if every value arrived
+ * (`differsFrom`), so a value this could not write costs the layout, never
+ * the value.
  */
 export function writeValues(graph, api) {
     for (const [id, entry] of Object.entries(api ?? {})) {
-        const node = nodeById(graph, id);
+        const { graph: where, node, instance } = nodeAt(graph, id) ?? {};
         if (!node?.widgets) continue;
         for (const [name, value] of Object.entries(entry?.inputs ?? {})) {
             if (Array.isArray(value)) continue;   // a connection, not a value
-            const widget = node.widgets.find((w) => w.name === name);
+            const slot = node.inputs?.findIndex((input) => input.name === name) ?? -1;
+            const outer = linksOf(where).find(
+                (link) => String(link.target_id) === String(node.id) && link.target_slot === slot &&
+                    String(link.origin_id) === SUBGRAPH_INPUT,
+            );
+            const promoted = outer && instance?.inputs?.[outer.origin_slot];
+            const widget = promoted
+                ? instance.widgets?.find((w) => w.name === promoted.widget?.name)
+                : node.widgets.find((w) => w.name === name);
             if (!widget || widget.value === value) continue;
             widget.value = value;
             widget.callback?.(value);
         }
     }
 }
-
-/** The link with this id on `graph`, whichever way this LiteGraph keeps them. */
-const linkOf = (graph, id) =>
-    (typeof graph.links?.get === "function" ? graph.links.get(id) : graph.links?.[id]) ?? null;
 
 /**
  * Make each node on the canvas the class the API graph `api` names for it.
@@ -163,28 +209,30 @@ const linkOf = (graph, id) =>
  * Nothing here decides whether the layout is used. A node this could not
  * replace, or a wire the new node has no place for, leaves a canvas that
  * converts to something else, and the caller's check (`differsFrom`) then
- * drops the layout. Nodes inside a subgraph are not reached.
+ * drops the layout. A node inside a subgraph is replaced in it (`nodeAt`),
+ * so the subgraph stays one, wired to its inputs and outputs as it was.
  */
-export function swapNodes(graph, api, LiteGraph = globalThis.LiteGraph) {
+export function swapNodes(root, api, LiteGraph = globalThis.LiteGraph) {
     const swapped = [];
     for (const [id, entry] of Object.entries(api ?? {})) {
-        const old = graph.getNodeById(id) ?? graph.getNodeById(Number(id));
+        const { graph, node: old } = nodeAt(root, id) ?? {};
         if (!old || !entry?.class_type || old.type === entry.class_type) continue;
         const fresh = LiteGraph?.createNode?.(entry.class_type);
         if (!fresh) continue;
+        const end = (nodeId) =>
+            String(nodeId) === SUBGRAPH_INPUT ? graph.inputNode
+                : String(nodeId) === SUBGRAPH_OUTPUT ? graph.outputNode : ownNode(graph, nodeId);
+        const mine = (nodeId) => String(nodeId) === String(old.id);
         // Read before the old node goes: removing it takes its links along.
-        const reads = (old.inputs ?? []).flatMap((input) => {
-            const link = input.link == null ? null : linkOf(graph, input.link);
-            const from = link ? graph.getNodeById(link.origin_id) : null;
-            return from ? [{ from, slot: link.origin_slot, name: input.name }] : [];
+        const links = linksOf(graph);
+        const reads = links.filter((link) => mine(link.target_id)).flatMap((link) => {
+            const from = end(link.origin_id), name = old.inputs?.[link.target_slot]?.name;
+            return from && name ? [{ from, slot: link.origin_slot, name }] : [];
         });
-        const readBy = (old.outputs ?? []).flatMap((output, slot) =>
-            (output.links ?? []).flatMap((linkId) => {
-                const link = linkOf(graph, linkId);
-                const to = link ? graph.getNodeById(link.target_id) : null;
-                return to ? [{ slot, to, input: link.target_slot }] : [];
-            }),
-        );
+        const readBy = links.filter((link) => mine(link.origin_id)).flatMap((link) => {
+            const to = end(link.target_id);
+            return to ? [{ slot: link.origin_slot, to, input: link.target_slot }] : [];
+        });
         graph.remove(old);
         fresh.id = old.id;
         graph.add(fresh);
@@ -196,8 +244,18 @@ export function swapNodes(graph, api, LiteGraph = globalThis.LiteGraph) {
         if (old.bgcolor) fresh.bgcolor = old.bgcolor;
         // A name the owner gave it stays; the stock node's own name does not.
         if (old.title && old.title !== old.constructor?.title) fresh.title = old.title;
-        for (const { from, slot, name } of reads) from.connect(slot, fresh, name);
-        for (const { slot, to, input } of readBy) fresh.connect(slot, to, input);
+        for (const { from, slot, name } of reads) {
+            if (from !== graph.inputNode) {
+                from.connect(slot, fresh, name);
+                continue;
+            }
+            const input = fresh.inputs?.[fresh.findInputSlot(name)];
+            if (input) from.slots[slot]?.connect(input, fresh);
+        }
+        for (const { slot, to, input } of readBy) {
+            if (to !== graph.outputNode) fresh.connect(slot, to, input);
+            else if (fresh.outputs?.[slot]) to.slots[input]?.connect(fresh.outputs[slot], fresh);
+        }
         swapped.push(String(id));
     }
     return swapped;
@@ -559,6 +617,8 @@ export async function openFromUrl(key, original = false, run = null) {
     }
     const loadAs = !file ? fileStem(name) : loadName(file.path) + (file.mine ? " (opening)" : "");
     let arranged = false;
+    // Nodes replaced inside a subgraph, which nobody sees from outside it.
+    let inside = [];
     if (body.editor) {
         // Whatever goes wrong with a layout costs the layout and nothing
         // else: one that will not load, will not convert, is of something
@@ -569,7 +629,7 @@ export async function openFromUrl(key, original = false, run = null) {
             if ((await app.loadGraphData(body.editor, true, true, loadAs)) === false) {
                 differs = "ComfyUI would not load it";
             } else {
-                swapNodes(rootGraph(), body.workflow);
+                inside = swapNodes(rootGraph(), body.workflow).filter((id) => id.includes(":"));
                 writeValues(rootGraph(), body.workflow);
                 differs = differsFrom((await app.graphToPrompt()).output, body.workflow);
             }
@@ -578,6 +638,12 @@ export async function openFromUrl(key, original = false, run = null) {
         }
         if (differs) console.info("[PixlStash] the layout kept for", name, "is not used:", differs);
         arranged = !differs;
+    }
+    if (arranged && inside.length) {
+        const names = [...new Set(inside.map((id) => nodeAt(rootGraph(), id.split(":")[0])?.node?.title))]
+            .filter(Boolean).map((title) => `“${title}”`);
+        const which = names.length ? `the subgraph${names.length > 1 ? "s" : ""} ${names.join(", ")}` : "a subgraph";
+        notify("info", `Nodes inside ${which} were replaced with PixlStash's own.`);
     }
     if (!arranged) await loadApi(body.workflow, loadAs, !!file);
     const graph = rootGraph();

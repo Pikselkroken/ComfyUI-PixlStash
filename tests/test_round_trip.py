@@ -34,7 +34,7 @@ OTHER = "manual:" + "b" * 32
 
 DRIVER = r"""
 import { app } from "../../scripts/app.js";
-import { differsFrom, fileStem, placePeopleLoader, swapNodes } from "./open_workflow.js";
+import { differsFrom, fileStem, placePeopleLoader, swapNodes, writeValues } from "./open_workflow.js";
 import { saveToPixlStash } from "./save_workflow.js";
 import { FILE_TAG, NEW_TAG, TAG, isUnsent, linkState, openings, quietly } from "./workflow_link.js";
 import { refreshLinkBadge } from "./link_badge.js";
@@ -749,6 +749,94 @@ const LINKED = { [TAG]: AUTO, [FILE_TAG]: PATH };
     };
 }
 {
+    // A layout whose saver and LoRA loader are inside a subgraph (node 75):
+    // each is replaced in the subgraph, wired to its inputs and outputs. As
+    // ComfyUI 1.53 keeps a subgraph: ids are strings, an output's `links`
+    // stays empty, and the saver's prefix is promoted onto node 75.
+    const SLOTS = {
+        LoraLoader: [["model", "clip"], ["MODEL", "CLIP"]],
+        PixlStashAdapterLoader: [["model", "clip", "pixlstash_set"], ["MODEL", "CLIP", "STRING"]],
+        SaveImage: [["images", "filename_prefix"], []],
+        PixlStashPictureSaver: [["images", "filename_prefix", "pixlstash_set"], ["STRING"]],
+    };
+    const IN = "-10", OUT = "-20";
+    const makeLinked = (graph, id, type) => ({
+        id, type, mode: 0, pos: [id, 1], size: [200, 80], graph,
+        inputs: SLOTS[type][0].map((name) => ({ name, link: null })),
+        outputs: SLOTS[type][1].map((name) => ({ name, links: [] })),
+        widgets: type === "PixlStashAdapterLoader" ? [{ name: "pixlstash_set", value: "" }]
+            : type.includes("Save") ? [{ name: "filename_prefix", value: "old" }] : [],
+        findInputSlot(name) { return this.inputs.findIndex((i) => i.name === name); },
+    });
+    const wire = (graph, from, slot, to, input) => {
+        const link = { id: graph.nextLink++, origin_id: from, origin_slot: slot, target_id: to, target_slot: input };
+        graph.links.set(link.id, link);
+        return link;
+    };
+    const makeGraph = () => {
+        const graph = {
+            links: new Map(), nodes: [], nextLink: 1,
+            getNodeById(id) { return this.nodes.find((n) => n.id === id) ?? null; },
+            add(node) { node.graph = this; this.nodes.push(node); },
+            remove(node) {
+                for (const [id, link] of [...this.links]) {
+                    if (link.origin_id === node.id || link.target_id === node.id) this.links.delete(id);
+                }
+                this.nodes = this.nodes.filter((n) => n !== node);
+            },
+        };
+        // The subgraph's own inputs and outputs, as `SubgraphInput.connect`
+        // and `SubgraphOutput.connect` wire them.
+        graph.inputNode = { id: IN, slots: [0, 1, 2].map((at) => ({
+            connect(input, node) { input.link = wire(graph, IN, at, node.id, node.inputs.indexOf(input)).id; },
+        })) };
+        graph.outputNode = { id: OUT, slots: [0, 1].map((at) => ({
+            connect(output, node) { wire(graph, node.id, node.outputs.indexOf(output), OUT, at); },
+        })) };
+        return graph;
+    };
+    const connect = function (slot, target, to) {
+        const input = typeof to === "number" ? to : target.findInputSlot(to);
+        if (input < 0) return null;
+        const link = wire(this.graph, this.id, slot, target.id, input);
+        target.inputs[input].link = link.id;
+        return link;
+    };
+    const root = makeGraph();
+    const inner = makeGraph();
+    const instance = {
+        id: 75, type: "uuid-of-the-subgraph", title: "Upscale", subgraph: inner,
+        inputs: [{ name: "model" }, { name: "images" }, { name: "filename_prefix", widget: { name: "filename_prefix" } }],
+        widgets: [{ name: "filename_prefix", value: "upscaled" }],
+    };
+    root.add(instance);
+    const lora = makeLinked(inner, "4", "LoraLoader");
+    const save = makeLinked(inner, "3", "SaveImage");
+    inner.add(lora);
+    inner.add(save);
+    inner.inputNode.slots[0].connect(lora.inputs[0], lora);
+    inner.inputNode.slots[1].connect(save.inputs[0], save);
+    inner.inputNode.slots[2].connect(save.inputs[1], save);
+    inner.outputNode.slots[1].connect(lora.outputs[1], lora);
+    const lite = { createNode: (type) => ({ ...makeLinked(null, -1, type), connect }) };
+    const api = {
+        "75:3": { class_type: "PixlStashPictureSaver", inputs: { filename_prefix: "PixlStash" } },
+        "75:4": { class_type: "PixlStashAdapterLoader", inputs: { pixlstash_set: "Faces" } },
+    };
+    const swapped = swapNodes(root, api, lite);
+    writeValues(root, api);
+    results.swapped_inside = {
+        swapped,
+        root: root.nodes.map((n) => n.id),
+        types: inner.nodes.map((n) => [n.id, n.type]).sort((a, b) => a[0] - b[0]),
+        wires: [...inner.links.values()]
+            .map((l) => [l.origin_id, l.origin_slot, l.target_id, l.target_slot]).sort(),
+        // The prompt reads the promoted prefix, and the loader's own set.
+        prefix: [instance.widgets[0].value, inner.getNodeById("3").widgets[0].value],
+        set: inner.getNodeById("4").widgets.find((w) => w.name === "pixlstash_set")?.value,
+    };
+}
+{
     // PixlStash's "Open original in ComfyUI": the workflow's own nodes.
     comfy();
     await saver.setup();
@@ -912,6 +1000,33 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(result["titles"], ["Final", "Load PixlStashAdapterLoader"])
         # Bypassed stays bypassed.
         self.assertEqual(result["mode"], 4)
+
+    def test_a_node_inside_a_subgraph_is_replaced_in_it(self):
+        """A layout's subgraph stays one: the stock node inside it becomes
+        the pack's where it stands, wired to the subgraph's own inputs and
+        outputs, and takes the graph's values. A layout dropped over it opens
+        the graph ComfyUI's API loader lays out, with no subgraph at all."""
+        result = self.results["swapped_inside"]
+        self.assertEqual(result["swapped"], ["75:3", "75:4"])
+        self.assertEqual(result["root"], [75])
+        self.assertEqual(
+            result["types"],
+            [["3", "PixlStashPictureSaver"], ["4", "PixlStashAdapterLoader"]],
+        )
+        # The subgraph's input 0 into the loader's model, 1 and 2 into the
+        # saver's images and prefix, and the loader's CLIP out as its output 1.
+        self.assertEqual(
+            result["wires"],
+            [
+                ["-10", 0, "4", 0],
+                ["-10", 1, "3", 0],
+                ["-10", 2, "3", 1],
+                ["4", 1, "-20", 1],
+            ],
+        )
+        # A promoted value goes on the subgraph's node, where a prompt reads it.
+        self.assertEqual(result["prefix"], ["PixlStash", "old"])
+        self.assertEqual(result["set"], "Faces")
 
     def test_what_makes_a_canvas_another_graph(self):
         differs = self.results["differs"]
