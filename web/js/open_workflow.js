@@ -49,7 +49,7 @@
 import { app } from "../../scripts/app.js";
 import {
     FILE_TAG, KEY_RE, NEW_TAG, PEOPLE_LOADER, SHOW_PEOPLE, TAG, apiToken, flushCanvas, isUnsent,
-    linkedWorkflow, newOpening, notify, openings, quietly, rootGraph,
+    linkedWorkflow, newOpening, noteReadVersion, notify, openings, quietly, rootGraph,
 } from "./workflow_link.js";
 
 const PARAM = "pixlstash_workflow";
@@ -404,8 +404,8 @@ async function workflowOfFile(file) {
 }
 
 /**
- * The file in `pixlstash/` this workflow opens as: `{ path, mine }`, or null
- * when ComfyUI's workflow store cannot be asked.
+ * The file in `pixlstash/` this workflow opens as: `{ path, mine, besides }`,
+ * or null when ComfyUI's workflow store cannot be asked.
  *
  * A file already there under the name is this workflow's own from an earlier
  * open only when it carries this workflow's id: that one is `mine`, and is
@@ -413,8 +413,8 @@ async function workflowOfFile(file) {
  * of the same name) is left alone and this takes the next name. So is this
  * workflow's own file when it holds work that is nowhere else: changes not
  * saved, or a save PixlStash never received. That copy stays open as it is,
- * and the workflow opens beside it. `fresh` is a run from the Run popup, which
- * is never opened over a file there already.
+ * and the workflow opens beside it (`besides`). `fresh` is a run from the Run
+ * popup, which is never opened over a file there already.
  */
 async function fileFor(name, key, fresh = false) {
     const store = app.extensionManager?.workflow;
@@ -431,12 +431,14 @@ async function fileFor(name, key, fresh = false) {
         console.info("[PixlStash] could not read ComfyUI's workflows again before looking for the file", err);
     }
     const stem = fileStem(name);
+    let besides = false;
     for (let n = 1; n < 100; n++) {
         const path = `${FOLDER}${stem}${n === 1 ? "" : ` (${n})`}.json`;
         const there = store.getWorkflowByPath(path);
-        if (!there) return { path, mine: null };
-        if (fresh || there.isModified || isUnsent(path)) continue;
-        if ((await workflowOfFile(there)) === key) return { path, mine: there };
+        if (!there) return { path, mine: null, besides };
+        if (fresh || (await workflowOfFile(there)) !== key) continue;
+        if (!there.isModified && !isUnsent(path)) return { path, mine: there, besides };
+        besides = true;
     }
     return null;
 }
@@ -532,6 +534,7 @@ export async function openFromUrl(key, original = false, run = null) {
     // first (`saveOpened`), under a name no file has. A copy of it holding
     // unsaved work is never opened over (`fileFor`).
     const file = await fileFor(name, key, !!run);
+    if (file?.besides) notify("warn", `${name} is also open elsewhere.`);
     const loadAs = !file ? fileStem(name) : loadName(file.path) + (file.mine ? " (opening)" : "");
     let arranged = false;
     if (body.editor) {
@@ -589,6 +592,7 @@ export async function openFromUrl(key, original = false, run = null) {
             waiting: !!body.waiting_applied,
             opening: newOpening(),
         });
+        noteReadVersion(path, body.version);
     } else {
         notify(
             "info",

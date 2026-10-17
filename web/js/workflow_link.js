@@ -160,6 +160,31 @@ export function isUnsent(path) {
     }
 }
 
+// The version of its workflow each file was read at, by file. Kept in the
+// browser's storage as an unsent save is: a copy left open while the workflow
+// was opened again beside it is often saved from a later page, which must
+// still send the version it was read at, or replacing a newer one goes unsaid.
+const READ = "PixlStash.read:";
+
+export function noteReadVersion(path, version) {
+    try {
+        if (Number.isInteger(version)) localStorage.setItem(READ + path, String(version));
+        else localStorage.removeItem(READ + path);
+    } catch (err) {
+        console.info("[PixlStash] could not note the version", path, "was read at", err);
+    }
+}
+
+export function readVersion(path) {
+    try {
+        const version = Number(localStorage.getItem(READ + path) ?? NaN);
+        return Number.isInteger(version) ? version : null;
+    } catch (err) {
+        console.info("[PixlStash] could not read the version", path, "was read at", err);
+        return null;
+    }
+}
+
 /**
  * One sentence per LoRA PixlStash left out because it is somebody's and sits
  * in an ordinary loader. A person's row of the PixlStash loader is left out

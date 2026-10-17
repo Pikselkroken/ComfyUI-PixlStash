@@ -430,6 +430,35 @@ const tagged = (path, key) => ({ path, content: JSON.stringify({ extra: { [TAG]:
     results.unsaved_tab_again = { toasts, loads: app.loads, saved: store.saved.map(([path]) => path) };
 }
 {
+    // The copy left unsaved was read at version 3, in an earlier page. The
+    // one opened beside it is saved first, as version 4; the old copy saved
+    // after it still says it was read at 3, so PixlStash can say it replaced
+    // a newer version.
+    const old = { ...tagged("workflows/pixlstash/Twice.json", AUTO), filename: "Twice", isModified: true };
+    const { toasts, store, kept } = comfy({ files: { [old.path]: old }, open: [old] });
+    kept.set(`PixlStash.read:${old.path}`, "3");
+    await saver.setup();
+    await openLink(AUTO, { name: "Twice", workflow: API, version: 3 });
+    const sent = [];
+    let reply = { version: 4 };
+    globalThis.fetch = async (url, init) => {
+        sent.push(JSON.parse(init.body));
+        return { ok: true, status: 200, json: async () => reply };
+    };
+    const beside = store.activeWorkflow;
+    await saveToPixlStash(beside);
+    // Over to the old copy, whose canvas is linked to its own file.
+    store.activeWorkflow = old;
+    app.rootGraph = makeGraph(chain());
+    app.rootGraph.extra = { [TAG]: AUTO, [FILE_TAG]: old.path };
+    reply = { version: 5, replaced_newer: true };
+    await saveToPixlStash(old);
+    results.old_copy_saved_last = {
+        toasts, beside: beside.path, read: sent.map((body) => body.read_version),
+        stored: Object.fromEntries([...kept].filter(([k]) => k.startsWith("PixlStash.read:"))),
+    };
+}
+{
     // A store that cannot be asked for files: the tab stays unsaved, and says so.
     const { toasts, store } = comfy();
     delete store.getWorkflowByPath;
@@ -1037,7 +1066,7 @@ class RoundTripTests(unittest.TestCase):
     def test_a_save_pixlstash_never_received_is_not_opened_over(self):
         """The workflow still opens, as a file beside the unsent one."""
         result = self.results["unsent_file"]
-        self.assertEqual(result["toasts"], [])
+        self._one_toast("unsent_file", "warn", "Unsent is also open elsewhere.")
         self.assertEqual(result["loads"], [["api", "pixlstash/Unsent (2)"]])
         self.assertEqual(result["saved"], ["workflows/pixlstash/Unsent (2).json"])
         self.assertEqual(result["closed"], [])
@@ -1045,7 +1074,7 @@ class RoundTripTests(unittest.TestCase):
     def test_unsaved_changes_are_not_opened_over(self):
         """The workflow still opens, as a file beside the unsaved tab."""
         result = self.results["unsaved_tab"]
-        self.assertEqual(result["toasts"], [])
+        self._one_toast("unsaved_tab", "warn", "Busy is also open elsewhere.")
         self.assertEqual(result["loads"], [["api", "pixlstash/Busy (2)"]])
         self.assertEqual(result["saved"], ["workflows/pixlstash/Busy (2).json"])
         self.assertEqual(result["closed"], [])
@@ -1053,9 +1082,29 @@ class RoundTripTests(unittest.TestCase):
     def test_the_copy_beside_unsaved_changes_is_opened_over_next_time(self):
         result = self.results["unsaved_tab_again"]
         beside = "workflows/pixlstash/Busy (2).json"
-        self.assertEqual(result["toasts"], [])
+        self._one_toast("unsaved_tab_again", "warn", "Busy is also open elsewhere.")
         self.assertEqual(result["loads"][1], ["editor", f"into {beside}"])
         self.assertEqual(result["saved"], [beside])
+
+    def test_saving_the_old_copy_after_the_new_one_says_it_replaced_a_newer(self):
+        """Each copy sends the version it was read at, the old one from the
+        browser's storage, as a page opened later would."""
+        result = self.results["old_copy_saved_last"]
+        self.assertEqual(result["beside"], "workflows/pixlstash/Twice (2).json")
+        self.assertEqual(result["read"], [3, 3])
+        self.assertEqual(
+            result["stored"],
+            {
+                "PixlStash.read:workflows/pixlstash/Twice.json": "5",
+                "PixlStash.read:workflows/pixlstash/Twice (2).json": "4",
+            },
+        )
+        severities = [severity for severity, _ in result["toasts"]]
+        self.assertEqual(severities, ["warn", "success", "warn"])
+        self.assertIn("also open elsewhere", result["toasts"][0][1])
+        self.assertIn(
+            "A newer version in PixlStash was replaced", result["toasts"][2][1]
+        )
 
     def test_a_store_that_cannot_save_the_file_leaves_an_unsaved_tab(self):
         result = self.results["no_file"]
