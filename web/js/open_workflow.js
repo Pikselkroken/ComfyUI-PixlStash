@@ -640,7 +640,9 @@ export async function openFromUrl(key, original = false, run = null) {
         arranged = !differs;
     }
     if (arranged && inside.length) {
-        const names = [...new Set(inside.map((id) => nodeAt(rootGraph(), id.split(":")[0])?.node?.title))]
+        // The subgraph the node is in: the innermost, for one nested in another.
+        const holder = (id) => nodeAt(rootGraph(), id.slice(0, id.lastIndexOf(":")))?.node?.title;
+        const names = [...new Set(inside.map(holder))]
             .filter(Boolean).map((title) => `“${title}”`);
         const which = names.length ? `the subgraph${names.length > 1 ? "s" : ""} ${names.join(", ")}` : "a subgraph";
         notify("info", `Nodes inside ${which} were replaced with PixlStash's own.`);
