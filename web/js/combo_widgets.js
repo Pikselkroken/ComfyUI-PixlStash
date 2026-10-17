@@ -1433,6 +1433,27 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
         }).catch(err => alert(`PixlStash picker error: ${err.message}`));
     }
 
+    // What the people view narrows by on a canvas opened from PixlStash: the
+    // base model of that workflow's checkpoint, as PixlStash names it. Not
+    // `base_model`, which is an exact filter of its own on top: PixlStash fits
+    // people by the checkpoint's family, so "Krea 2" there would drop the
+    // Krea 2 Turbo LoRAs the Run popup offers.
+    let fitsBase = "";
+    function lookUpFitsBase() {
+        const key = linkedWorkflow();
+        const creds = getSettingsCredentials();
+        if (!key || !creds.url || !creds.token) {
+            fitsBase = "";
+            return;
+        }
+        rowLookup(`people|${key}`, "/pixlstash/workflow_people", { workflow_key: key }).then(data => {
+            const base = typeof data?.base_model === "string" ? data.base_model : "";
+            if (base === fitsBase) return;
+            fitsBase = base;
+            render();
+        });
+    }
+
     function render() {
         const mine = ++generation;
         const rows = readRows(widgets);
@@ -1442,6 +1463,7 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
         drawn();
         shown = Math.min(ROWS, Math.max(shown, rows.length));
         const people = isPeople();
+        if (people) lookUpFitsBase();
         const creds = getSettingsCredentials();
         dropFaces(new Set(rows.map(r => `${creds.url}|${r.adapter_sha256}`)));
         // A saved name follows its adapter to whichever row that is on now:
@@ -1455,6 +1477,15 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
         }
 
         const blocks = [];   // [element, height]
+        if (people && fitsBase) {
+            const fits = `People who fit ${fitsBase}, this workflow's checkpoint.`;
+            blocks.push([el("div", {
+                textContent: fits,
+                title:       fits,
+                style:       "flex:none; height:15px; line-height:15px; white-space:nowrap; overflow:hidden; "
+                    + "text-overflow:ellipsis; " + ROWS_MUTED,
+            }), 15]);
+        }
         if (rows.length) {
             const head = el("div", {
                 style: "flex:none; height:12px; display:flex; justify-content:flex-end; gap:8px; padding-right:36px; "
