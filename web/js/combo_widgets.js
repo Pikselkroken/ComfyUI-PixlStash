@@ -464,8 +464,8 @@ function bindDynamicValues(node, widget, kind, getProjectId) {
             // error) until a real value is picked. Done here rather than when
             // the fetch lands because the cache is shared and only the node
             // that started the fetch would hear of it.
-            if (!isRealComboValue(widget.value) && widget.value !== NONE_LABEL
-                && widget.value !== entry.items[0]) {
+            if (entry.items.length && !isRealComboValue(widget.value)
+                && widget.value !== NONE_LABEL && widget.value !== entry.items[0]) {
                 widget.value = entry.items[0];
                 node.setDirtyCanvas?.(true, false);
             }
