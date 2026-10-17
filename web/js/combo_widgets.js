@@ -668,14 +668,20 @@ const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
  */
 function addShelfFaceWidget(node, name) {
     const box = document.createElement("div");
-    box.style.cssText = "display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:"
-        + THUMB_MIN_SIDE + "px; container-type:size;";
+    box.style.cssText = "position:relative; display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:"
+        + THUMB_MIN_SIDE + "px;";
     const img = document.createElement("img");
     img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
+    // The mark is the largest square that fits, measured off an overlay of its
+    // own: size containment on `box` would stop the picture sizing it.
+    const markArea = document.createElement("div");
+    markArea.style.cssText = "position:absolute; inset:0; container-type:size; display:none; "
+        + "align-items:center; justify-content:center; pointer-events:none;";
     const mark = document.createElement("div");
-    mark.style.cssText = "width:min(100cqw,100cqh); height:min(100cqw,100cqh); border-radius:3px; display:none; "
+    mark.style.cssText = "width:min(100cqw,100cqh); height:min(100cqw,100cqh); border-radius:3px; display:flex; "
         + "align-items:center; justify-content:center; font-weight:700; font-size:min(30cqw,30cqh);";
-    box.append(img, mark);
+    markArea.appendChild(mark);
+    box.append(img, markArea);
 
     const widget = node.addDOMWidget(name, "custom", box, { serialize: false, hideOnZoom: false });
     widget.computeLayoutSize = () => ({ minHeight: THUMB_MIN_SIDE, maxHeight: THUMB_MAX_SIDE, minWidth: THUMB_MIN_SIDE });
@@ -691,7 +697,7 @@ function addShelfFaceWidget(node, name) {
         setRecord(record) {
             this.setUrl(null);
             if (record) paintMark(mark, record);
-            mark.style.display = record ? "flex" : "none";
+            markArea.style.display = record ? "flex" : "none";
         },
         /** The file's own picture, over its mark. */
         setUrl(url) {
@@ -699,7 +705,7 @@ function addShelfFaceWidget(node, name) {
             currentUrl = url;
             img.src = url ?? "";
             img.style.display = url ? "" : "none";
-            if (url) mark.style.display = "none";
+            if (url) markArea.style.display = "none";
             node.setDirtyCanvas?.(true, true);
         },
     };
@@ -797,7 +803,11 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         }
         forgetStaleModel(node, valueWidget.name, lockKind(fileKind), v);
         const creds = getSettingsCredentials();
-        if (!creds.url || !creds.token) return;
+        // No lookup, so no face: the one showing is the previous file's.
+        if (!creds.url || !creds.token) {
+            showFace(null);
+            return;
+        }
         shelfRecordFor(v, creds, fileKind).then(record => {
             // The user may have picked something else while this was in
             // flight; labelling with the old file's name would be a lie, and
@@ -947,7 +957,11 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         }
         forgetStaleModel(node, valueWidget.name, lockKind(fileKind), v);
         const creds = getSettingsCredentials();
-        if (!creds.url || !creds.token) return;
+        // No lookup, so no face: the one showing is the previous file's.
+        if (!creds.url || !creds.token) {
+            showFace(null);
+            return;
+        }
         shelfRecordFor(v, creds, fileKind).then(record => {
             if (String(valueWidget.value ?? "").trim() !== v) return;
             // Nor if the server changed while it was in flight: this is the
@@ -1234,6 +1248,7 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
             paintMark(face, record);
             faceFor(record, creds).then(url => {
                 if (!url || mine !== generation) return;
+                face.style.background = "";
                 face.replaceChildren(el("img", { src: url, style: "width:100%; height:100%; object-fit:cover; display:block;" }));
             });
 
