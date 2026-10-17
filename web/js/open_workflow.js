@@ -381,6 +381,11 @@ async function loadApi(workflow, loadAs, tabbed) {
  * run without the person. A PixlStash from before `places` sends the one
  * place as `place` itself. Returns the first loader, or null with `why` said.
  *
+ * In a subgraph, or read past one's edge, an input cannot be rewired from
+ * here; the wires out of the source are moved to the loader in the graph the
+ * source is on instead, which is the same splice, since `place` rewires every
+ * input that reads the source.
+ *
  * Everything is found before anything is changed, so a canvas this cannot be
  * done on is left exactly as it was.
  */
@@ -393,27 +398,59 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
     if (!places.length) {
         return refuse(place?.reason || "PixlStash could not tell where it goes.");
     }
-    const splices = places.map(({ model, clip, rewires }) => ({
-        model, clip,
-        source: model ? nodeById(graph, model.node_id) : null,
-        clipSource: clip ? nodeById(graph, clip.node_id) : null,
-        rewires: (rewires ?? []).map((rewire) => {
-            const reader = nodeById(graph, rewire.node_id);
-            return { reader, slot: reader?.findInputSlot?.(rewire.field) ?? -1, type: rewire.type };
-        }),
-    }));
-    const lost = ({ source, clip, clipSource, rewires }) =>
-        !source || (clip && !clipSource) || rewires.some((r) => !r.reader || r.slot < 0);
-    if (splices.some(lost)) {
-        return refuse("the model is loaded where the canvas cannot be rewired (inside a subgraph).");
+    const splices = places.map(({ model, clip, rewires }) => {
+        const source = model ? nodeAt(graph, model.node_id) : null;
+        const clipSource = clip ? nodeAt(graph, clip.node_id) : null;
+        const readers = (rewires ?? []).map((rewire) => {
+            const { node: reader, graph: on } = nodeAt(graph, rewire.node_id) ?? {};
+            return { reader, on, slot: reader?.findInputSlot?.(rewire.field) ?? -1, type: rewire.type };
+        });
+        const where = source?.graph;
+        const direct = where === graph && readers.every((r) => r.on === graph && r.slot >= 0);
+        // The source's wires, read before the loader adds one of its own; not
+        // into a bypassed or muted node, which is in no graph the plan read.
+        const wiresOut = (end, output) =>
+            linksOf(where).filter((l) => String(l.origin_id) === String(end.node.id) && l.origin_slot === output &&
+                !ownNode(where, l.target_id)?.mode)
+                .map((l) => [l.target_id, l.target_slot]);
+        const moved = direct || !source ? null : [
+            ...wiresOut(source, model.output).map((wire) => [0, ...wire]),
+            ...(clipSource ? wiresOut(clipSource, clip.output).map((wire) => [1, ...wire]) : []),
+        ];
+        // Moved wires stand in for the readers only where every reader is on
+        // the canvas, and the source has a wire of each kind they read.
+        const unreached = readers.some((r) => !r.reader) || (moved &&
+            ["MODEL", "CLIP"].some((type, output) =>
+                readers.some((r) => r.type === type) && !moved.some(([o]) => o === output)));
+        return {
+            model, clip, where, moved, unreached,
+            source: source?.node,
+            clipSource: clipSource?.node,
+            apart: clipSource && clipSource.graph !== where,
+            rewires: direct ? readers : null,
+        };
+    });
+    if (splices.some(({ source, clip, clipSource }) => !source || (clip && !clipSource))) {
+        return refuse("its model or CLIP source is not on the canvas.");
+    }
+    // Every instance of a subgraph is one definition: the copies of a model
+    // loaded in it are one node here, which takes one loader.
+    for (let at = splices.length - 1; at > 0; at--) {
+        if (splices.slice(0, at).some((other) => other.source === splices[at].source)) splices.splice(at, 1);
+    }
+    if (splices.some(({ unreached }) => unreached)) {
+        return refuse("the canvas does not hold every node that reads its model.");
+    }
+    if (splices.some(({ apart }) => apart)) {
+        return refuse("the model and its CLIP are loaded in different subgraphs, so one loader cannot read both.");
     }
     const loaders = splices.map(() => LiteGraph?.createNode?.(PEOPLE_LOADER));
     if (!loaders.every(Boolean)) {
         return refuse("this ComfyUI has no PixlStash Multi Adapter Loader. Update the ComfyUI-PixlStash nodes.");
     }
-    splices.forEach(({ model, clip, source, clipSource, rewires }, at) => {
+    splices.forEach(({ model, clip, where, source, clipSource, rewires, moved }, at) => {
         const loader = loaders[at];
-        graph.add(loader);
+        where.add(loader);
         const show = loader.widgets?.find((w) => w.name === "show");
         if (show) {
             show.value = SHOW_PEOPLE;
@@ -427,7 +464,11 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
         source.connect(model.output, loader, "model");
         if (clipSource) clipSource.connect(clip.output, loader, "clip");
         // MODEL is the loader's output 0 and CLIP its output 1.
-        for (const { reader, slot, type } of rewires) loader.connect(type === "CLIP" ? 1 : 0, reader, slot);
+        for (const { reader, slot, type } of rewires ?? []) loader.connect(type === "CLIP" ? 1 : 0, reader, slot);
+        for (const [output, to, slot] of moved ?? []) {
+            if (String(to) !== SUBGRAPH_OUTPUT) loader.connect(output, ownNode(where, to), slot);
+            else where.outputNode.slots[slot]?.connect(loader.outputs[output], loader);
+        }
     });
     return loaders[0];
 }
@@ -438,11 +479,14 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
  * graph either, and is theirs: its rows are not this code's to empty.
  */
 function keptPeopleLoader(graph, api) {
-    return (graph.nodes ?? graph._nodes ?? []).find(
-        (node) =>
-            node.type === PEOPLE_LOADER && !(String(node.id) in (api ?? {})) && !node.mode &&
+    // A subgraph's too: where the model is loaded inside one, so is the loader.
+    // Its id there is the subgraph's own, never a key of the graph's.
+    const graphs = [graph, ...(graph.subgraphs?.values?.() ?? [])];
+    return graphs.flatMap((g) => (g.nodes ?? g._nodes ?? []).map((node) => [g, node])).find(
+        ([g, node]) =>
+            node.type === PEOPLE_LOADER && (g !== graph || !(String(node.id) in (api ?? {}))) && !node.mode &&
             node.widgets?.find((w) => w.name === "show")?.value === SHOW_PEOPLE,
-    );
+    )?.[1];
 }
 
 /**

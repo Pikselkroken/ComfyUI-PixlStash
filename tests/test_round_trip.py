@@ -313,6 +313,56 @@ const TWICE = {
     };
 }
 {
+    // The model and its CLIP loaded inside a subgraph (node 48), the model read
+    // inside it and the CLIP past its output: the loader goes in the subgraph,
+    // and what read the two sources reads the loader, the subgraph's output too.
+    const { toasts } = comfy();
+    const OUT = "-20";
+    const inner = { links: new Map(), nodes: [], nextLink: 1 };
+    const wire = (from, slot, to, input) => {
+        const link = { id: inner.nextLink++, origin_id: from, origin_slot: slot, target_id: to, target_slot: input };
+        for (const [id, old] of inner.links) {
+            if (String(old.target_id) === String(to) && old.target_slot === input) inner.links.delete(id);
+        }
+        inner.links.set(link.id, link);
+    };
+    const node = (id, type, inputs, outputs) => ({
+        id, type, pos: [0, 0], inputs: inputs.map((name) => ({ name })), outputs: outputs.map((name) => ({ name })),
+        widgets: type === LOADER ? [{ name: "show", value: "" }] : [],
+        findInputSlot(name) { return this.inputs.findIndex((i) => i.name === name); },
+        connect(slot, target, to) { wire(this.id, slot, target.id, typeof to === "number" ? to : target.findInputSlot(to)); },
+    });
+    Object.assign(inner, {
+        getNodeById(id) { return this.nodes.find((n) => String(n.id) === String(id)) ?? null; },
+        add(n) { n.id ??= "99"; this.nodes.push(n); },
+        outputNode: { id: OUT, slots: [0, 1].map((at) => ({
+            connect(output, n) { wire(n.id, n.outputs.indexOf(output), OUT, at); },
+        })) },
+    });
+    inner.nodes.push(node("12", "UNETLoader", [], ["MODEL"]), node("10", "CLIPLoader", [], ["CLIP"]),
+        node("20", "LoraLoaderModelOnly", ["model"], ["MODEL"]));
+    wire("12", 0, "20", 0);
+    wire("20", 0, OUT, 0);
+    wire("10", 0, OUT, 1);
+    // Used twice (48 and 49): one definition, so one loader for both copies.
+    const root = makeGraph([
+        { id: 48, type: "a-subgraph", subgraph: inner },
+        { id: 49, type: "a-subgraph", subgraph: inner },
+        makeNode(7, "CLIPTextEncode", {}, ["clip"]),
+    ]);
+    const lite = { createNode: (type) => ({ ...node(undefined, type, ["model", "clip"], ["MODEL", "CLIP"]) }) };
+    const copy = (at) => ({
+        model: { node_id: `${at}:12`, output: 0 },
+        clip: { node_id: `${at}:10`, output: 0 },
+        rewires: [{ node_id: `${at}:20`, field: "model", type: "MODEL" }, { node_id: "7", field: "clip", type: "CLIP" }],
+    });
+    const placed = placePeopleLoader(root, { places: [copy(48), copy(49)] }, lite);
+    results.inside_subgraph = {
+        toasts, placed: placed?.id, root: root.nodes.length, loaders: loaders(inner).length,
+        inner: [...inner.links.values()].map((l) => [l.origin_id, l.origin_slot, l.target_id, l.target_slot]).sort(),
+    };
+}
+{
     // A copy the canvas cannot be rewired at: no loader at all, not one of two.
     const { toasts } = comfy();
     const graph = copies();
@@ -1078,9 +1128,32 @@ class RoundTripTests(unittest.TestCase):
             },
         )
 
+    def test_the_loader_goes_inside_the_subgraph_the_model_is_loaded_in(self):
+        """Wrong if the loader is refused, lands on the root canvas, or leaves
+        a reader of either source reading it past the loader."""
+        result = self.results["inside_subgraph"]
+        self.assertEqual(
+            (result["toasts"], result["placed"], result["root"], result["loaders"]),
+            ([], "99", 3, 1),
+        )
+        self.assertEqual(
+            result["inner"],
+            sorted(
+                [
+                    ["12", 0, "99", 0],
+                    ["10", 0, "99", 1],
+                    ["99", 0, "20", 0],
+                    ["20", 0, "-20", 0],
+                    ["99", 1, "-20", 1],
+                ]
+            ),
+        )
+
     def test_a_copy_that_cannot_be_rewired_leaves_the_canvas_alone(self):
         result = self.results["copy_lost"]
-        self._one_toast("copy_lost", "warn", "inside a subgraph")
+        self._one_toast(
+            "copy_lost", "warn", "does not hold every node that reads its model"
+        )
         self.assertEqual(
             (result["placed"], result["wires"], result["nodes"]), (None, [], 6)
         )
