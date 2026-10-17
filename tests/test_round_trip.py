@@ -672,6 +672,8 @@ const LINKED = { [TAG]: AUTO, [FILE_TAG]: PATH };
     steps.linked = shown();
     steps.says = made[0].kids.filter((k) => typeof k === "string");
     steps.in_the_canvas_panel = panel.kids.includes(made[0]);
+    // At the foot of the canvas, out of the way of the graph.
+    steps.at_the_foot = /(^|;)bottom:8px;/.test(made[0].style.cssText) && !/(^|;)top:/.test(made[0].style.cssText);
     canvas(store, LINKED, "workflows/Copy.json");
     refreshLinkBadge();
     steps.a_copy = shown();
@@ -1464,6 +1466,7 @@ class RoundTripTests(unittest.TestCase):
                 "linked": "flex",
                 "says": ["Linked to PixlStash"],
                 "in_the_canvas_panel": True,
+                "at_the_foot": True,
                 "a_copy": "none",
                 "a_run": "none",
                 "after_a_store_action": "flex",

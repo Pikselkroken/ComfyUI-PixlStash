@@ -226,7 +226,7 @@ with it is linked to the PixlStash workflow it came from:
 - **It opens as a saved file**, in a `pixlstash` folder of your ComfyUI
   workflows, so Ctrl+S saves it and never asks for a filename.
 - **The canvas says so.** While that file is showing, a small *Linked to
-  PixlStash* sign sits at the top of the canvas. It is gone on any other
+  PixlStash* sign sits at the foot of the canvas. It is gone on any other
   workflow, a copy of this one included.
 - **Saving it saves a version in PixlStash.** No question is asked in either
   app, and a toast says what happened: `Saved to PixlStash: Portrait, version
