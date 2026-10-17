@@ -39,7 +39,9 @@ function makeNode(value) {
     node.onNodeCreated();
     const widget = node.widgets[0];
     // ComfyUI reads the list on every draw of the node.
-    return () => { widget.options.values; return widget.value; };
+    const read = () => { widget.options.values; return widget.value; };
+    read.list = () => widget.options.values;
+    return read;
 }
 
 const results = {};
@@ -47,6 +49,7 @@ const fresh = makeNode("(loading…)");
 results.while_loading = fresh();
 await turns();
 results.loaded = fresh();
+results.listed = makeNode("Alpha #1").list();
 results.from_the_cache = makeNode("(loading…)")();
 results.saved_pick = makeNode("Alpha #1")();
 
@@ -109,6 +112,9 @@ class DynamicComboTests(unittest.TestCase):
         # The bug: it said "(loading…)" until something was picked by hand.
         self.assertEqual(self.results["loaded"], "— None —")
         self.assertEqual(self.results["from_the_cache"], "— None —")
+
+    def test_the_list_is_none_then_the_server_s(self):
+        self.assertEqual(self.results["listed"], ["— None —", "Alpha #1"])
 
     def test_a_real_pick_is_kept(self):
         self.assertEqual(self.results["saved_pick"], "Alpha #1")
