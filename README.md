@@ -271,8 +271,9 @@ with it is linked to the PixlStash workflow it came from:
 - **A loader for people is put beside the model**: a Multi Adapter Loader set
   to *People who fit*, offering the people PixlStash's Run popup offers for
   the workflow, wired where a run from PixlStash would put a person's LoRA.
-  A workflow that loads the same model several times gets one beside every
-  copy; pick the person in each copy that should have them.
+  A workflow that loads several models (the same one several times, or a
+  base model and its refiner) gets one beside each; pick the person in each
+  one that should have them.
   Pick one or several and queue. Nobody is picked when it opens, and what you
   pick is never saved into the workflow: `Nothing new to save. The people
   picked here stay in ComfyUI.` A person's LoRA in an ordinary loader is left
