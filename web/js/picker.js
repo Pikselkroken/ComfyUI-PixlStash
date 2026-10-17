@@ -488,6 +488,11 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
             renderRail();
         })
         .catch(err => console.warn("[PixlStash picker] pictures/count:", err.message));
+    // PixlStash loads its search models on the first search it gets, which
+    // takes a while. One thrown-away search now has them loading while the
+    // reader types, so their own first search answers as quickly as the rest.
+    proxyFetch("/pixlstash/pictures/search", credentials, { query: "picture", limit: 1 })
+        .catch(() => {});
 
     // -----------------------------------------------------------------------
     // Sort mechanisms — fetched from proxy; fall back to sensible defaults
