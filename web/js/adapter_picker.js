@@ -623,6 +623,9 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
                 const before = [...iconInner.childNodes];
                 const background = iconInner.style.background;
                 picture.addEventListener("error", () => {
+                    // Unusable, so release it now rather than at close().
+                    URL.revokeObjectURL(url);
+                    if (item._objectUrl === url) item._objectUrl = null;
                     iconInner.style.background = background;
                     iconInner.replaceChildren(...before);
                 });
