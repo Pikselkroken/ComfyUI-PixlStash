@@ -119,9 +119,12 @@ export function markInitials(text) {
     return words.length ? words[0].slice(0, 2).toUpperCase() : "?";
 }
 
-/** The tab's version: the name's first number, `x.y` kept with its dot, else two digits at most. */
+/**
+ * The tab's version: the name's first number, `x.y` kept with its dot, else two
+ * digits at most. A zero-padded number (`000002750`) is a counter, not a version.
+ */
 function versionOf(text) {
-    const match = /(\d+)(?:\.(\d))?/.exec(String(text || ""));
+    const match = /(?<!\d)(?!0\d)(\d+)(?:\.(\d))?/.exec(String(text || ""));
     if (!match) return "";
     const [, major, minor] = match;
     return major.length === 1 && minor ? `${major}.${minor}` : major.slice(0, 2);

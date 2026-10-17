@@ -695,7 +695,8 @@ function addShelfFaceWidget(node, name) {
     const img = document.createElement("img");
     img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
     // A picture the browser cannot decode leaves the mark under it showing.
-    // Clearing `src` fires `error` too, which is not a picture failing.
+    // The square is cleared by removing `src`, so an `error` with no `src` is
+    // not a picture failing.
     img.addEventListener("error", () => {
         if (!img.getAttribute("src")) return;
         img.style.display = "none";
@@ -733,7 +734,8 @@ function addShelfFaceWidget(node, name) {
         setUrl(url) {
             if (currentUrl) URL.revokeObjectURL(currentUrl);
             currentUrl = url;
-            img.src = url ?? "";
+            if (url) img.src = url;
+            else img.removeAttribute("src");
             img.style.display = url ? "" : "none";
             if (url) markArea.style.display = "none";
             node.setDirtyCanvas?.(true, true);
@@ -941,8 +943,8 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         + "border-radius:3px; display:none; align-items:center; justify-content:center; "
         + "font-weight:700;";
 
-    // A picture the browser cannot decode leaves the mark showing. Clearing
-    // `src` fires `error` too, which is not a picture failing.
+    // A picture the browser cannot decode leaves the mark showing. The square
+    // is cleared by removing `src`, so an `error` with no `src` is not one.
     img.addEventListener("error", () => {
         if (!img.getAttribute("src")) return;
         img.style.display = "none";
@@ -962,7 +964,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     const showFace = (record) => {
         if (currentUrl) URL.revokeObjectURL(currentUrl);
         currentUrl = null;
-        img.src = "";
+        img.removeAttribute("src");
         img.style.display = "none";
         if (record) paintMark(mark, record);
         mark.style.display = record ? "flex" : "none";
