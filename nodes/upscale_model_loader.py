@@ -10,13 +10,15 @@ source is copied here; see the licence note in README.md.
 The file is resolved (or fetched and cached under ``<upscale_models>/pixlstash/``)
 by ``shelf_file``, exactly as the ControlNet Loader's is.  Unlike the other
 loaders it takes ``.pth`` as well as ``.safetensors``: nearly every upscaler
-ships as a ``.pth``, which the built-in reads with ``safe_load``, so a pickle
-cannot run code here.
+ships as a ``.pth``.  The built-in reads one with torch's ``weights_only``
+unpickler, which refuses anything but tensors and plain containers, so the
+file is held to what ComfyUI's own loader would accept from ``upscale_models``.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 
 from . import lock, shelf_file
 
@@ -29,6 +31,11 @@ SUFFIXES = (".pth", ".safetensors")
 
 FOLDER_KEY = "upscale_models"
 
+# One swap of `get_full_path` at a time, so an overlapping load can never
+# restore the other's shim. ComfyUI runs prompts on one thread; this holds if
+# something ever does not.
+_SWAP_LOCK = threading.Lock()
+
 
 def load_file(path: str):
     """An upscale model out of one file on this machine, by the built-in.
@@ -37,14 +44,13 @@ def load_file(path: str):
     shelf's copy may be anywhere, so for the one call ``get_full_path`` answers
     *path* for itself and asks the real lookup for everything else.
 
-    ponytail: a module-global swap for the length of one load. A concurrent
-    lookup of any other name still reaches the real function; switch to a
-    public load-by-path call if ComfyUI ever grows one.
+    ponytail: a module-global swap for the length of one load, serialised by
+    ``_SWAP_LOCK``. A concurrent lookup of any other name still reaches the
+    real function; switch to a public load-by-path call if ComfyUI ever grows
+    one.
     """
     import folder_paths  # noqa: PLC0415 — only available inside ComfyUI
     from comfy_extras.nodes_upscale_model import UpscaleModelLoader  # noqa: PLC0415
-
-    find = folder_paths.get_full_path
 
     def full_path(folder_name, filename):
         if folder_name == FOLDER_KEY and filename == path:
@@ -53,13 +59,15 @@ def load_file(path: str):
 
     # `get_full_path_or_raise` calls this by its module global, so one swap
     # covers both spellings a ComfyUI version may use.
-    folder_paths.get_full_path = full_path
-    try:
-        # A tuple from an older ComfyUI, a NodeOutput from a newer one; both
-        # index.
-        return UpscaleModelLoader().load_model(path)[0]
-    finally:
-        folder_paths.get_full_path = find
+    with _SWAP_LOCK:
+        find = folder_paths.get_full_path
+        folder_paths.get_full_path = full_path
+        try:
+            # A tuple from an older ComfyUI, a NodeOutput from a newer one;
+            # both index.
+            return UpscaleModelLoader().load_model(path)[0]
+        finally:
+            folder_paths.get_full_path = find
 
 
 class PixlStashUpscaleModelLoader:
