@@ -18,9 +18,10 @@
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
 import {
-    collapseStacks, fetchFaceUrl, initialsOf, nameOf, openAdapterPicker, personOf,
+    collapseStacks, fetchFaceUrl, nameOf, openAdapterPicker, personOf,
     shelfRecordFor, triggerText,
 } from "./adapter_picker.js";
+import { paintMark } from "./model_mark.js";
 import { ROWS, readRows, rowField, withPicks, writeRows } from "./adapter_rows.js";
 import { el, fitLabel } from "./modal_dom.js";
 import { linkedWorkflow } from "./workflow_link.js";
@@ -660,14 +661,21 @@ const SHELF_ICON_SIZE = 20;  // inline favicon: fixed, both edges
 const THUMB_MIN_SIDE  = 48;  // Adapter Loader: floor a user can shrink to
 const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
 
-/** One `<img>`-backed DOM widget for the Adapter Loader's picked-file thumbnail. */
+/**
+ * One DOM widget for the Adapter Loader's picked-file thumbnail: the file's
+ * picture, or the generated mark PixlStash's shelf draws for it when it has
+ * none, as a square as large as the widget allows.
+ */
 function addShelfFaceWidget(node, name) {
     const box = document.createElement("div");
     box.style.cssText = "display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:"
-        + THUMB_MIN_SIDE + "px;";
+        + THUMB_MIN_SIDE + "px; container-type:size;";
     const img = document.createElement("img");
     img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
-    box.appendChild(img);
+    const mark = document.createElement("div");
+    mark.style.cssText = "width:min(100cqw,100cqh); height:min(100cqw,100cqh); border-radius:3px; display:none; "
+        + "align-items:center; justify-content:center; font-weight:700; font-size:min(30cqw,30cqh);";
+    box.append(img, mark);
 
     const widget = node.addDOMWidget(name, "custom", box, { serialize: false, hideOnZoom: false });
     widget.computeLayoutSize = () => ({ minHeight: THUMB_MIN_SIDE, maxHeight: THUMB_MAX_SIDE, minWidth: THUMB_MIN_SIDE });
@@ -676,12 +684,22 @@ function addShelfFaceWidget(node, name) {
     widget.onRemove = () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
 
     return {
-        /** `null` clears the square — a picture of the file a node used to hold is worse than none. */
+        /**
+         * The file's mark, and no picture. `null` clears the square — a
+         * picture of the file a node used to hold is worse than none.
+         */
+        setRecord(record) {
+            this.setUrl(null);
+            if (record) paintMark(mark, record);
+            mark.style.display = record ? "flex" : "none";
+        },
+        /** The file's own picture, over its mark. */
         setUrl(url) {
             if (currentUrl) URL.revokeObjectURL(currentUrl);
             currentUrl = url;
             img.src = url ?? "";
             img.style.display = url ? "" : "none";
+            if (url) mark.style.display = "none";
             node.setDirtyCanvas?.(true, true);
         },
     };
@@ -747,7 +765,7 @@ function addShelfBrowseButton(node, valueWidget, opts) {
     let faceWidget;
 
     const showFace = (record) => {
-        faceWidget.setUrl(null);
+        faceWidget.setRecord(record);
 
         const creds = getSettingsCredentials();
         if (!record || !creds.url || !creds.token) return;
@@ -877,7 +895,13 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     img.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
         + "object-fit:cover; border-radius:3px; display:none;";
 
-    row.append(btn, img);
+    // The generated mark, while the file has no picture of its own.
+    const mark = document.createElement("span");
+    mark.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
+        + "border-radius:3px; display:none; align-items:center; justify-content:center; "
+        + "font-size:9px; font-weight:700;";
+
+    row.append(btn, img, mark);
     node.addDOMWidget(`${valueWidget.name}_browse`, "custom", row, { serialize: false, hideOnZoom: false });
 
     const setLabel = (text) => {
@@ -892,6 +916,8 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         currentUrl = null;
         img.src = "";
         img.style.display = "none";
+        if (record) paintMark(mark, record);
+        mark.style.display = record ? "flex" : "none";
 
         const creds = getSettingsCredentials();
         if (!record || !creds.url || !creds.token) return;
@@ -905,6 +931,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
             currentUrl = url;
             img.src = url;
             img.style.display = "";
+            mark.style.display = "none";
             node.setDirtyCanvas?.(true, true);
         }).catch(() => {});
     };
@@ -1204,7 +1231,7 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
 
             name.textContent = nameOf(record) || name.textContent;
             name.title       = record.filename || "";
-            face.textContent = initialsOf(record);
+            paintMark(face, record);
             faceFor(record, creds).then(url => {
                 if (!url || mine !== generation) return;
                 face.replaceChildren(el("img", { src: url, style: "width:100%; height:100%; object-fit:cover; display:block;" }));

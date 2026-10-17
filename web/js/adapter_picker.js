@@ -44,6 +44,7 @@
 
 import { swapTick, toggleTick } from "./adapter_rows.js";
 import { el, mkBtn, mkRow, selStyle } from "./modal_dom.js";
+import { markInitials, paintMark } from "./model_mark.js";
 
 const PAGE_SIZE = 48;
 
@@ -111,7 +112,7 @@ async function fetchBlobUrl(path, credentials, extraParams) {
  *    (none of the 51 on the shelf this was tested against), while attachments
  *    are common, so this is the step that actually draws a picture. A LoRA of
  *    a person is far better identified by that person's face than by `SA`.
- * 3. `null`, and the caller leaves the generated initials mark alone. A
+ * 3. `null`, and the caller leaves the generated mark alone. A
  *    character with no reference face 404s exactly like one that does not
  *    exist, and an empty square would read as broken rather than as unset.
  *
@@ -552,8 +553,12 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         confirmBtn.textContent = n ? `Use ${n} ${noun}` : (hidden.length ? "Keep the rows" : "Use none");
     }
 
-    /** The parts every card has: the square, its initials, and its tick number. */
-    function cardShell(initials) {
+    /**
+     * The parts every card has: the square, its mark, and its tick number.
+     * A shelf `record` draws the mark PixlStash's shelf draws for it; a
+     * person, who has no shelf colour, draws plain `initials`.
+     */
+    function cardShell(initials, record = null) {
         const item = el("div", {
             style: `
                 cursor:pointer; background:#252525; border-radius:6px;
@@ -574,7 +579,8 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             `,
         });
         // A record with no icon draws a generated mark, not a broken image.
-        iconInner.textContent = initials;
+        if (record) paintMark(iconInner, record);
+        else iconInner.textContent = initials;
         iconBox.appendChild(iconInner);
         if (several) {
             item._badge = el("div", {
@@ -607,6 +613,8 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
                     return;
                 }
                 item._objectUrl = url;
+                // A contained picture letterboxes; the bars are not the mark's.
+                iconInner.style.background = "";
                 iconInner.replaceChildren(el("img", {
                     src:   url,
                     style: "width:100%; height:100%; object-fit:contain; display:block;",
@@ -616,7 +624,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     }
 
     function makeCard(record) {
-        const { item, iconInner } = cardShell(initialsOf(record));
+        const { item, iconInner } = cardShell(null, record);
         item._value = () => idOf(record);
 
         item.appendChild(el("div", {
@@ -688,7 +696,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
      * place.
      */
     function makePersonCard(person) {
-        const { item, iconInner } = cardShell(initialsOf({ display_name: person.name }));
+        const { item, iconInner } = cardShell(markInitials(person.name));
         person.chosen = person.adapters.find(a => ticked.includes(idOf(a)))
             ?? person.chosen ?? person.adapters[0];
         item._value = () => idOf(person.chosen);
@@ -1049,13 +1057,6 @@ function describeFilters({ kind, baseModel, characterId, setId, workflowSetId } 
     if (characterId) parts.push(`character #${characterId}`);
     else if (setId)  parts.push(`set #${setId}`);
     return parts.length ? `Filtered: ${parts.join(" · ")}` : `All ${shelf.noun}s`;
-}
-
-/** Two letters for the generated mark shown when a record has no icon. */
-export function initialsOf(record) {
-    const name = String(record.display_name || record.filename || "?");
-    const words = name.replace(/[_\-.]+/g, " ").split(/\s+/).filter(Boolean);
-    return (words.slice(0, 2).map(w => w[0]).join("") || "?").toUpperCase();
 }
 
 // el / mkBtn / mkRow / selStyle come from ./modal_dom.js — see the import.
