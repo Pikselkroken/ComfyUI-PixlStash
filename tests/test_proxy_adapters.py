@@ -299,6 +299,17 @@ class PictureSearchAndCountProxyTests(unittest.TestCase):
         self.assertEqual(client.calls[0][0], "/api/v1/pictures/count")
         self.assertEqual(json.loads(resp.kwargs["body"]), {"count": 1142})
 
+    def test_count_asks_for_the_server_it_first_shipped_in(self):
+        floors = []
+
+        def build(request, *args):
+            floors.extend(args)
+            return _FakeClient(_Response(payload={"count": 1}))
+
+        with mock.patch.object(proxy, "_build_client", build):
+            asyncio.run(proxy.proxy_picture_count(_Request()))
+        self.assertEqual(floors, ["1.3.0"])
+
 
 class WorkflowGraphProxyTests(unittest.TestCase):
     """``/pixlstash/workflow_graph`` puts ``workflow_key`` into an upstream path.

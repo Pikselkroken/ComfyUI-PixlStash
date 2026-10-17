@@ -43,7 +43,8 @@ const NODE_MIN_VERSION = {
     "PixlStashProjectLoader":   "1.2.0",
     "PixlStashCharacterLoader": "1.2.0",
     "PixlStashSetLoader":       "1.2.0",
-    "PixlStashPictureLoader":   "1.2.0",
+    // Its picker's Everything count (GET /pictures/count): 1.3.0.
+    "PixlStashPictureLoader":   "1.3.0",
     "PixlStashPictureSaver":    "1.2.0",
     "PixlStashVideoSaver":      "1.2.0",
     "PixlStashSemanticSearch":  "1.2.0",

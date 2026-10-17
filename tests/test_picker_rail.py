@@ -27,6 +27,7 @@ console.log(JSON.stringify({
     not_lists: railGroups(null, { error: "forbidden" }, undefined),
     nothing_wired: initialFacet({}),
     no_filters: initialFacet(undefined),
+    null_filters: initialFacet(null),
     project_only: initialFacet({ projectId: "2" }),
     all_wired: initialFacet({ projectId: "2", setId: 5, characterId: "7" }),
     project_and_character: initialFacet({ projectId: "2", characterId: "7" }),
@@ -85,6 +86,7 @@ class PickerRailTests(unittest.TestCase):
     def test_opens_on_everything_with_nothing_wired(self):
         self.assertEqual(self.results["nothing_wired"], {"kind": "", "id": ""})
         self.assertEqual(self.results["no_filters"], {"kind": "", "id": ""})
+        self.assertEqual(self.results["null_filters"], {"kind": "", "id": ""})
 
     def test_opens_on_the_narrowest_wired_grouping(self):
         self.assertEqual(self.results["project_only"], {"kind": "project", "id": "2"})

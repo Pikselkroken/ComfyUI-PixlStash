@@ -148,7 +148,8 @@ export function railGroups(projects, characters, sets) {
  * The grouping the picker opens on: the one a wired loader names, the
  * narrowest of them where several are wired, or Everything.
  */
-export function initialFacet({ projectId = "", setId = "", characterId = "" } = {}) {
+export function initialFacet(filters) {
+    const { projectId = "", setId = "", characterId = "" } = filters ?? {};
     if (setId)       return { kind: "set",       id: String(setId) };
     if (characterId) return { kind: "character", id: String(characterId) };
     if (projectId)   return { kind: "project",   id: String(projectId) };

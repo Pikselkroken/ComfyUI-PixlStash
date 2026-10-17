@@ -202,7 +202,8 @@ async def proxy_picture_search(request: web.Request) -> web.Response:
 
 
 async def proxy_picture_count(request: web.Request) -> web.Response:
-    return await _proxy_get(request, "/api/v1/pictures/count")
+    # First shipped in PixlStash 1.3.0; search is as old as the floor.
+    return await _proxy_get(request, "/api/v1/pictures/count", min_server_version="1.3.0")
 
 
 async def proxy_thumbnail(request: web.Request) -> web.Response:
