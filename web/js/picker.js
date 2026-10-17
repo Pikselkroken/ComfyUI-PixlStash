@@ -535,6 +535,8 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
         fetchThumbnailUrl(pic.id, credentials)
             .then(url => {
                 if (!url) { item.firstChild.textContent = "Not available"; return; }
+                // A tile reset or close threw away is nobody's to revoke later.
+                if (!item.isConnected) { URL.revokeObjectURL(url); return; }
                 item._objectUrl = url;
                 item.firstChild.replaceWith(el("img", { src: url, alt: "" }));
             })
