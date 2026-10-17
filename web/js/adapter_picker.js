@@ -614,12 +614,21 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
                     return;
                 }
                 item._objectUrl = url;
-                // A contained picture letterboxes; the bars are not the mark's.
-                iconInner.style.background = "";
-                iconInner.replaceChildren(el("img", {
+                const picture = el("img", {
                     src:   url,
                     style: "width:100%; height:100%; object-fit:contain; display:block;",
-                }));
+                });
+                // A picture the browser cannot decode puts back what it
+                // replaced, the mark or a person's initials, as the shelf does.
+                const before = [...iconInner.childNodes];
+                const background = iconInner.style.background;
+                picture.addEventListener("error", () => {
+                    iconInner.style.background = background;
+                    iconInner.replaceChildren(...before);
+                });
+                // A contained picture letterboxes; the bars are not the mark's.
+                iconInner.style.background = "";
+                iconInner.replaceChildren(picture);
             })
             .catch(() => {});
     }

@@ -694,6 +694,13 @@ function addShelfFaceWidget(node, name) {
         + THUMB_MIN_SIDE + "px;";
     const img = document.createElement("img");
     img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
+    // A picture the browser cannot decode leaves the mark under it showing.
+    // Clearing `src` fires `error` too, which is not a picture failing.
+    img.addEventListener("error", () => {
+        if (!img.getAttribute("src")) return;
+        img.style.display = "none";
+        if (mark.childNodes.length) markArea.style.display = "flex";
+    });
     // The mark is the largest square that fits, measured off an overlay of its
     // own: size containment on `box` would stop the picture sizing it.
     const markArea = document.createElement("div");
@@ -933,6 +940,14 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     mark.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
         + "border-radius:3px; display:none; align-items:center; justify-content:center; "
         + "font-weight:700;";
+
+    // A picture the browser cannot decode leaves the mark showing. Clearing
+    // `src` fires `error` too, which is not a picture failing.
+    img.addEventListener("error", () => {
+        if (!img.getAttribute("src")) return;
+        img.style.display = "none";
+        if (mark.childNodes.length) mark.style.display = "flex";
+    });
 
     row.append(btn, img, mark);
     addShelfDOMWidget(node, `${valueWidget.name}_browse`, row);
@@ -1272,8 +1287,11 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
             paintMark(face, record, { inside: true });
             faceFor(record, creds).then(url => {
                 if (!url || mine !== generation) return;
+                const picture = el("img", { src: url, style: "width:100%; height:100%; object-fit:cover; display:block;" });
+                // One the browser cannot decode puts the mark back.
+                picture.addEventListener("error", () => paintMark(face, record, { inside: true }));
                 face.style.background = "";
-                face.replaceChildren(el("img", { src: url, style: "width:100%; height:100%; object-fit:cover; display:block;" }));
+                face.replaceChildren(picture);
             });
 
             const words = triggerText(record);
