@@ -256,6 +256,50 @@ class PictureLockTests(unittest.TestCase):
         self.assertEqual(out["result"][5], 2)
 
 
+class _Client:
+    """Answers GET with a fixed JSON body per path."""
+
+    def __init__(self, bodies):
+        self.bodies = bodies
+
+    def get(self, path, params=None):
+        return types.SimpleNamespace(json=lambda: self.bodies[path])
+
+
+class VideoTests(unittest.TestCase):
+    """A library holds videos too, and the loader loads stills."""
+
+    def test_a_video_picked_by_id_says_so_instead_of_failing_to_decode(self):
+        client = _Client({"/api/v1/pictures/1233/metadata": {"format": "MP4"}})
+        with self.assertRaisesRegex(RuntimeError, "picture 1233 is a video"):
+            picture_loader.PixlStashPictureLoader._fetch_image(client, 1233)
+
+    def test_the_run_that_loaded_nothing_names_why(self):
+        node = picture_loader.PixlStashPictureLoader()
+        client = _Client({"/api/v1/pictures/1233/metadata": {"format": "MP4"}})
+        with (
+            mock.patch.object(
+                picture_loader,
+                "read_credentials",
+                lambda *a: ("https://vault.example", "t", True),
+            ),
+            mock.patch.object(picture_loader, "make_client", lambda *a: client),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "could be loaded .*is a video"):
+                node.load_pictures("1233")
+
+    def test_browse_mode_leaves_videos_out_of_the_batch(self):
+        rows = [
+            {"id": 1, "format": "PNG"},
+            {"id": 2, "format": "MP4"},
+            {"id": 3, "format": "webm"},
+            {"id": 4, "format": "JPEG"},
+        ]
+        client = _Client({"/api/v1/pictures": rows})
+        ids = picture_loader.PixlStashPictureLoader._resolve_ids(client, "", "", "", "")
+        self.assertEqual(ids, [1, 4])
+
+
 class ClipLockTests(unittest.TestCase):
     """A pair of text encoders is two locks, in widget order."""
 

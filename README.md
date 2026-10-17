@@ -36,7 +36,7 @@ read them at runtime, so they never end up in saved workflow JSON.
 | Project Loader | Picks a project. Outputs a wire to scope other nodes. | 1.0 | 1.0 |
 | Set Loader | Picks a set inside a project. | 1.0 | 1.0 |
 | Character Loader | Picks a character. | 1.0 | 1.2.1 |
-| Picture Loader | Loads images as `IMAGE` and `MASK`. Pick them in a thumbnail browser, or leave the selection empty to fetch everything matching the wired filters. | 1.0 | 1.0 |
+| Picture Loader | Loads images as `IMAGE` and `MASK`. Pick them in a thumbnail browser, or leave the selection empty to fetch everything matching the wired filters. Stills only: videos are left out, as Load Image leaves them out. | 1.0 | 1.0 |
 | Picture Saver | Uploads images, optionally filed under a project, set or character. Can embed the workflow in PNGs. | 1.0 | 1.0 |
 | Video Saver | ComfyUI's Save Video, saving to PixlStash: the same format, codec and encoding options, with the video optionally filed under a project, set or character. Can embed the workflow in the file. | 1.7 | 1.2 |
 | Likeness Search | Finds pictures by facial or image similarity to reference images. | 1.1 | 1.4 |
