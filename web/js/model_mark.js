@@ -114,9 +114,10 @@ export function markInitials(text) {
     const significant = all.filter((word, i) => i === 0 || !FILLER_WORDS.has(word.toLowerCase()));
     const words = significant.length > 1 ? significant : all;
     const lettered = words.filter(word => /^\p{L}/u.test(word));
-    if (lettered.length > 1) return (lettered[0][0] + lettered[1][0]).toUpperCase();
-    if (lettered.length === 1) return lettered[0].replace(/\P{L}/gu, "").slice(0, 2).toUpperCase();
-    return words.length ? words[0].slice(0, 2).toUpperCase() : "?";
+    // By code point, not UTF-16 unit, so a letter outside the BMP is taken whole.
+    if (lettered.length > 1) return ([...lettered[0]][0] + [...lettered[1]][0]).toUpperCase();
+    if (lettered.length === 1) return [...lettered[0].replace(/\P{L}/gu, "")].slice(0, 2).join("").toUpperCase();
+    return words.length ? [...words[0]].slice(0, 2).join("").toUpperCase() : "?";
 }
 
 /**
