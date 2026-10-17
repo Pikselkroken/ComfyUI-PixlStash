@@ -38,7 +38,8 @@ import { app } from "../../scripts/app.js";
 import { exportActiveWorkflow } from "./convert_workflow.js";
 import {
     FILE_TAG, NEW_TAG, PEOPLE_LOADER, TAG, apiToken, flushCanvas, isQuiet, leftOutSentences,
-    linkedFile, linkedWorkflow, markUnsent, notify, openings, quietly, rootGraph,
+    linkedFile, linkedWorkflow, markUnsent, noteReadVersion, notify, openings, quietly, readVersion,
+    rootGraph,
 } from "./workflow_link.js";
 
 const COMMAND_ID = "PixlStash.SaveWorkflow";
@@ -156,7 +157,7 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
                 workflow_key: key,
                 workflow: editor,
                 output: prompt.output,
-                read_version: opened.version ?? null,
+                read_version: opened.version ?? readVersion(path),
                 waiting_applied: !!opened.waiting,
                 opening: opened.opening ?? null,
             }),
@@ -181,6 +182,7 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
     const stored = body.name || name;
     const again = !!opened.saved;
     openings.set(path, { ...opened, version: body.version ?? null, waiting: false, saved: true });
+    noteReadVersion(path, body.version);
     if (body.new_workflow) {
         const why = asNew ? "" : ": the checkpoint changed";
         if (store?.activeWorkflow === active) {

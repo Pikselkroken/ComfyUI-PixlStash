@@ -662,6 +662,28 @@ const THUMB_MIN_SIDE  = 48;  // Adapter Loader: floor a user can shrink to
 const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
 
 /**
+ * A DOM widget as wide as its node, whatever ComfyUI's side panel did to it.
+ *
+ * The panel has no component for a "custom" widget, so it draws one on a
+ * canvas of its own and sets the widget's `width` to the panel's while it is
+ * at it. Nothing puts that back, and the canvas lays a DOM widget out at its
+ * `width` before its node's — so selecting the node left these rows and
+ * buttons stretched far past its edge. A widget here has no width but the
+ * node's: the panel's write goes nowhere. A copy promoted onto a subgraph
+ * node is built fresh, so it is pinned the same way.
+ */
+function addShelfDOMWidget(node, name, element) {
+    return pinNodeWidth(node.addDOMWidget(name, "custom", element, { serialize: false, hideOnZoom: false }));
+}
+
+function pinNodeWidth(widget) {
+    Object.defineProperty(widget, "width", { get: () => undefined, set: () => {}, configurable: true });
+    const copy = widget.createCopyForNode;
+    if (copy) widget.createCopyForNode = function (...args) { return pinNodeWidth(copy.apply(this, args)); };
+    return widget;
+}
+
+/**
  * One DOM widget for the Adapter Loader's picked-file thumbnail: the file's
  * picture, or the generated mark PixlStash's shelf draws for it when it has
  * none, as a square as large as the widget allows.
@@ -683,7 +705,7 @@ function addShelfFaceWidget(node, name) {
     markArea.appendChild(mark);
     box.append(img, markArea);
 
-    const widget = node.addDOMWidget(name, "custom", box, { serialize: false, hideOnZoom: false });
+    const widget = addShelfDOMWidget(node, name, box);
     widget.computeLayoutSize = () => ({ minHeight: THUMB_MIN_SIDE, maxHeight: THUMB_MAX_SIDE, minWidth: THUMB_MIN_SIDE });
 
     let currentUrl = null;
@@ -913,7 +935,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         + "font-size:9px; font-weight:700;";
 
     row.append(btn, img, mark);
-    node.addDOMWidget(`${valueWidget.name}_browse`, "custom", row, { serialize: false, hideOnZoom: false });
+    addShelfDOMWidget(node, `${valueWidget.name}_browse`, row);
 
     const setLabel = (text) => {
         const fullLabel = text ? `${picked}: ${text}` : browse;
@@ -1108,7 +1130,7 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
             + "box-sizing:border-box; font:12px sans-serif; color:var(--input-text,#ddd); overflow:hidden;",
     });
     let height = 0;
-    const rowsWidget = node.addDOMWidget("adapter_rows", "custom", box, { serialize: false, hideOnZoom: false });
+    const rowsWidget = addShelfDOMWidget(node, "adapter_rows", box);
     rowsWidget.computeLayoutSize = () => ({ minHeight: height, maxHeight: height, minWidth: ROWS_MIN_WIDTH });
 
     let shown = 0;       // rows drawn: the filled ones, plus any Add row has shown
