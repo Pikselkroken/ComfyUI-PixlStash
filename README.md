@@ -239,6 +239,8 @@ with it is linked to the PixlStash workflow it came from:
   reached, or a node will not convert, the toast says why; the file is saved
   in ComfyUI, the next save tries again, and until one gets through,
   opening the workflow from PixlStash again will not write over that file.
+  Nor over one open with changes you have not saved: the workflow opens
+  beside it instead, as `Portrait (2)`, and the other is left as it is.
 - **Only that file saves back.** ComfyUI writes a workflow's link into every
   picture it makes and every duplicate of its tab. A picture dragged back
   in, a duplicated tab, a renamed file or somebody else's file is told that

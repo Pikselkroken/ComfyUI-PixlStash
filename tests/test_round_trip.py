@@ -405,18 +405,29 @@ const tagged = (path, key) => ({ path, content: JSON.stringify({ extra: { [TAG]:
     results.unlisted_file = { loads: app.loads, saved: store.saved.map(([path]) => path) };
 }
 {
-    // Its file holds a save PixlStash never received: the only copy of it.
+    // Its file holds a save PixlStash never received: the only copy of it,
+    // left as it is while the workflow opens beside it.
     const mine = tagged("workflows/pixlstash/Unsent.json", AUTO);
     const { toasts, store } = comfy({ files: { [mine.path]: mine }, unsent: [mine.path] });
     await openLink(AUTO, { name: "Unsent", workflow: API });
-    results.unsent_file = { toasts, loads: app.loads, saved: store.saved };
+    results.unsent_file = { toasts, loads: app.loads, saved: store.saved.map(([path]) => path), closed: store.closed };
 }
 {
-    // Open here already, with changes nobody saved: not opened over.
-    const tab = { path: "workflows/pixlstash/Busy.json", isModified: true, activeState: { extra: { [TAG]: AUTO } } };
-    const { toasts } = comfy({ open: [tab] });
+    // Open here already, with changes nobody saved: left open as it is, and
+    // the workflow opens beside it.
+    const busy = { ...tagged("workflows/pixlstash/Busy.json", AUTO), isModified: true };
+    const { toasts, store } = comfy({ files: { [busy.path]: busy }, open: [busy] });
     await openLink(AUTO, { name: "Busy", workflow: API });
-    results.unsaved_tab = { toasts, loads: app.loads };
+    results.unsaved_tab = { toasts, loads: app.loads, saved: store.saved.map(([path]) => path), closed: store.closed };
+}
+{
+    // Opened again with that copy still unsaved: the one beside it is this
+    // workflow's own clean file, and is opened over rather than a third made.
+    const busy = { ...tagged("workflows/pixlstash/Busy.json", AUTO), isModified: true };
+    const beside = tagged("workflows/pixlstash/Busy (2).json", AUTO);
+    const { toasts, store } = comfy({ files: { [busy.path]: busy, [beside.path]: beside }, open: [busy, beside] });
+    await openLink(AUTO, { name: "Busy", workflow: API });
+    results.unsaved_tab_again = { toasts, loads: app.loads, saved: store.saved.map(([path]) => path) };
 }
 {
     // A store that cannot be asked for files: the tab stays unsaved, and says so.
@@ -1024,13 +1035,27 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(late["saved"], [mine])
 
     def test_a_save_pixlstash_never_received_is_not_opened_over(self):
-        self._one_toast("unsent_file", "warn", "PixlStash never received")
+        """The workflow still opens, as a file beside the unsent one."""
         result = self.results["unsent_file"]
-        self.assertEqual((result["loads"], result["saved"]), ([], []))
+        self.assertEqual(result["toasts"], [])
+        self.assertEqual(result["loads"], [["api", "pixlstash/Unsent (2)"]])
+        self.assertEqual(result["saved"], ["workflows/pixlstash/Unsent (2).json"])
+        self.assertEqual(result["closed"], [])
 
     def test_unsaved_changes_are_not_opened_over(self):
-        self._one_toast("unsaved_tab", "warn", "changes that are not saved")
-        self.assertEqual(self.results["unsaved_tab"]["loads"], [])
+        """The workflow still opens, as a file beside the unsaved tab."""
+        result = self.results["unsaved_tab"]
+        self.assertEqual(result["toasts"], [])
+        self.assertEqual(result["loads"], [["api", "pixlstash/Busy (2)"]])
+        self.assertEqual(result["saved"], ["workflows/pixlstash/Busy (2).json"])
+        self.assertEqual(result["closed"], [])
+
+    def test_the_copy_beside_unsaved_changes_is_opened_over_next_time(self):
+        result = self.results["unsaved_tab_again"]
+        beside = "workflows/pixlstash/Busy (2).json"
+        self.assertEqual(result["toasts"], [])
+        self.assertEqual(result["loads"][1], ["editor", f"into {beside}"])
+        self.assertEqual(result["saved"], [beside])
 
     def test_a_store_that_cannot_save_the_file_leaves_an_unsaved_tab(self):
         result = self.results["no_file"]
