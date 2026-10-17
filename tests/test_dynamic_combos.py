@@ -59,6 +59,7 @@ const broken = makeNode("(loading…)");
 broken();
 await turns();
 results.failed = broken();
+results.failed_list = broken.list();
 results.none_through_a_failure = fresh();
 
 failing = false;
@@ -119,8 +120,11 @@ class DynamicComboTests(unittest.TestCase):
     def test_a_real_pick_is_kept(self):
         self.assertEqual(self.results["saved_pick"], "Alpha #1")
 
-    def test_a_failed_list_says_why_and_a_retry_clears_it(self):
-        self.assertEqual(self.results["failed"], "⚠ boom")
+    def test_a_failed_list_is_never_the_value_and_a_retry_clears_it(self):
+        # The error line is in the list; the value is saved and sent with a
+        # run, so it is not put there.
+        self.assertEqual(self.results["failed"], "(loading…)")
+        self.assertEqual(self.results["failed_list"], ["⚠ boom"])
         self.assertEqual(self.results["retrying"], "(loading…)")
         self.assertEqual(self.results["recovered"], "— None —")
 

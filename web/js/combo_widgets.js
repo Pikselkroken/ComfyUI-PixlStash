@@ -459,14 +459,15 @@ function bindDynamicValues(node, widget, kind, getProjectId) {
             }
             // The node is declared with "(loading…)" as its only value, so
             // that is what a fresh node holds. Nothing else moves it once the
-            // list arrives, and an error line that has since been retried is
-            // just as stale: follow the list's head (None, loading or the
-            // error) until a real value is picked. Done here rather than when
-            // the fetch lands because the cache is shared and only the node
-            // that started the fetch would hear of it.
-            if (entry.items.length && !isRealComboValue(widget.value)
-                && widget.value !== NONE_LABEL && widget.value !== entry.items[0]) {
-                widget.value = entry.items[0];
+            // list arrives: follow the list's head to "— None —" (or a real
+            // value) until one is picked. An error line stays in the list and
+            // never becomes the value, which is saved and sent with a run.
+            // Done here rather than when the fetch lands because the cache is
+            // shared and only the node that started the fetch would hear of it.
+            const head = entry.items[0];
+            if ((head === NONE_LABEL || isRealComboValue(head))
+                && !isRealComboValue(widget.value) && widget.value !== NONE_LABEL) {
+                widget.value = head;
                 node.setDirtyCanvas?.(true, false);
             }
             // Make sure the currently-selected value is in the list so the
@@ -1615,7 +1616,9 @@ app.registerExtension({
                 const showPreviews = () => {
                     drawn();
                     const ids = idsOf();
-                    if (this._pixlstashIds === ids.join(",")) return;
+                    // Shown already, unless ComfyUI has since dropped them.
+                    if (this._pixlstashIds === ids.join(",")
+                        && (ids.length ? this.imgs?.length : true)) return;
                     const creds = getSettingsCredentials();
                     if (creds.url && creds.token) {
                         updateNodePreviews(this, ids, creds).catch(() => {});

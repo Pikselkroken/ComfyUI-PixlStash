@@ -93,9 +93,13 @@ export async function updateNodePreviews(node, pictureIds, credentials) {
     // Recorded now so a draw while this loads does not start a second load;
     // dropped again unless every preview arrives, so the next reload of the
     // graph asks again.
+    // A load a later one has replaced writes nothing: finishing last, it
+    // would put the old pictures back and leak the newer load's.
     const ids = pictureIds.join(",");
+    const load = (node._pixlstashLoad = (node._pixlstashLoad ?? 0) + 1);
+    const replaced = () => node._pixlstashLoad !== load;
     node._pixlstashIds = ids;
-    const forget = () => { if (node._pixlstashIds === ids) delete node._pixlstashIds; };
+    const forget = () => { if (!replaced()) delete node._pixlstashIds; };
 
     if (!pictureIds.length) {
         node.imgs = null;
@@ -111,6 +115,10 @@ export async function updateNodePreviews(node, pictureIds, credentials) {
     } catch (err) {
         forget();
         throw err;
+    }
+    if (replaced()) {
+        for (const u of urls) URL.revokeObjectURL(u);
+        return;
     }
     if (urls.length < pictureIds.length) forget();
 
