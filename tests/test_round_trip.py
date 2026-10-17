@@ -414,7 +414,9 @@ const TWICE = {
     graph.links = new Map([[4, 0, 7], [4, 1, 6], [7, 0, 5], [12, 0, 15], [12, 1, 16], [12, 0, 17], [30, 0, 31]]
         .map(([origin_id, origin_slot, target_id], id) => [id, { origin_id, origin_slot, target_id, target_slot: 0 }]));
     const placed = placePeopleLoader(graph, { reason: "This workflow loads 2 models." });
-    results.base_and_refiner = { toasts, placed: placed?.id, wires: app.wires, loaders: loaders(graph).length };
+    results.base_and_refiner = { toasts: [...toasts], placed: placed?.id, wires: [...app.wires], loaders: loaders(graph).length };
+    // Without PixlStash's word that somebody could go in, none more goes on.
+    results.no_place = placePeopleLoader(graph, undefined) === null && loaders(graph).length;
 }
 {
     // An extension that wraps the API loader and drops its promise (rgthree
@@ -1253,6 +1255,9 @@ class RoundTripTests(unittest.TestCase):
         self.assertEqual(
             (result["placed"], result["wires"], result["nodes"]), (None, [], 6)
         )
+
+    def test_no_place_from_pixlstash_puts_no_loader_on(self):
+        self.assertEqual(self.results["no_place"], 2)
 
     def test_a_base_model_and_its_refiner_get_a_loader_each(self):
         self.assertEqual(

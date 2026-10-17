@@ -460,7 +460,7 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
             apart: clipSource && clipSource.graph !== where,
             rewires: direct ? readers : null,
         };
-    }) ?? canvasSplices(graph);
+    }) ?? (place ? canvasSplices(graph) : []);   // no `place`: nothing says anybody could go in
     if (!splices.length) {
         return refuse(place?.reason || "PixlStash could not tell where it goes.");
     }
