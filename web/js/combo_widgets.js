@@ -695,10 +695,11 @@ function addShelfFaceWidget(node, name) {
     const img = document.createElement("img");
     img.style.cssText = "max-width:100%; max-height:100%; object-fit:contain; border-radius:3px; display:none;";
     // A picture the browser cannot decode leaves the mark under it showing.
-    // The square is cleared by removing `src`, so an `error` with no `src` is
-    // not a picture failing.
+    // Only when the CURRENT `src` is the one that broke (complete, no pixels):
+    // an error queued for a picture since replaced, or one after `src` was
+    // removed to clear the square, says nothing about what is shown now.
     img.addEventListener("error", () => {
-        if (!img.getAttribute("src")) return;
+        if (!img.getAttribute("src") || !img.complete || img.naturalWidth) return;
         img.style.display = "none";
         if (mark.childNodes.length) markArea.style.display = "flex";
     });
@@ -943,10 +944,10 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         + "border-radius:3px; display:none; align-items:center; justify-content:center; "
         + "font-weight:700;";
 
-    // A picture the browser cannot decode leaves the mark showing. The square
-    // is cleared by removing `src`, so an `error` with no `src` is not one.
+    // A picture the browser cannot decode leaves the mark showing, but only
+    // when the current `src` is the one that broke (see addShelfFaceWidget).
     img.addEventListener("error", () => {
-        if (!img.getAttribute("src")) return;
+        if (!img.getAttribute("src") || !img.complete || img.naturalWidth) return;
         img.style.display = "none";
         if (mark.childNodes.length) mark.style.display = "flex";
     });
