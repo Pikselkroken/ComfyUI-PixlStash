@@ -11,8 +11,9 @@ The file is resolved (or fetched and cached under ``<upscale_models>/pixlstash/`
 by ``shelf_file``, exactly as the ControlNet Loader's is.  Unlike the other
 loaders it takes ``.pth`` as well as ``.safetensors``: nearly every upscaler
 ships as a ``.pth``.  The built-in reads one with torch's ``weights_only``
-unpickler, which refuses anything but tensors and plain containers, so the
-file is held to what ComfyUI's own loader would accept from ``upscale_models``.
+unpickler, which refuses anything but tensors and plain containers: every
+ComfyUI this pack supports (``requires-comfyui``) does, since v0.14.0 dropped
+the unsafe path.
 """
 
 from __future__ import annotations
@@ -57,14 +58,12 @@ def load_file(path: str):
             return path
         return find(folder_name, filename)
 
-    # `get_full_path_or_raise` calls this by its module global, so one swap
-    # covers both spellings a ComfyUI version may use.
+    # The built-in calls `get_full_path_or_raise`, which calls this by its
+    # module global.
     with _SWAP_LOCK:
         find = folder_paths.get_full_path
         folder_paths.get_full_path = full_path
         try:
-            # A tuple from an older ComfyUI, a NodeOutput from a newer one;
-            # both index.
             return UpscaleModelLoader().load_model(path)[0]
         finally:
             folder_paths.get_full_path = find
