@@ -344,6 +344,8 @@ const TWICE = {
     wire("12", 0, "20", 0);
     wire("20", 0, OUT, 0);
     wire("10", 0, OUT, 1);
+    // A dangling wire, to a node no longer there: left as it is.
+    wire("10", 0, "77", 0);
     // Used twice (48 and 49): one definition, so one loader for both copies.
     const root = makeGraph([
         { id: 48, type: "a-subgraph", subgraph: inner },
@@ -1145,6 +1147,7 @@ class RoundTripTests(unittest.TestCase):
                     ["99", 0, "20", 0],
                     ["20", 0, "-20", 0],
                     ["99", 1, "-20", 1],
+                    ["10", 0, "77", 0],
                 ]
             ),
         )

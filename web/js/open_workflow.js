@@ -408,10 +408,12 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
         const where = source?.graph;
         const direct = where === graph && readers.every((r) => r.on === graph && r.slot >= 0);
         // The source's wires, read before the loader adds one of its own; not
-        // into a bypassed or muted node, which is in no graph the plan read.
+        // into a bypassed or muted node, which is in no graph the plan read,
+        // nor a dangling one whose node is gone.
+        const reaches = (to) => String(to) === SUBGRAPH_OUTPUT || (ownNode(where, to) && !ownNode(where, to).mode);
         const wiresOut = (end, output) =>
             linksOf(where).filter((l) => String(l.origin_id) === String(end.node.id) && l.origin_slot === output &&
-                !ownNode(where, l.target_id)?.mode)
+                reaches(l.target_id))
                 .map((l) => [l.target_id, l.target_slot]);
         const moved = direct || !source ? null : [
             ...wiresOut(source, model.output).map((wire) => [0, ...wire]),
@@ -480,11 +482,15 @@ export function placePeopleLoader(graph, place, LiteGraph = globalThis.LiteGraph
  */
 function keptPeopleLoader(graph, api) {
     // A subgraph's too: where the model is loaded inside one, so is the loader.
-    // Its id there is the subgraph's own, never a key of the graph's.
+    // In a subgraph the graph knows it as "<instance>:<id>".
     const graphs = [graph, ...(graph.subgraphs?.values?.() ?? [])];
+    const inApi = (g, node) =>
+        g === graph
+            ? String(node.id) in (api ?? {})
+            : (graph.nodes ?? graph._nodes ?? []).some((n) => n.subgraph === g && `${n.id}:${node.id}` in (api ?? {}));
     return graphs.flatMap((g) => (g.nodes ?? g._nodes ?? []).map((node) => [g, node])).find(
         ([g, node]) =>
-            node.type === PEOPLE_LOADER && (g !== graph || !(String(node.id) in (api ?? {}))) && !node.mode &&
+            node.type === PEOPLE_LOADER && !inApi(g, node) && !node.mode &&
             node.widgets?.find((w) => w.name === "show")?.value === SHOW_PEOPLE,
     )?.[1];
 }
