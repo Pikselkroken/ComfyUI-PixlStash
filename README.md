@@ -49,6 +49,7 @@ read them at runtime, so they never end up in saved workflow JSON.
 | VAE Loader | Loads a VAE from the model shelf. | 1.5 | 1.10 |
 | CLIP Loader | Loads one or two text encoders from the model shelf. | 1.5 | 1.10 |
 | ControlNet Loader | Loads a ControlNet from the model shelf. | 1.7 | 1.12 |
+| Upscale Model Loader | Loads an upscale model (`.pth` or `.safetensors`) from the model shelf. | 1.7 | 1.12 |
 | Workflow Set Loader | Loads a workflow set's checkpoint, text encoders and VAE in one node, and narrows an Adapter Loader to the set's LoRAs. | 1.6 | 1.12 |
 
 "Added in" is the ComfyUI-PixlStash version. The Face Likeness Gate also needs a
@@ -132,11 +133,12 @@ a bundled copy of [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF), so
 you do not need that pack installed. A GGUF text encoder can be paired with a
 safetensors one. A GGUF checkpoint is a diffusion model only: its CLIP and VAE
 outputs are empty, so wire those from their own loaders. The VAE, ControlNet
-and Adapter loaders take `.safetensors` only.
+and Adapter loaders take `.safetensors` only; the Upscale Model Loader takes
+`.pth` as well.
 
 Files are used in place when ComfyUI and PixlStash share a filesystem. Adapters,
-VAEs, text encoders and ControlNets are otherwise fetched once and cached under
-`pixlstash/<sha256>.safetensors` (or `.gguf`) in the matching models directory, verified
+VAEs, text encoders, ControlNets and upscalers are otherwise fetched once and cached under
+`pixlstash/<sha256>.safetensors` (or `.gguf`, `.pth`) in the matching models directory, verified
 against the digest. **Checkpoints cannot be fetched** and must be readable
 locally.
 
@@ -169,7 +171,7 @@ The lock lands under a `pixlstash_lock` key on the node, as a list of entries:
               "filename": "…", "display_name": null}]}]
 ```
 
-`kind` is `adapter`, `checkpoint`, `vae`, `clip` or `controlnet`. Both identifiers are always
+`kind` is `adapter`, `checkpoint`, `vae`, `clip`, `controlnet` or `upscaler`. Both identifiers are always
 present and either may be null: hash-addressed files have no row id, and a
 checkpoint's `sha256` stays null until the shelf has hashed it. `filename` and
 `display_name` are the shelf's names for the file, either null — for showing,

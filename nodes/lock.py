@@ -36,9 +36,9 @@ entries and this module cannot fold them, because each call only ever sees its
 own.  A consumer therefore folds every entry rather than indexing ``[0]``:
 taking the first would silently record one resolution out of N.
 
-``kind`` is ``adapter`` / ``checkpoint`` / ``vae`` / ``clip`` / ``controlnet``.
-Both identifiers are always present and either may be null: adapters, VAEs,
-text encoders and ControlNets are hash-addressed and have no row id here, and a
+``kind`` is ``adapter`` / ``checkpoint`` / ``vae`` / ``clip`` / ``controlnet``
+/ ``upscaler``.  Both identifiers are always present and either may be null:
+adapters, VAEs, text encoders, ControlNets and upscalers are hash-addressed and have no row id here, and a
 checkpoint is addressed by id precisely because its ``sha256`` stays null until
 the shelf's background hasher reaches the file.
 

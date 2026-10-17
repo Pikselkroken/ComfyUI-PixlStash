@@ -7,7 +7,7 @@
  *
  *   valueWidget — the hidden widget written on confirm (`adapter_sha256`,
  *                 `vae_sha256`, `clip_sha256`, `control_net_sha256`,
- *                 `checkpoint_id`)
+ *                 `upscale_model_sha256`, `checkpoint_id`)
  *   credentials — { url, token, verifySsl }
  *   filters     — { fileKind, kind, baseModel, characterId, setId, workflowSetId,
  *                   several? }
@@ -62,6 +62,7 @@ const SHELF_KINDS = {
     vae:          { path: "/pixlstash/adapters",    listKey: "adapters",    title: "PixlStash VAEs",          noun: "VAE" },
     text_encoder: { path: "/pixlstash/adapters",    listKey: "adapters",    title: "PixlStash Text Encoders", noun: "text encoder" },
     controlnet:   { path: "/pixlstash/adapters",    listKey: "adapters",    title: "PixlStash ControlNets",   noun: "ControlNet" },
+    upscaler:     { path: "/pixlstash/adapters",    listKey: "adapters",    title: "PixlStash Upscalers",     noun: "upscaler" },
     checkpoint:   { path: "/pixlstash/checkpoints", listKey: "checkpoints", title: "PixlStash Checkpoints",   noun: "checkpoint", byId: true },
 };
 

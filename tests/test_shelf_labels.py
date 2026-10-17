@@ -64,6 +64,7 @@ const results = {};
 for (const [type, field, value] of [
     ["PixlStashCheckpointLoader", "checkpoint_id", "12"],
     ["PixlStashControlNetLoader", "control_net_sha256", DIGEST],
+    ["PixlStashUpscaleModelLoader", "upscale_model_sha256", DIGEST],
 ]) {
     const node = await makeNode(type, { [field]: "", shelf: "" });
     const before = label(node);
@@ -121,6 +122,11 @@ class ShelfLabelTests(unittest.TestCase):
         got = self.results["PixlStashControlNetLoader"]
         self.assertEqual(got["before"], "Browse ControlNets…")
         self.assertEqual(got["drawn"], "ControlNet: Depth")
+
+    def test_an_upscaler_set_after_the_node_was_made_is_named(self):
+        got = self.results["PixlStashUpscaleModelLoader"]
+        self.assertEqual(got["before"], "Browse upscalers…")
+        self.assertEqual(got["drawn"], "Upscaler: Depth")
 
     def test_nothing_changes_until_the_node_is_drawn(self):
         # Drawn is when: the setter is ComfyUI's, and it tells nobody.
