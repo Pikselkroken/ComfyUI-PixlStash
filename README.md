@@ -103,6 +103,10 @@ ballooning in size.
 Wire a Set or Character Loader into the Adapter Loader to see only that
 character's or set's adapters.
 
+`base_model` narrows the grid to one base-model family: *Krea 2* shows the
+Krea 2, Raw and Turbo adapters alike. On a workflow opened from PixlStash it
+starts on the family of that workflow's checkpoint.
+
 The Multi Adapter (LoRA) Loader is the same loader for several adapters at
 once, with the same model, clip and `trigger_words` wires; it does not take a
 Set, Character or Workflow Set Loader. Each picked adapter is a row with its
