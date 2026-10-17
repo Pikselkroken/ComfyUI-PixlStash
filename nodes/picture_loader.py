@@ -26,6 +26,10 @@ Whichever mode ran, the pictures that actually came back are reported as the
 node's resolution lock — see ``nodes/lock.py``.  In Browse mode they are not
 in the saved workflow at all, and in either mode a picture that has since
 vanished from the vault is skipped rather than failing the run.
+
+A PixlStash library holds videos too, and this loads stills, as Load Image
+does: Browse mode leaves videos out of the batch, and a video picked by ID is
+skipped with that as the reason.
 """
 
 from __future__ import annotations
@@ -41,6 +45,14 @@ from ..connection import make_client, read_credentials
 from . import lock
 
 log = logging.getLogger(__name__)
+
+# The formats PixlStash files a video under: its VIDEO_EXTENSIONS, upper-cased.
+VIDEO_FORMATS = frozenset({"MP4", "WEBM", "AVI", "MOV", "MKV"})
+
+
+def is_video(picture: dict) -> bool:
+    """True for a PixlStash picture row that is a video, not a still."""
+    return str(picture.get("format") or "").upper().lstrip(".") in VIDEO_FORMATS
 
 
 class PixlStashPictureLoader:
@@ -153,7 +165,8 @@ class PixlStashPictureLoader:
             raise RuntimeError(
                 "PixlStash Picture Loader: no pictures to load. "
                 "Use the Browse button to select pictures, or wire "
-                "filter nodes and leave picture_ids empty for auto-select."
+                "filter nodes and leave picture_ids empty for auto-select. "
+                "Videos are left out: this loads still pictures."
             )
 
         pil_pairs: list[tuple[Image.Image, np.ndarray]] = []
@@ -162,6 +175,7 @@ class PixlStashPictureLoader:
         # render used an image it never saw.
         loaded: list[int] = []
         skipped: list[int] = []
+        reasons: list[str] = []
         for pid in ids:
             try:
                 pil_pairs.append(self._fetch_image(client, pid))
@@ -169,6 +183,7 @@ class PixlStashPictureLoader:
             except RuntimeError as exc:
                 log.warning("[PixlStash] Picture %s skipped — %s", pid, exc)
                 skipped.append(pid)
+                reasons.append(str(exc))
 
         if skipped:
             log.warning(
@@ -179,7 +194,7 @@ class PixlStashPictureLoader:
         if not pil_pairs:
             raise RuntimeError(
                 f"PixlStash Picture Loader: none of the {len(skipped)} selected "
-                "picture(s) could be found. "
+                f"picture(s) could be loaded ({'; '.join(reasons)}). "
                 "Open Browse and re-select valid pictures."
             )
 
@@ -254,7 +269,7 @@ class PixlStashPictureLoader:
             params["character_id"] = character_id.strip()
 
         pictures = client.get("/api/v1/pictures", params=params).json()
-        return [p["id"] for p in pictures]
+        return [p["id"] for p in pictures if not is_video(p)]
 
     @staticmethod
     def _fetch_image(
@@ -267,6 +282,11 @@ class PixlStashPictureLoader:
         Images without an alpha channel get an all-zero mask.
         """
         meta = client.get(f"/api/v1/pictures/{picture_id}/metadata").json()
+        if is_video(meta):
+            raise RuntimeError(
+                f"PixlStash: picture {picture_id} is a video, and the Picture "
+                "Loader loads still pictures only"
+            )
         fmt = meta.get("format", "png").lower().strip(".")
 
         img_bytes = client.get(f"/api/v1/pictures/{picture_id}.{fmt}").content

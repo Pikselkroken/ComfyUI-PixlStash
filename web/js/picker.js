@@ -36,6 +36,10 @@ import { el } from "./modal_dom.js";
 // The header of PixlStash's picture list that says which library its ids are of.
 const LIBRARY_HEADER = "X-PixlStash-Library";
 
+// The formats PixlStash files a video under. The Picture Loader loads stills,
+// as Load Image does, so the picker does not offer these.
+const VIDEO_FORMATS = new Set(["MP4", "WEBM", "AVI", "MOV", "MKV"]);
+
 /**
  * The library every page listed so far is of, given the one known before
  * this page (`undefined` before the first) and the one this page names ("" for
@@ -544,6 +548,13 @@ export async function openPicker(node, pictureIdsWidget, credentials, initialFil
     }
 
     function addTile(pic) {
+        if (VIDEO_FORMATS.has(String(pic.format ?? "").toUpperCase())) {
+            // A video an older workflow picked has no tile to deselect it by,
+            // so it goes from the choice too, and nothing waits to scroll to it.
+            if (selectedIds.delete(pic.id)) updateCount();
+            if (pendingScrollToId === pic.id) pendingScrollToId = null;
+            return;
+        }
         const itemIdx = itemElements.length;
         const name = String(pic.file_path ?? "").split(/[\\/]/).pop() || `Picture #${pic.id}`;
         const item = el("button", { type: "button", className: "pxp-cell", title: name, ariaLabel: name, textContent: `#${pic.id}` });
