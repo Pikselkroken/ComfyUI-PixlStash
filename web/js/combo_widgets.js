@@ -1466,7 +1466,7 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
             blocks.push([head, 12]);
         } else if (!shown) {
             blocks.push([el("div", {
-                textContent: `${people ? "Nobody" : "Nothing"} picked. Queued like this, the workflow runs as it is.`,
+                textContent: `No ${people ? "person" : "adapter"} added. The workflow runs without adapters.`,
                 style:       "flex:none; height:30px; line-height:15px; overflow:hidden; " + ROWS_MUTED,
             }), 30]);
         }
