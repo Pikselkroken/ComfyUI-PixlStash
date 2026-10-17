@@ -785,6 +785,8 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         browseBtn.label = shown;
         node.setDirtyCanvas?.(true, true);
     };
+    // Before anything that labels: `setLabel` records what it drew.
+    const drawn = followOnDraw(node, () => String(valueWidget.value ?? "").trim(), () => labelFromValue());
     const setLabel = (text) => {
         fullLabel = text ? `${picked}: ${text}` : browse;
         drawn();
@@ -851,7 +853,6 @@ function addShelfBrowseButton(node, valueWidget, opts) {
             showFace(record);
         });
     };
-    const drawn = followOnDraw(node, () => String(valueWidget.value ?? "").trim(), labelFromValue);
 
     const prevConfigure = node.onConfigure;
     node.onConfigure = function (data) {
@@ -938,6 +939,8 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     row.append(btn, img);
     addShelfDOMWidget(node, `${valueWidget.name}_browse`, row);
 
+    // Before anything that labels: `setLabel` records what it drew.
+    const drawn = followOnDraw(node, () => String(valueWidget.value ?? "").trim(), () => labelFromValue());
     const setLabel = (text) => {
         const fullLabel = text ? `${picked}: ${text}` : browse;
         btn.textContent = fullLabel;
@@ -991,7 +994,6 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
             showFace(record);
         });
     };
-    const drawn = followOnDraw(node, () => String(valueWidget.value ?? "").trim(), labelFromValue);
 
     const prevConfigure = node.onConfigure;
     node.onConfigure = function (data) {
@@ -1128,6 +1130,9 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
     let height = 0;
     const rowsWidget = addShelfDOMWidget(node, "adapter_rows", box);
     rowsWidget.computeLayoutSize = () => ({ minHeight: height, maxHeight: height, minWidth: ROWS_MIN_WIDTH });
+
+    // Rows an opened workflow fills after the node is made are drawn too.
+    const drawn = followOnDraw(node, () => `${showWidget.value}|${JSON.stringify(readRows(widgets))}`, render);
 
     let shown = 0;       // rows drawn: the filled ones, plus any Add row has shown
     let generation = 0;  // bumped per redraw, so a late lookup knows its row is gone
@@ -1433,9 +1438,6 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
         node.setSize([Math.max(node.size?.[0] ?? 0, size[0]), size[1]]);
         node.setDirtyCanvas?.(true, true);
     }
-
-    // Rows an opened workflow fills after the node is made are drawn too.
-    const drawn = followOnDraw(node, () => `${showWidget.value}|${JSON.stringify(readRows(widgets))}`, render);
 
     const prevShow = showWidget.callback;
     showWidget.callback = (...args) => {
