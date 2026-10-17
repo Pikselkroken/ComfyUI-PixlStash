@@ -457,6 +457,18 @@ function bindDynamicValues(node, widget, kind, getProjectId) {
                 _kickOffFetch(kind, pid, node, widget);
                 entry = _optsCache.get(key);
             }
+            // The node is declared with "(loading…)" as its only value, so
+            // that is what a fresh node holds. Nothing else moves it once the
+            // list arrives, and an error line that has since been retried is
+            // just as stale: follow the list's head (None, loading or the
+            // error) until a real value is picked. Done here rather than when
+            // the fetch lands because the cache is shared and only the node
+            // that started the fetch would hear of it.
+            if (!isRealComboValue(widget.value) && widget.value !== NONE_LABEL
+                && widget.value !== entry.items[0]) {
+                widget.value = entry.items[0];
+                node.setDirtyCanvas?.(true, false);
+            }
             // Make sure the currently-selected value is in the list so the
             // combo widget displays it even after a workflow reload (before
             // the fetch finishes the cache may not contain it yet).
