@@ -1,4 +1,4 @@
-"""The VAE, CLIP, ControlNet and Checkpoint loaders — contract, and the logic each adds.
+"""The VAE, CLIP, ControlNet, Upscale Model and Checkpoint loaders — contract, and the logic each adds.
 
 Resolution itself is `shelf_file`'s and is covered by test_adapter_path.py /
 test_adapter_download.py / test_adapter_resolve.py. What is left per node is
@@ -22,11 +22,13 @@ vae_loader = boot.load("nodes.vae_loader")
 clip_loader = boot.load("nodes.clip_loader")
 checkpoint_loader = boot.load("nodes.checkpoint_loader")
 controlnet_loader = boot.load("nodes.controlnet_loader")
+upscale_model_loader = boot.load("nodes.upscale_model_loader")
 
 VAE = vae_loader.PixlStashVAELoader
 CLIP = clip_loader.PixlStashCLIPLoader
 CKPT = checkpoint_loader.PixlStashCheckpointLoader
 CN = controlnet_loader.PixlStashControlNetLoader
+UP = upscale_model_loader.PixlStashUpscaleModelLoader
 
 SHA = "a" * 64
 
@@ -65,6 +67,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(CLIP.RETURN_TYPES, ("CLIP",))
         self.assertEqual(CKPT.RETURN_TYPES, ("MODEL", "CLIP", "VAE"))
         self.assertEqual(CN.RETURN_TYPES, ("CONTROL_NET",))
+        self.assertEqual(UP.RETURN_TYPES, ("UPSCALE_MODEL",))
 
     def test_the_widgets_the_js_drives_by_name_exist(self):
         # combo_widgets.js finds these with widgets.find(w => w.name === …).
@@ -77,6 +80,7 @@ class ContractTests(unittest.TestCase):
             # PixlStash writes this one by name when it swaps the node in for
             # a Load ControlNet Model (`swap_in_pack_nodes`).
             (CN, "control_net_sha256", "required"),
+            (UP, "upscale_model_sha256", "required"),
             # Whose the id is. Optional, so a workflow saved before it was
             # there still validates.
             (CKPT, "shelf", "optional"),
@@ -108,6 +112,7 @@ class ContractTests(unittest.TestCase):
             "PixlStashCLIPLoader",
             "PixlStashCheckpointLoader",
             "PixlStashControlNetLoader",
+            "PixlStashUpscaleModelLoader",
         ):
             with self.subTest(node=key):
                 self.assertIn(key, names)
@@ -324,6 +329,77 @@ class ControlNetLoadTests(unittest.TestCase):
                     SHA, label="x", folder_key="controlnet", min_server_version="1.12.0"
                 )
         self.assertEqual(floors, ["1.12.0"])
+
+
+class UpscaleModelLoadTests(unittest.TestCase):
+    """Resolved under upscale_models, `.pth` admitted, loaded by the built-in."""
+
+    def setUp(self):
+        self.loaded = []
+        test = self
+
+        def get_full_path(folder_name, filename):
+            return f"/comfy/{folder_name}/{filename}"
+
+        folder_paths = types.ModuleType("folder_paths")
+        folder_paths.get_full_path = get_full_path
+        self.folder_paths = folder_paths
+
+        class UpscaleModelLoader:
+            # The built-in's lookup, by the module global as ComfyUI does it.
+            def load_model(self, model_name):
+                path = folder_paths.get_full_path("upscale_models", model_name)
+                test.loaded.append(path)
+                test.other = folder_paths.get_full_path("upscale_models", "x.pth")
+                return ("UPSCALE_MODEL",)
+
+        extras = types.ModuleType("comfy_extras")
+        extras.__path__ = []
+        nodes = types.ModuleType("comfy_extras.nodes_upscale_model")
+        nodes.UpscaleModelLoader = UpscaleModelLoader
+        patch = mock.patch.dict(
+            sys.modules,
+            {
+                "folder_paths": folder_paths,
+                "comfy_extras": extras,
+                "comfy_extras.nodes_upscale_model": nodes,
+            },
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_loads_the_shelf_copy_wherever_it_lies_and_reports_it(self):
+        asked = []
+        path = "/shelf/upscalers/4xNomos8kSC.pth"
+
+        def fake_resolve(sha, **kwargs):
+            asked.append((sha, kwargs["folder_key"], kwargs["suffixes"]))
+            return ({"sha256": sha, "filename": "4xNomos8kSC.pth"}, path)
+
+        lookup = self.folder_paths.get_full_path
+        with mock.patch.object(shelf_file, "resolve", fake_resolve):
+            out = UP().load_upscale_model(SHA)
+        self.assertEqual(asked, [(SHA, "upscale_models", (".pth", ".safetensors"))])
+        self.assertEqual(self.loaded, [path])
+        # Every other name still reaches ComfyUI's own lookup, during the load
+        # and after it.
+        self.assertEqual(self.other, "/comfy/upscale_models/x.pth")
+        self.assertIs(self.folder_paths.get_full_path, lookup)
+        self.assertEqual(out["result"], ("UPSCALE_MODEL",))
+        (entry,) = out["ui"]["pixlstash_lock"][0]["models"]
+        self.assertEqual((entry["kind"], entry["sha256"]), ("upscaler", SHA))
+
+    def test_the_lookup_is_restored_when_the_load_fails(self):
+        lookup = self.folder_paths.get_full_path
+        nodes = sys.modules["comfy_extras.nodes_upscale_model"]
+
+        def explode(self, model_name):
+            raise ValueError("not an upscaler")
+
+        with mock.patch.object(nodes.UpscaleModelLoader, "load_model", explode):
+            with self.assertRaises(ValueError):
+                upscale_model_loader.load_file("/shelf/broken.pth")
+        self.assertIs(self.folder_paths.get_full_path, lookup)
 
 
 class _Client:
