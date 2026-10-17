@@ -37,7 +37,9 @@
  *   LoRA its shelf holds, its Picture Loader for a picture input PixlStash
  *   knows the picture of, and its Checkpoint Loader where PixlStash and
  *   ComfyUI share a computer. A link that also carries `pixlstash_original`
- *   (PixlStash's *Open original in ComfyUI*) opens the workflow's own nodes.
+ *   (PixlStash's *Open original in ComfyUI*) opens the workflow's own nodes,
+ *   and a toast names the files among them only PixlStash's shelf holds
+ *   (`shelf_only`), which ComfyUI shows missing with no hint why.
  *
  * - **A run from the Run popup** (`open_run.js`, which calls `openFromUrl`
  *   with what PixlStash holds the run as): the workflow with that run's
@@ -769,6 +771,22 @@ export async function openFromUrl(key, original = false, run = null) {
     if (body.forgotten) parts.push(`pick ${body.forgotten} model(s) PixlStash no longer knows`);
     if (parts.length) {
         notify("warn", `Rebuilt from a saved recipe: ${parts.join(" and ")} before you queue it.`);
+    }
+    // The original's own loaders name files ComfyUI does not have, which it
+    // shows missing with no hint why: PixlStash names the ones its shelf holds.
+    const shelfOnly = Array.isArray(body.shelf_only) ? body.shelf_only : [];
+    if (shelfOnly.length) {
+        const names = shelfOnly.map((name) => String(name).split(/[\\/]/).pop()).join(", ");
+        const one = shelfOnly.length === 1;
+        const them = one ? "it" : "them";
+        notify(
+            "warn",
+            `${shelfOnly.length} ${one ? "model in this workflow is" : "models in this workflow are"} ` +
+                "on PixlStash's model shelf but not in ComfyUI's model folders, " +
+                `so ComfyUI cannot find ${them} here: ${names}. ` +
+                `Open the workflow adapted for PixlStash instead to load ${them} off the shelf.`,
+            15000,
+        );
     }
 }
 

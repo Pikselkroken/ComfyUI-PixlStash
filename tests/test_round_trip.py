@@ -982,6 +982,19 @@ const LINKED = { [TAG]: AUTO, [FILE_TAG]: PATH };
     await saver.setup();
     results.original = await openLink(OTHER, { name: "Original", workflow: API }, "&pixlstash_original=1");
 }
+{
+    // The original names files ComfyUI lacks that PixlStash's shelf holds.
+    const { toasts } = comfy();
+    await openLink(OTHER, { name: "Shelf", workflow: API, shelf_only: ["sdxl/a.safetensors", "b.pth"] },
+        "&pixlstash_original=1");
+    results.shelf_only = { toasts };
+}
+{
+    // ComfyUI lists every file the graph names: nothing is said.
+    const { toasts } = comfy();
+    await openLink(OTHER, { name: "Listed", workflow: API, shelf_only: [] }, "&pixlstash_original=1");
+    results.all_listed = { toasts };
+}
 console.log(JSON.stringify(results));
 """
 
@@ -1026,6 +1039,15 @@ class RoundTripTests(unittest.TestCase):
         self.assertTrue(url.startswith("/pixlstash/workflow_graph?"))
         self.assertIn("waiting=true", url)
         self.assertNotIn("pixlstash_nodes", url)
+
+    def test_an_original_names_the_models_only_the_shelf_holds(self):
+        detail = self._one_toast("shelf_only", "warn", "2 models in this workflow")
+        self.assertIn("a.safetensors, b.pth", detail)
+        self.assertNotIn("sdxl/", detail)
+        self.assertIn("adapted for PixlStash", detail)
+
+    def test_an_original_comfyui_has_every_model_of_says_nothing(self):
+        self.assertEqual(self.results["all_listed"]["toasts"], [])
 
     def _one_toast(self, scenario, severity, says):
         [(got, detail)] = self.results[scenario]["toasts"]
