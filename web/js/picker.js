@@ -90,7 +90,12 @@ export async function updateNodePreviews(node, pictureIds, credentials) {
         for (const u of node._pixlstashUrls) URL.revokeObjectURL(u);
     }
     node._pixlstashUrls = [];
-    node._pixlstashIds = pictureIds.join(",");
+    // Recorded now so a draw while this loads does not start a second load;
+    // dropped again unless every preview arrives, so the next reload of the
+    // graph asks again.
+    const ids = pictureIds.join(",");
+    node._pixlstashIds = ids;
+    const forget = () => { if (node._pixlstashIds === ids) delete node._pixlstashIds; };
 
     if (!pictureIds.length) {
         node.imgs = null;
@@ -98,9 +103,16 @@ export async function updateNodePreviews(node, pictureIds, credentials) {
         return;
     }
 
-    const urls = (
-        await Promise.all(pictureIds.map(id => fetchThumbnailUrl(id, credentials)))
-    ).filter(Boolean);
+    let urls;
+    try {
+        urls = (
+            await Promise.all(pictureIds.map(id => fetchThumbnailUrl(id, credentials)))
+        ).filter(Boolean);
+    } catch (err) {
+        forget();
+        throw err;
+    }
+    if (urls.length < pictureIds.length) forget();
 
     node._pixlstashUrls = urls;
     node.imgs = urls.map(url => {
