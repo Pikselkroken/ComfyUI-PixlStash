@@ -299,6 +299,23 @@ function namedParts(tile) {
     return parts;
 }
 
+/**
+ * The named tile cut down to its icon, for a mark too small for a band: the
+ * family's picture, the maker's glyph or its letters, or a re-branded
+ * fine-tune's name. Null where a release has none of them.
+ */
+function iconParts(tile) {
+    const release = tile.release;
+    const text = release ? release.letters : tile.lines.join("");
+    if (release?.glyph) {
+        const css = release.glyph.kind === "full"
+            ? "width:100%; height:100%; object-fit:cover; border-radius:inherit;"
+            : "width:80%; height:80%;";
+        return [Object.assign(part("img", css), { src: release.glyph.url, alt: "" })];
+    }
+    return text ? [part("span", `font:700 55cqmin/1 ${FONT_UI}; letter-spacing:-0.04em;`, text)] : null;
+}
+
 // `mdi-lightning-bolt`, the icon PixlStash's tab draws a few-step model with.
 const BOLT = '<svg viewBox="0 0 24 24" style="height:1em; width:1em; fill:currentColor;" aria-hidden="true">'
     + '<path d="M11 15H6L13 1V9H18L11 23V15Z"/></svg>';
@@ -308,8 +325,8 @@ const BOLT = '<svg viewBox="0 0 24 24" style="height:1em; width:1em; fill:curren
  * version on a tab at the corner, the tile's own pair inverted as on the shelf.
  * With `named`, a row the server named (PixlStash #1951) draws its named
  * tile instead, with its role or a bolt on the tab: for a mark large enough
- * to carry a maker's glyph (a node's square, a picker card), never the 20px
- * favicon, which is too small for it.
+ * to carry a band (a node's square, a picker card). `named: "icon"` draws
+ * only the tile's icon on its colour, with no tab, for the 20px favicon.
  *
  * The letters are 55% of the tile, as on the shelf, so they fill it at any
  * size: `box` becomes a size container for them, which every caller's box can
@@ -321,12 +338,15 @@ const BOLT = '<svg viewBox="0 0 24 24" style="height:1em; width:1em; fill:curren
  */
 export function paintMark(box, row, { tab = "15px", inside = false, named = false } = {}) {
     const mark = generatedMark(row);
-    const tile = named ? namedTile(row, mark.color) : null;
+    const icon = named === "icon";
+    let tile = named ? namedTile(row, mark.color) : null;
+    const parts = tile && (icon ? iconParts(tile) : namedParts(tile));
+    if (!parts) tile = null;
     box.style.containerType = "size";
     if (tile) {
         // Its band, glyph and version are placed absolutely within it.
         if (!box.style.position) box.style.position = "relative";
-        box.replaceChildren(...namedParts(tile));
+        box.replaceChildren(...parts);
         box.style.background = tile.background;
     } else {
         const initials = document.createElement("span");
@@ -336,7 +356,7 @@ export function paintMark(box, row, { tab = "15px", inside = false, named = fals
         box.style.background = mark.color;
     }
     box.style.color = mark.ink;
-    if (tile ? !tile.tab : !mark.version) return;
+    if (tile ? icon || !tile.tab : !mark.version) return;
     if (!box.style.position) box.style.position = "relative";
     // A named tile's tab sits in the very corner, inside, so it clears the
     // release's version down to the node's smallest square.

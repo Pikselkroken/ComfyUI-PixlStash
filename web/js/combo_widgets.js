@@ -980,7 +980,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     img.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
         + "object-fit:cover; border-radius:3px; display:none;";
 
-    // The generated mark, while the file has no picture of its own.
+    // The file's icon or generated mark, while it has no picture of its own.
     const mark = document.createElement("span");
     mark.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
         + "border-radius:3px; display:none; align-items:center; justify-content:center; "
@@ -1012,7 +1012,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         currentUrl = null;
         img.removeAttribute("src");
         img.style.display = "none";
-        if (record) paintMark(mark, record);
+        if (record) paintMark(mark, record, { named: "icon" });
         mark.style.display = record ? "flex" : "none";
 
         const creds = getSettingsCredentials();
