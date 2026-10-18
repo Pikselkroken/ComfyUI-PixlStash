@@ -57,9 +57,15 @@ const SHELF = {
     ],
     vaes: [{ sha256: A, display_name: "Hidden VAE", hidden: true }],
 };
+// The Multi Adapter Loader's grid narrowed by a base model: `family` names
+// what the filtered list answers, `whole` the shelf beside it.
+let family = { Hidden: SHELF.adapters.filter(r => r.hidden), None: [] };
+let whole = SHELF.adapters;
 globalThis.fetch = async (url) => {
     const json = url.startsWith("/pixlstash/checkpoints") ? { checkpoints: SHELF.checkpoints }
         : url.includes("file_kind=vae") ? { adapters: SHELF.vaes }
+        : url.includes("base_model_family=") ? { adapters: family[new URL(url, "http://x.test").searchParams.get("base_model_family")] }
+        : url.includes("file_kind=adapter") && globalThis.multi ? { adapters: whole }
         : url.startsWith("/pixlstash/adapters") ? { adapters: SHELF.adapters }
         : url.startsWith("/pixlstash/characters") ? [{ id: 1, name: "Someone" }]
         : null;
@@ -81,6 +87,13 @@ const results = {
     several: await open({ fileKind: "adapter", several: { picked: [C], limit: 8, people: false } }),
     people: await open({ fileKind: "adapter", several: { picked: [], limit: 8, people: true } }),
 };
+globalThis.multi = true;
+const narrowed = (baseModel) => open({ fileKind: "adapter", baseModel, several: { picked: [], limit: 8, people: false } });
+// Only hidden rows fit, while the shelf has shown ones.
+results.onlyHiddenFit = await narrowed("Hidden");
+// Nothing fits, and the whole shelf is hidden.
+whole = SHELF.adapters.map(r => ({ ...r, hidden: true }));
+results.shelfAllHidden = await narrowed("None");
 console.log(JSON.stringify(results));
 """
 
@@ -125,6 +138,14 @@ class HiddenModelTests(unittest.TestCase):
         said = " ".join(self.results["allHidden"])
         self.assertIn("hidden in PixlStash", said)
         self.assertNotIn("Your shelf holds no", said)
+
+    def test_a_narrowed_multi_grid_says_when_what_fits_is_hidden(self):
+        for case in ("onlyHiddenFit", "shelfAllHidden"):
+            with self.subTest(case=case):
+                said = " ".join(self.results[case])
+                self.assertIn("hidden in PixlStash", said)
+                self.assertNotIn("match the node's filters", said)
+                self.assertNotIn("Your shelf holds no", said)
 
     def test_a_hidden_adapter_already_on_a_row_is_named_but_not_offered(self):
         shown = self.results["several"]

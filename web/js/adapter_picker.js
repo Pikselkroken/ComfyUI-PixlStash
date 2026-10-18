@@ -418,9 +418,12 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
 
     let all = [];             // the filtered shelf, fetched once
     let hiddenCount = 0;      // rows the filters let through that the library hides
+    let shelfHidden = 0;      // several-selectable: hidden rows on the whole shelf
     // Several-selectable only:
     let loaded    = false;
     let shelfRows = [];       // every adapter, whatever the filters say
+    const hiddenNotice = `Every ${shelf.noun} that fits is hidden in PixlStash. `
+        + "Its shelf's Show, Hidden models brings them back.";
     let persons   = [];       // `all`, folded by person
     const byDigest = new Map();
 
@@ -847,14 +850,15 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             // — which is nearly always a folder PixlStash was never pointed at.
             showNotice(all.length
                 ? `No ${shelf.noun}s match this search.`
+                // Not "no files": they are on the shelf, and Show brings them back.
+                : hiddenCount
+                ? hiddenNotice
                 // The several-selectable grid has the whole shelf beside the
                 // filtered one, so it can tell a filter from an empty shelf.
                 : shelfRows.length
                 ? `No ${shelf.noun}s match the node's filters (${describeFilters(filters, shelf).replace("Filtered: ", "")}).`
-                // Not "no files": they are on the shelf, and Show brings them back.
-                : hiddenCount
-                ? `Every ${shelf.noun} that fits is hidden in PixlStash. Its shelf's `
-                  + `Show, Hidden models brings them back.`
+                : shelfHidden
+                ? hiddenNotice
                 : `Your shelf holds no ${shelf.noun}s. PixlStash only catalogues `
                   + `the folders registered under Settings › Model folders — add `
                   + `the folder your ${shelf.noun}s live in, then rescan it.`);
@@ -1048,6 +1052,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             // on a row is still named in the footer, just never offered.
             for (const r of [...wholeRows, ...all]) byDigest.set(idOf(r), r);
             shelfRows = offerable(wholeRows);
+            shelfHidden = wholeRows.length - shelfRows.length;
             // On a canvas opened from PixlStash the people are that
             // workflow's: who PixlStash's Run popup offers for it, whatever
             // this node's own filters say.
