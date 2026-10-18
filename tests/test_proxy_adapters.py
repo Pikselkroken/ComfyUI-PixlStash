@@ -265,6 +265,31 @@ class PictureListProxyTests(unittest.TestCase):
         self.assertEqual(json.loads(resp.kwargs["body"]), [{"id": 41}])
         self.assertFalse(resp.kwargs.get("headers"))
 
+    def test_a_repeated_filter_keeps_every_value(self):
+        # The checkpoint panel asks for every name a file was recorded under.
+        request = _Request()
+        pairs = [
+            ("comfyui_model", "x.safetensors"),
+            ("comfyui_model", "SDXL/x.safetensors"),
+            ("limit", "9"),
+            ("url", "http://evil.example"),
+        ]
+        request.rel_url.query.items = lambda: pairs
+        client = _FakeClient(_Response(payload=[]))
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
+            asyncio.run(proxy.proxy_pictures(request))
+        self.assertEqual(
+            client.calls[0][1]["params"],
+            {"comfyui_model": ["x.safetensors", "SDXL/x.safetensors"], "limit": "9"},
+        )
+
+    def test_the_recorded_checkpoint_names_come_from_their_route(self):
+        client = _FakeClient(_Response(payload=[{"value": "x.safetensors"}]))
+        with mock.patch.object(proxy, "_build_client", lambda request, *_: client):
+            resp = asyncio.run(proxy.proxy_comfyui_models(_Request()))
+        self.assertEqual(client.calls[0][0], "/api/v1/pictures/comfyui_models")
+        self.assertEqual(json.loads(resp.kwargs["body"]), [{"value": "x.safetensors"}])
+
 
 class PictureSearchAndCountProxyTests(unittest.TestCase):
     """The picker's search box and its Everything count."""
