@@ -405,7 +405,10 @@ their own loaders.
 
 ## Installation
 
-Search for **ComfyUI-PixlStash** in the ComfyUI Manager and click Install.
+The easiest way is through PixlStash 1.12.0 or later: link it with ComfyUI
+under **Settings > ComfyUI** and the nodes install automatically.
+
+Or search for **ComfyUI-PixlStash** in the ComfyUI Manager and click Install.
 
 ![Install via ComfyUI Manager](screenshots/ScreenshotInstallation.jpg)
 
