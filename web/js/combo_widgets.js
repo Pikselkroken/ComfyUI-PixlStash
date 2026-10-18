@@ -674,7 +674,7 @@ async function rememberWorkflowSetModels(node, widget) {
 // — a native LiteGraph button widget always claims a full-width row of its
 // own, so putting an icon beside one instead of below it means building the
 // row ourselves.
-const SHELF_ICON_SIZE = 20;  // inline favicon: fixed, both edges
+const SHELF_ICON_SIZE = 24;  // inline favicon: fixed, both edges
 const THUMB_MIN_SIDE  = 48;  // Adapter Loader: floor a user can shrink to
 const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
 
@@ -1012,7 +1012,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         currentUrl = null;
         img.removeAttribute("src");
         img.style.display = "none";
-        if (record) paintMark(mark, record, { named: "icon" });
+        if (record) paintMark(mark, record, { named: true });
         mark.style.display = record ? "flex" : "none";
 
         const creds = getSettingsCredentials();
