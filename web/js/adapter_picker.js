@@ -681,7 +681,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     const grid = el("div", {
         style: `
             display:grid;
-            grid-template-columns:${panel ? "repeat(4,minmax(0,1fr))" : "repeat(auto-fill,minmax(150px,1fr))"};
+            grid-template-columns:${panel ? "repeat(6,minmax(0,1fr))" : "repeat(auto-fill,minmax(150px,1fr))"};
             grid-auto-rows:auto;
             gap:10px; overflow-y:auto; flex:1; min-width:0; padding:4px;
             align-content:start;
