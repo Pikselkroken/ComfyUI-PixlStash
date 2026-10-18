@@ -48,8 +48,13 @@ const RECORDED = [
     { value: "other.safetensors", name: null },
 ];
 const asked = [];
+let refused = false; // a ComfyUI link key, which PixlStash refuses the names route
+globalThis.console.warn = () => {};
 globalThis.fetch = async (url) => {
     asked.push(url);
+    if (refused && url.startsWith("/pixlstash/pictures/comfyui_models")) {
+        return { ok: false, status: 502, json: async () => ({ error: "PixlStash: token does not have access to this resource." }) };
+    }
     const json = url.startsWith("/pixlstash/checkpoints") ? { checkpoints: CHECKPOINTS }
         : url.startsWith("/pixlstash/pictures/comfyui_models") ? RECORDED
         : url.startsWith("/pixlstash/pictures?") ? [{ id: 5, created_at: new Date(Date.now() - 2 * 86_400_000).toISOString() }]
@@ -70,7 +75,7 @@ async function open(value) {
     return { shown: text(body), lists };
 }
 
-console.log(JSON.stringify({
+const results = {
     none: await open(""),
     used: await open("1"),
     unused: await open("2"),
@@ -80,7 +85,10 @@ console.log(JSON.stringify({
         copy: recordedNamesFor({ filename: "a.safetensors", locations: [{ relpath: "x/c.ckpt" }] }, ["c.ckpt"]),
         nothing: recordedNamesFor({}, ["a.safetensors"]),
     },
-}));
+};
+refused = true;
+results.refused = await open("1");
+console.log(JSON.stringify(results));
 """
 
 
@@ -128,15 +136,24 @@ class CheckpointPictureTests(unittest.TestCase):
         for query in result["lists"]:
             self.assertEqual(
                 query["comfyui_model"],
-                ["SDXL/Chroma.safetensors", "chroma.safetensors"],
+                ["chroma.safetensors", "SDXL/Chroma.safetensors"],
             )
             self.assertEqual(query["limit"], ["9"])
         said = " ".join(result["shown"])
         self.assertIn("86 pictures · last used 2 days ago", said)
         self.assertIn("Newest", said)
 
-    def test_a_checkpoint_no_picture_names_asks_for_no_list(self):
-        # An empty comfyui_model filter would be the whole library.
+    def test_a_refused_names_route_still_lists_by_the_shelf_name(self):
+        # PixlStash refuses a ComfyUI link key the recorded-names route.
+        result = self.results["refused"]
+        self.assertEqual(len(result["lists"]), 2)
+        for query in result["lists"]:
+            self.assertEqual(query["comfyui_model"], ["chroma.safetensors"])
+        said = " ".join(result["shown"])
+        self.assertNotIn("⚠", said)
+        self.assertIn("86 pictures · last used 2 days ago", said)
+
+    def test_a_checkpoint_with_no_pictures_asks_for_no_list(self):
         result = self.results["unused"]
         self.assertEqual(result["lists"], [])
         self.assertIn(
@@ -148,8 +165,8 @@ class CheckpointPictureTests(unittest.TestCase):
     def test_names_match_by_basename(self):
         names = self.results["names"]
         self.assertEqual(names["plain"], ["a.safetensors"])
-        self.assertEqual(names["windows"], ["SD\\A.safetensors"])
-        self.assertEqual(names["copy"], ["c.ckpt"])
+        self.assertEqual(names["windows"], ["a.safetensors", "SD\\A.safetensors"])
+        self.assertEqual(names["copy"], ["a.safetensors", "x/c.ckpt", "c.ckpt"])
         self.assertEqual(names["nothing"], [])
 
 
