@@ -206,6 +206,20 @@ function isPresent(record) {
 }
 
 /**
+ * The rows a picker may offer: every one but those the PixlStash library hides.
+ *
+ * Hiding a model on the shelf takes it out of everything that offers a model
+ * to pick, and this is that rule here. The server still serves a hidden row,
+ * flagged `hidden`, so a node that already loads one keeps its name and face
+ * (`shelfRecordFor`) and still runs; it is only never offered. Left out before
+ * `collapseStacks`, as the shelf does, so a stack whose cover alone is hidden
+ * is stood for by its next member.
+ */
+export function offerable(rows) {
+    return rows.filter(row => row && !row.hidden);
+}
+
+/**
  * One card per stack, drawn by its cover — not one per file.
  *
  * A trained LoRA lands on the shelf as every epoch it saved, and the shelf
@@ -403,9 +417,13 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     let searchTimer = null;
 
     let all = [];             // the filtered shelf, fetched once
+    let hiddenCount = 0;      // rows the filters let through that the library hides
+    let shelfHidden = 0;      // several-selectable: hidden rows on the whole shelf
     // Several-selectable only:
     let loaded    = false;
     let shelfRows = [];       // every adapter, whatever the filters say
+    const hiddenNotice = `Every ${shelf.noun} that fits is hidden in PixlStash. `
+        + "Its shelf's Show, Hidden models brings them back.";
     let persons   = [];       // `all`, folded by person
     const byDigest = new Map();
 
@@ -832,10 +850,15 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             // — which is nearly always a folder PixlStash was never pointed at.
             showNotice(all.length
                 ? `No ${shelf.noun}s match this search.`
+                // Not "no files": they are on the shelf, and Show brings them back.
+                : hiddenCount
+                ? hiddenNotice
                 // The several-selectable grid has the whole shelf beside the
                 // filtered one, so it can tell a filter from an empty shelf.
                 : shelfRows.length
                 ? `No ${shelf.noun}s match the node's filters (${describeFilters(filters, shelf).replace("Filtered: ", "")}).`
+                : shelfHidden
+                ? hiddenNotice
                 : `Your shelf holds no ${shelf.noun}s. PixlStash only catalogues `
                   + `the folders registered under Settings › Model folders — add `
                   + `the folder your ${shelf.noun}s live in, then rescan it.`);
@@ -1007,7 +1030,8 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
         // A row with no identity cannot be picked, written or resolved again.
         // For a checkpoint that is the not-yet-hashed case, which is ordinary —
         // it has an id, so it is only the hash-addressed kinds that lose rows.
-        all = collapseStacks(rows.filter(r => r && idOf(r)));
+        all = collapseStacks(offerable(rows).filter(r => idOf(r)));
+        hiddenCount = rows.filter(r => r?.hidden).length;
 
         if (several) {
             // Beside the filtered shelf, the whole of it: the people view says
@@ -1022,9 +1046,13 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
                 proxyFetch("/pixlstash/characters", credentials).catch(() => []),
                 several.workflowKey ? fetchWorkflowPeople(credentials, several.workflowKey) : null,
             ]);
-            const wholeRows = whole?.[shelf.listKey];
-            shelfRows = (Array.isArray(wholeRows) ? wholeRows : []).filter(r => r && idOf(r));
-            for (const r of [...shelfRows, ...all]) byDigest.set(idOf(r), r);
+            const wholeRows = (Array.isArray(whole?.[shelf.listKey]) ? whole[shelf.listKey] : [])
+                .filter(r => r && idOf(r));
+            // Named from every row, hidden ones too: a hidden adapter already
+            // on a row is still named in the footer, just never offered.
+            for (const r of [...wholeRows, ...all]) byDigest.set(idOf(r), r);
+            shelfRows = offerable(wholeRows);
+            shelfHidden = wholeRows.length - shelfRows.length;
             // On a canvas opened from PixlStash the people are that
             // workflow's: who PixlStash's Run popup offers for it, whatever
             // this node's own filters say.

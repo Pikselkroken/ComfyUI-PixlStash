@@ -41,6 +41,8 @@ const adapters = [
     { sha256: "b".repeat(64), base_model: "krea 2 raw", base_model_family_label: "Krea 2" },
     { sha256: "c".repeat(64), base_model: "SDXL 1.0", base_model_family_label: "SDXL" },
     { sha256: "d".repeat(64), base_model: null, base_model_family_label: null },
+    // Hidden in the library, so its family is not offered either.
+    { sha256: "e".repeat(64), base_model: "Flux.1 Dev", base_model_family_label: "Flux", hidden: true },
 ];
 globalThis.fetch = async (url) => {
     if (url.startsWith("/pixlstash/workflow_people")) return { ok: true, json: async () => answer };
