@@ -470,3 +470,7 @@ Runtime dependencies come from PyPI:
 **Third-party code:** `vendor/comfyui_gguf/` is
 [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) by city96, Apache-2.0,
 unmodified. See [vendor/comfyui_gguf/LICENSE](vendor/comfyui_gguf/LICENSE).
+The model makers' glyphs in `web/js/img/lobehub/` are from
+[LobeHub Icons](https://github.com/lobehub/lobe-icons), MIT; see
+[web/js/img/lobehub/LICENSE](web/js/img/lobehub/LICENSE). The marks remain
+their owners'.

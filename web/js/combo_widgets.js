@@ -674,7 +674,7 @@ async function rememberWorkflowSetModels(node, widget) {
 // — a native LiteGraph button widget always claims a full-width row of its
 // own, so putting an icon beside one instead of below it means building the
 // row ourselves.
-const SHELF_ICON_SIZE = 20;  // inline favicon: fixed, both edges
+const SHELF_ICON_SIZE = 24;  // inline favicon: fixed, both edges
 const THUMB_MIN_SIDE  = 48;  // Adapter Loader: floor a user can shrink to
 const THUMB_MAX_SIDE  = 220; // Adapter Loader: ceiling when there's room
 
@@ -724,8 +724,8 @@ function pinNodeWidth(widget) {
 
 /**
  * One DOM widget for the Adapter Loader's picked-file thumbnail: the file's
- * picture, or the generated mark PixlStash's shelf draws for it when it has
- * none, as a square as large as the widget allows.
+ * picture, or the tile PixlStash draws for it when it has none, as a square
+ * as large as the widget allows.
  */
 function addShelfFaceWidget(node, name) {
     const box = document.createElement("div");
@@ -767,7 +767,7 @@ function addShelfFaceWidget(node, name) {
         setRecord(record) {
             this.setUrl(null);
             // As large as the square allows, inside it: the widget clips.
-            if (record) paintMark(mark, record, { tab: "max(15px, calc(min(100cqw, 100cqh) * 0.2))", inside: true });
+            if (record) paintMark(mark, record, { tab: "max(15px, calc(min(100cqw, 100cqh) * 0.2))", inside: true, named: true });
             markArea.style.display = record ? "flex" : "none";
         },
         /** The file's own picture, over its mark. */
@@ -980,7 +980,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
     img.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
         + "object-fit:cover; border-radius:3px; display:none;";
 
-    // The generated mark, while the file has no picture of its own.
+    // The file's icon or generated mark, while it has no picture of its own.
     const mark = document.createElement("span");
     mark.style.cssText = `flex:0 0 auto; width:${SHELF_ICON_SIZE}px; height:${SHELF_ICON_SIZE}px; `
         + "border-radius:3px; display:none; align-items:center; justify-content:center; "
@@ -1012,7 +1012,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         currentUrl = null;
         img.removeAttribute("src");
         img.style.display = "none";
-        if (record) paintMark(mark, record);
+        if (record) paintMark(mark, record, { named: true });
         mark.style.display = record ? "flex" : "none";
 
         const creds = getSettingsCredentials();

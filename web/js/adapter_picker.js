@@ -581,9 +581,10 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
                 color:#666; font-size:1.6em; font-weight:bold;
             `,
         });
-        // A record with no icon draws a generated mark, not a broken image.
+        // A record with no icon draws its named tile or generated mark, not a
+        // broken image.
         // The square clips, so the version tab sits inside its corner.
-        if (record) paintMark(iconInner, record, { tab: "22px", inside: true });
+        if (record) paintMark(iconInner, record, { tab: "22px", inside: true, named: true });
         else iconInner.textContent = initials;
         iconBox.appendChild(iconInner);
         if (several) {
