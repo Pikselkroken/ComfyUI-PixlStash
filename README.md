@@ -93,6 +93,8 @@ filenames. Each loader has the same inputs and outputs as its ComfyUI built-in,
 so it drops straight into an existing graph. The Adapter Loader adds a
 `trigger_words` output.
 
+![Picking a checkpoint from the PixlStash Checkpoints grid](screenshots/PixlStashCheckpoints.jpg)
+
 Once picked, the node shows the model's name and its face: a resizable
 thumbnail on the Adapter (LoRA) Loader, where seeing the face is the point,
 a row per adapter on the Multi Adapter (LoRA) Loader, and a small favicon on
@@ -121,6 +123,8 @@ lists people instead of files: everyone with an adapter for the chosen
 node with no rows passes the model and clip through untouched. It holds up to
 eight rows, stored in the workflow as `adapter_sha256`, `strength_model`,
 `strength_clip`, then `adapter_sha256_2` and so on.
+
+![Multi Adapter (LoRA) Loader with two people picked for Z-Image](screenshots/PixlStashAdapters.jpg)
 
 The Workflow Set Loader loads one of the workflow sets you made on the shelf:
 its checkpoint, with the set's text encoders and VAE in place of the
