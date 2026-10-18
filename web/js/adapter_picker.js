@@ -323,19 +323,21 @@ function baseName(value) {
 }
 
 /**
- * The names the library's pictures record (`GET /pictures/comfyui_models`)
- * that are this checkpoint's file: a picture records the `ckpt_name` ComfyUI
- * had, folder and all, so `SDXL/x.safetensors` is `x.safetensors` on the shelf.
- * Matched by basename against the file and each copy of it, as PixlStash's
- * own picture counts are. The route answered plain strings before it answered
- * `{ value, name }`; both are read.
+ * The names to find this checkpoint's pictures by (`comfyui_model`, an exact
+ * match): the shelf's own filename and copies, and every name the library's
+ * pictures record (`GET /pictures/comfyui_models`) that is the same file. A
+ * picture records the `ckpt_name` ComfyUI had, folder and all, so
+ * `SDXL/x.safetensors` is `x.safetensors` on the shelf: matched by basename,
+ * as PixlStash's own picture counts are. The route answered plain strings
+ * before it answered `{ value, name }`; both are read.
  */
 export function recordedNamesFor(record, recorded) {
-    const mine = new Set([record?.filename, ...(record?.locations ?? []).map(l => l?.relpath)]
-        .filter(Boolean).map(baseName));
-    return (Array.isArray(recorded) ? recorded : [])
+    const own = [record?.filename, ...(record?.locations ?? []).map(l => l?.relpath)].filter(Boolean);
+    const mine = new Set(own.map(baseName));
+    const found = (Array.isArray(recorded) ? recorded : [])
         .map(v => (typeof v === "string" ? v : v?.value))
         .filter(v => typeof v === "string" && v && mine.has(baseName(v)));
+    return [...new Set([...own, ...found])];
 }
 
 /** "2 days ago", "3 months ago" for a date PixlStash sent, or `null`. */
@@ -451,9 +453,17 @@ function picturePanel(credentials) {
 
         let lists;
         try {
+            // A ComfyUI link key is refused this route by PixlStash 1.12, so a
+            // refusal is no extra names, asked once: the shelf's own names
+            // still find every picture whose ComfyUI kept its checkpoint at
+            // the top of its folder.
             recorded ??= proxyFetch("/pixlstash/pictures/comfyui_models", credentials)
-                .catch((err) => { recorded = null; throw err; });
-            const names = recordedNamesFor(record, await recorded);
+                .catch((err) => {
+                    console.warn("[PixlStash] recorded checkpoint names unavailable; finding pictures by the shelf's names", err);
+                    return [];
+                });
+            // A count of none needs no list: the count matches by the same names.
+            const names = count === 0 ? [] : recordedNamesFor(record, await recorded);
             const list = (sort) => proxyFetch("/pixlstash/pictures", credentials, {
                 fields: "grid", limit: PANEL_PICTURES, sort, descending: "true", comfyui_model: names,
             });
@@ -671,7 +681,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     const grid = el("div", {
         style: `
             display:grid;
-            grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+            grid-template-columns:${panel ? "repeat(6,minmax(0,1fr))" : "repeat(auto-fill,minmax(150px,1fr))"};
             grid-auto-rows:auto;
             gap:10px; overflow-y:auto; flex:1; min-width:0; padding:4px;
             align-content:start;
