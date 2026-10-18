@@ -142,7 +142,9 @@ async def _proxy_get(
     """Generic proxy: forward a GET to PixlStash and return the JSON.
 
     Query params other than ``url`` and ``verify_ssl`` are forwarded
-    as-is (e.g. ``project_id`` for filtered set / character lists).
+    as-is (e.g. ``project_id`` for filtered set / character lists). A
+    param sent more than once goes on as a list, so a repeatable filter
+    (``comfyui_model``) keeps every value rather than the last.
     *pass_on* names response headers of PixlStash's to hand on as they are.
     """
     try:
@@ -151,9 +153,11 @@ async def _proxy_get(
         return _err(exc.reason, status=400)
 
     # Forward all query params except the ones we consumed.
-    forward_params = {
-        k: v for k, v in request.rel_url.query.items() if k not in ("url", "verify_ssl")
-    }
+    forward_params: dict = {}
+    for k, v in request.rel_url.query.items():
+        if k not in ("url", "verify_ssl"):
+            forward_params.setdefault(k, []).append(v)
+    forward_params = {k: v[0] if len(v) == 1 else v for k, v in forward_params.items()}
 
     try:
         resp = await asyncio.to_thread(client.get, path, params=forward_params or None)
@@ -204,6 +208,17 @@ async def proxy_picture_search(request: web.Request) -> web.Response:
 async def proxy_picture_count(request: web.Request) -> web.Response:
     # First shipped in PixlStash 1.3.0; search is as old as the floor.
     return await _proxy_get(request, "/api/v1/pictures/count", min_server_version="1.3.0")
+
+
+async def proxy_comfyui_models(request: web.Request) -> web.Response:
+    """Proxy the checkpoint names PixlStash's pictures record, as ComfyUI wrote
+    them (``SDXL/name.safetensors`` as well as ``name.safetensors``).
+
+    The checkpoint picker's panel matches them to a shelf file by basename and
+    lists the pictures with ``comfyui_model``, the filter PixlStash's own
+    picture grid uses for its checkpoint menu.
+    """
+    return await _proxy_get(request, "/api/v1/pictures/comfyui_models")
 
 
 async def proxy_thumbnail(request: web.Request) -> web.Response:
@@ -585,6 +600,7 @@ def register_routes() -> None:
         r.get("/pixlstash/pictures")(proxy_pictures)
         r.get("/pixlstash/pictures/search")(proxy_picture_search)
         r.get("/pixlstash/pictures/count")(proxy_picture_count)
+        r.get("/pixlstash/pictures/comfyui_models")(proxy_comfyui_models)
         r.get("/pixlstash/thumbnail")(proxy_thumbnail)
         r.get("/pixlstash/adapters")(proxy_adapters)
         r.get("/pixlstash/adapter")(proxy_adapter)

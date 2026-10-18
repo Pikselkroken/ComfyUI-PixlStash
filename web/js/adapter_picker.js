@@ -80,8 +80,11 @@ async function proxyFetch(path, credentials, extraParams = {}) {
     const params = new URLSearchParams({
         url:        credentials.url,
         verify_ssl: credentials.verifySsl ? "true" : "false",
-        ...extraParams,
     });
+    // An array is a repeatable filter: one param per value.
+    for (const [k, v] of Object.entries(extraParams)) {
+        for (const one of [v].flat()) params.append(k, one);
+    }
     const resp = await fetch(`${path}?${params}`, {
         headers: { "Authorization": `Bearer ${credentials.token}` },
     });
@@ -301,6 +304,207 @@ export function triggerText(record) {
     return value ? String(value).trim() : "";
 }
 
+/**
+ * How many kept pictures PixlStash says this checkpoint made, or `null` where
+ * the server does not count them (before 1.12). The two tiers are the exact
+ * file and a file of its name; a card has room for one number, so both.
+ */
+export function pictureCount(record) {
+    const { pictures_verified: exact, pictures_by_filename: named } = record ?? {};
+    if (exact == null && named == null) return null;
+    return (exact ?? 0) + (named ?? 0);
+}
+
+const picturesWord = (n) => `${n} picture${n === 1 ? "" : "s"}`;
+
+/** Lowercase basename, as PixlStash's `normalized_filename` takes it. */
+function baseName(value) {
+    return String(value).toLowerCase().split(/[\\/]/).pop();
+}
+
+/**
+ * The names the library's pictures record (`GET /pictures/comfyui_models`)
+ * that are this checkpoint's file: a picture records the `ckpt_name` ComfyUI
+ * had, folder and all, so `SDXL/x.safetensors` is `x.safetensors` on the shelf.
+ * Matched by basename against the file and each copy of it, as PixlStash's
+ * own picture counts are. The route answered plain strings before it answered
+ * `{ value, name }`; both are read.
+ */
+export function recordedNamesFor(record, recorded) {
+    const mine = new Set([record?.filename, ...(record?.locations ?? []).map(l => l?.relpath)]
+        .filter(Boolean).map(baseName));
+    return (Array.isArray(recorded) ? recorded : [])
+        .map(v => (typeof v === "string" ? v : v?.value))
+        .filter(v => typeof v === "string" && v && mine.has(baseName(v)));
+}
+
+/** "2 days ago", "3 months ago" for a date PixlStash sent, or `null`. */
+function ago(iso) {
+    const days = Math.round((Date.parse(iso) - Date.now()) / 86_400_000);
+    if (Number.isNaN(days)) return null;
+    const [n, unit] = Math.abs(days) < 60 ? [days, "day"]
+        : Math.abs(days) < 730 ? [Math.round(days / 30), "month"]
+        : [Math.round(days / 365), "year"];
+    return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(n, unit);
+}
+
+const PANEL_PICTURES = 9;
+
+/**
+ * The checkpoint picker's side panel: what the selected checkpoint has made.
+ *
+ * Nine of its pictures, Best (by score) or Newest, how many it made and when
+ * it was last used. Asked for only for the selected checkpoint, so a grid of
+ * cards costs no more requests than it did. The pictures are found the way
+ * PixlStash's own grid filters by checkpoint (`comfyui_model`), by every name
+ * the library recorded for this file; the count is the shelf's, which is the
+ * number on the card.
+ */
+function picturePanel(credentials) {
+    const root = el("aside", {
+        style: `
+            width:420px; flex-shrink:0; box-sizing:border-box; overflow-y:auto;
+            background:#1b1b1b; border:1px solid #333; border-radius:10px;
+            padding:16px; display:flex; flex-direction:column; gap:12px;
+        `,
+    });
+    let recorded = null; // the names the library's pictures record, asked once
+    let urls = [];       // the thumbnails on screen, released when they go
+    // Bumped on every redraw, so a picture that lands late on a panel that has
+    // moved on is released rather than drawn.
+    let generation = 0;
+    let tab = "best";
+
+    const note = (text) => el("div", {
+        textContent: text,
+        style: "grid-column:1/-1; color:#999; font-size:.85em; padding:8px 0;",
+    });
+
+    function release() {
+        generation++;
+        for (const url of urls) URL.revokeObjectURL(url);
+        urls = [];
+    }
+
+    function drawPictures(box, list, empty) {
+        release();
+        const mine = generation;
+        if (!list.length) {
+            box.replaceChildren(note(empty));
+            return;
+        }
+        box.replaceChildren(...list.map((picture) => {
+            const tile = el("div", {
+                style: "aspect-ratio:1; border-radius:5px; overflow:hidden; background:#2a2a2a;",
+            });
+            fetchBlobUrl("/pixlstash/thumbnail", credentials, { picture_id: String(picture.id) })
+                .then((url) => {
+                    if (!url) return;
+                    if (mine !== generation) {
+                        URL.revokeObjectURL(url);
+                        return;
+                    }
+                    urls.push(url);
+                    tile.appendChild(el("img", {
+                        src:   url,
+                        style: "width:100%; height:100%; object-fit:cover; display:block;",
+                    }));
+                })
+                .catch(() => {});
+            return tile;
+        }));
+    }
+
+    async function show(record) {
+        release();
+        const mine = generation;
+        if (!record) {
+            root.replaceChildren(note("Pick a checkpoint to see the pictures it made."));
+            return;
+        }
+
+        const mark = el("div", {
+            style: `
+                position:relative; width:56px; height:56px; border-radius:8px; overflow:hidden;
+                flex-shrink:0; display:flex; align-items:center; justify-content:center;
+                font-weight:bold;
+            `,
+        });
+        paintMark(mark, record, { inside: true, named: true });
+        const titles = el("div", { style: "min-width:0;" });
+        titles.append(
+            el("div", {
+                textContent: nameOf(record) || `Checkpoint #${record.id}`,
+                style:       "font-size:1.05em; font-weight:700; overflow-wrap:anywhere;",
+            }),
+            el("div", {
+                textContent: record.base_model || "Base model not set",
+                style:       "font-size:.8em; color:#999;",
+            }),
+        );
+        const head = mkRow(mark, titles);
+
+        const count = pictureCount(record);
+        const stats = el("div", { style: "font-size:.8em; color:#999;" });
+        const pictures = el("div", { style: "display:grid; grid-template-columns:repeat(3,1fr); gap:6px;" });
+        root.replaceChildren(head, stats, note("Loading…"));
+
+        let lists;
+        try {
+            recorded ??= proxyFetch("/pixlstash/pictures/comfyui_models", credentials)
+                .catch((err) => { recorded = null; throw err; });
+            const names = recordedNamesFor(record, await recorded);
+            const list = (sort) => proxyFetch("/pixlstash/pictures", credentials, {
+                fields: "grid", limit: PANEL_PICTURES, sort, descending: "true", comfyui_model: names,
+            });
+            // No name recorded is no picture: an empty filter would be the whole library.
+            const [best, newest] = names.length
+                ? await Promise.all([list("SCORE"), list("DATE")])
+                : [[], []];
+            lists = { best: Array.isArray(best) ? best : [], newest: Array.isArray(newest) ? newest : [] };
+        } catch (err) {
+            if (mine === generation) root.replaceChildren(head, stats, note(`⚠ ${err.message}`));
+            return;
+        }
+        if (mine !== generation) return;
+        root.replaceChildren(head, stats);
+
+        const used = ago(lists.newest[0]?.created_at);
+        stats.textContent = [
+            count != null ? picturesWord(count) : null,
+            used ? `last used ${used}` : null,
+        ].filter(Boolean).join(" · ");
+
+        // A checkpoint PixlStash kept nothing from says so, rather than
+        // drawing an empty grid under two tabs that switch nothing.
+        if (!lists.newest.length) {
+            root.appendChild(note(count
+                ? `PixlStash counts ${picturesWord(count)} for this checkpoint, `
+                  + "but none records its file name, so they cannot be listed here."
+                : "PixlStash has kept no pictures made with this checkpoint yet."));
+            return;
+        }
+
+        const best   = mkBtn("Best");
+        const newest = mkBtn("Newest");
+        const paintTabs = () => {
+            best.style.background   = tab === "best" ? "#555" : "#2d2d2d";
+            newest.style.background = tab === "newest" ? "#555" : "#2d2d2d";
+        };
+        const pick = (which) => {
+            tab = which;
+            paintTabs();
+            drawPictures(pictures, lists[tab], "");
+        };
+        best.addEventListener("click", () => pick("best"));
+        newest.addEventListener("click", () => pick("newest"));
+        root.append(mkRow(best, newest), pictures);
+        pick(tab);
+    }
+
+    return { root, show, close: release };
+}
+
 /** What a card (and the Browse button) calls a record. */
 export function nameOf(record) {
     return record?.display_name || record?.filename || null;
@@ -392,6 +596,9 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     // Several-selectable (the Multi Adapter Loader): the ticked digests in the
     // order they will fill the rows, and which of the two views is drawn.
     const several = filters?.several ?? null;
+    // Only the checkpoint picker shows what the selected file has made: a
+    // checkpoint is what decides how a picture looks.
+    const panel = shelf.byId && !several ? picturePanel(credentials) : null;
     const ticked  = several ? [...several.picked] : [];
     let people    = !!several?.people;
     // A ticked digest that a people card's choice put in place of another →
@@ -442,7 +649,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     const modal = el("div", {
         style: `
             background:#1e1e1e; border-radius:10px; padding:20px;
-            width:88vw; max-width:1100px; height:78vh;
+            width:88vw; max-width:${panel ? 1240 : 1100}px; height:78vh;
             display:flex; flex-direction:column; gap:10px;
             box-shadow:0 6px 40px rgba(0,0,0,.85); color:#e0e0e0;
         `,
@@ -466,22 +673,30 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             display:grid;
             grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
             grid-auto-rows:auto;
-            gap:10px; overflow-y:auto; flex:1; padding:4px;
+            gap:10px; overflow-y:auto; flex:1; min-width:0; padding:4px;
             align-content:start;
         `,
     });
+    let body = grid;
+    if (panel) {
+        body = el("div", { style: "display:flex; gap:20px; flex:1; min-height:0;" });
+        body.append(grid, panel.root);
+    }
 
     const confirmBtn = mkBtn(several ? "Use" : `Use this ${shelf.noun}`, "#2a7a2a");
     const cancelBtn  = mkBtn("Cancel");
     // Says what confirming will do to the rows. Empty when one file is picked.
-    const sayEl  = el("span", { style: "flex:1; font-size:.85em; color:#aaa;" });
+    const sayEl  = el("span", {
+        textContent: panel ? "Double-click a card to use it straight away" : "",
+        style: "flex:1; font-size:.85em; color:#aaa;",
+    });
     const footer = el("div", { style: "display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-shrink:0;" });
     footer.append(sayEl, cancelBtn, confirmBtn);
     // Nothing to confirm until the shelf is here: confirming an unloaded grid
     // would be confirming a list nobody has seen.
     confirmBtn.disabled = !!several;
 
-    modal.append(header, filterRow, grid, footer);
+    modal.append(header, filterRow, body, footer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
@@ -510,6 +725,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             if (item._objectUrl) URL.revokeObjectURL(item._objectUrl);
         }
         itemElements.length = 0;
+        panel?.close();
         overlay.remove();
     }
 
@@ -674,6 +890,8 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
             // Say the run is a run: the other files are on the shelf, they are
             // just not separate things to pick here.
             record._members > 1 ? `${record._members} files` : null,
+            // Which checkpoints have history, before one is clicked.
+            pictureCount(record) ? picturesWord(pictureCount(record)) : null,
         ].filter(Boolean).join(" · ");
         item.appendChild(el("div", {
             textContent: meta,
@@ -706,9 +924,11 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
                 toggle(idOf(record));
                 return;
             }
+            const moved = selectedValue !== idOf(record);
             selectedValue  = idOf(record);
             selectedRecord = record;
             for (const other of itemElements) highlight(other);
+            if (moved) panel?.show(record);
         });
         item.addEventListener("dblclick", () => {
             // Several-selectable has no "this one and done": the second click
@@ -1087,6 +1307,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     });
 
     applySearch();
+    panel?.show(all.find(r => idOf(r) === selectedValue) ?? null);
     searchInput.focus();
 }
 
