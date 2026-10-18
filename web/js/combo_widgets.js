@@ -18,7 +18,7 @@
 import { app } from "../../scripts/app.js";
 import { openPicker, updateNodePreviews } from "./picker.js";
 import {
-    collapseStacks, fetchFaceUrl, nameOf, openAdapterPicker, personOf,
+    collapseStacks, fetchFaceUrl, nameOf, offerable, openAdapterPicker, personOf,
     shelfRecordFor, triggerText,
 } from "./adapter_picker.js";
 import { paintMark } from "./model_mark.js";
@@ -378,7 +378,7 @@ async function fetchBaseModelOptions() {
     const data = await proxyFetch("/pixlstash/adapters", getSettingsCredentials(), {
         file_kind: "adapter",
     });
-    const names = [...new Set((data?.adapters ?? []).map(a => a.base_model_family_label).filter(Boolean))];
+    const names = [...new Set(offerable(data?.adapters ?? []).map(a => a.base_model_family_label).filter(Boolean))];
     names.sort((a, b) => a.localeCompare(b));
     return [NONE_LABEL, ...names];
 }
@@ -1183,7 +1183,7 @@ async function alternativesFor(record, personId) {
     const base = (r) => r.base_model_canonical ?? r.base_model ?? null;
     // Stacks first, then the person, as the grid folds them: what a row
     // offers is what a people card would.
-    const same = collapseStacks((data?.adapters ?? []).filter(r => r?.sha256))
+    const same = collapseStacks(offerable(data?.adapters ?? []).filter(r => r.sha256))
         .filter(r => base(r) === base(record) && personOf(r) === personId);
     return same.some(r => r.sha256 === record.sha256) ? same : [record, ...same];
 }
