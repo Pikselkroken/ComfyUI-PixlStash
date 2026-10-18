@@ -724,8 +724,8 @@ function pinNodeWidth(widget) {
 
 /**
  * One DOM widget for the Adapter Loader's picked-file thumbnail: the file's
- * picture, or the generated mark PixlStash's shelf draws for it when it has
- * none, as a square as large as the widget allows.
+ * picture, or the tile PixlStash draws for it when it has none, as a square
+ * as large as the widget allows.
  */
 function addShelfFaceWidget(node, name) {
     const box = document.createElement("div");
@@ -767,7 +767,7 @@ function addShelfFaceWidget(node, name) {
         setRecord(record) {
             this.setUrl(null);
             // As large as the square allows, inside it: the widget clips.
-            if (record) paintMark(mark, record, { tab: "max(15px, calc(min(100cqw, 100cqh) * 0.2))", inside: true });
+            if (record) paintMark(mark, record, { tab: "max(15px, calc(min(100cqw, 100cqh) * 0.2))", inside: true, named: true });
             markArea.style.display = record ? "flex" : "none";
         },
         /** The file's own picture, over its mark. */

@@ -152,9 +152,164 @@ export function generatedMark(row) {
     };
 }
 
+/*
+ * The named tile (PixlStash #1951): a PORT of `namedTile` in PixlStash's
+ * `frontend/src/utils/modelTile.js` and of its layout in `ModelMark.vue`. The
+ * server works the tile out and sends it on `/checkpoints` and `/adapters`
+ * rows as `mark`, `mark_tab`, `mark_colors`, `mark_icon`, `mark_letters` and
+ * `mark_band`; this only lays it out. A release (`mark_band`) is its name
+ * across a band, its maker's glyph and its version beside it; a re-branded
+ * fine-tune (Juggernaut's J) is its name alone. Either has a tab for its role
+ * or a bolt for a few-step model, on its maker's colour.
+ */
+
+// The glyphs the pack ships, by the `mark_icon` the server sends: LobeHub's
+// mono icons drawn white (`img/lobehub/LICENSE`), and the owner's family
+// pictures. Chroma's eye fills the tile; the horse and star sit where a
+// maker's glyph would.
+const GLYPHS = {
+    chroma: ["model-families/chroma.webp", "full"],
+    pony: ["model-families/pony-glyph.webp", "picture"],
+    illustrious: ["model-families/illustrious-glyph.webp", "picture"],
+    ...Object.fromEntries([
+        "bytedance", "fal", "flux", "hunyuan", "ideogram", "kolors", "krea",
+        "lightricks", "minimax", "nvidia", "qwen", "stability",
+    ].map(name => [name, [`lobehub/${name}.svg`, "glyph"]])),
+};
+
+function glyphOf(icon) {
+    if (!Object.hasOwn(GLYPHS, icon)) return null;
+    const [path, kind] = GLYPHS[icon];
+    return { url: new URL(`./img/${path}`, import.meta.url).href, kind };
+}
+
+/** What the server's tab sends for a few-step model; drawn as a bolt. */
+const FEW_STEP_TAB = "⚡";
+
+// PixlStash's `--font-ui`: a system stack, so nothing loads late and a width
+// once measured stays true.
+const FONT_UI = 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+// A name's size as a share of the tile's line, for one line and for two.
+const ONE_LINE = 15.4 / 24;
+const TWO_LINES = 11.4 / 24;
+// A release's version and the room beside the glyph, in 32nds of the tile.
+const VERSION = 7.5;
+const VERSION_ROOM = 11;
+const TRACKING = -0.02;
+// What a character measures where nothing can be measured (Node), in em.
+const FALLBACK_EM = 0.62;
+
+let context;
+const widths = new Map();
+
+/** The width of `text` at 1px, semibold, tracked, in `FONT_UI`. */
+function widthEm(text) {
+    if (!widths.has(text)) {
+        if (context === undefined) {
+            context = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
+            if (context) context.font = `600 100px ${FONT_UI}`;
+        }
+        const chars = [...text].length;
+        widths.set(text, context ? context.measureText(text).width / 100 + TRACKING * chars : FALLBACK_EM * chars);
+    }
+    return widths.get(text);
+}
+
+/**
+ * How a row's named tile draws, or null for a row the server named nothing
+ * for (no known base model, or a PixlStash too old to send one), which keeps
+ * the generated mark. `fallbackColor` is the generated mark's hue, for a
+ * family with no maker colour. `edge` is the colour the tab's ink takes.
+ */
+export function namedTile(row, fallbackColor) {
+    if (!Array.isArray(row?.mark) || !row.mark.length) return null;
+    const stops = row.mark_colors?.length ? row.mark_colors : [fallbackColor];
+    const tab = row.mark_tab
+        ? row.mark_tab.startsWith(FEW_STEP_TAB)
+            ? { bolt: true, text: row.mark_tab.slice(FEW_STEP_TAB.length) }
+            : { bolt: false, text: row.mark_tab }
+        : null;
+    const tile = {
+        tab,
+        background: stops.length > 1 ? `linear-gradient(135deg, ${stops.join(", ")})` : stops[0],
+        edge: stops[stops.length - 1],
+    };
+    if (!row.mark_band) {
+        const cap = row.mark.length > 1 ? TWO_LINES : ONE_LINE;
+        return { ...tile, lines: row.mark, scale: Math.min(cap, 1 / Math.max(...row.mark.map(widthEm))) };
+    }
+    const [name, version = null] = row.mark;
+    const glyph = glyphOf(row.mark_icon);
+    return {
+        ...tile,
+        release: {
+            name,
+            version,
+            small: Boolean(version) && widthEm(version) * VERSION > VERSION_ROOM,
+            glyph,
+            letters: glyph ? null : row.mark_letters || null,
+        },
+    };
+}
+
+/** `n` 32nds of the tile, as `ModelMark` lays a release out. */
+const at = n => `calc(100cqmin * ${n} / 32)`;
+
+function part(tag, css, text) {
+    const el = document.createElement(tag);
+    el.style.cssText = css;
+    if (text != null) el.textContent = text;
+    return el;
+}
+
+/** The named tile's face: the band, glyph and version, or the name alone. */
+function namedParts(tile) {
+    const release = tile.release;
+    if (!release) {
+        const name = part("span", "display:flex; flex-direction:column; align-items:flex-start; align-self:flex-start; "
+            + `box-sizing:border-box; padding:${at(2)} 0 0 ${at(2)}; `
+            + `font:600 max(8.25px, calc(100cqmin * 28 / 32 * ${tile.scale})) ${FONT_UI}; `
+            + "letter-spacing:-0.02em; line-height:0.9; white-space:nowrap; margin-right:auto;");
+        name.append(...tile.lines.map(line => part("span", "", line)));
+        return [name];
+    }
+    const parts = [];
+    const { glyph, small } = release;
+    const glyphBox = `position:absolute; left:${at(3)}; top:${at(13)}; `
+        + `width:${at(small ? 12 : 15)}; height:${at(small ? 12 : 15)};`;
+    if (glyph?.kind === "full") {
+        parts.push(Object.assign(part("img", "position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:inherit;"),
+            { src: glyph.url, alt: "" }));
+    } else if (glyph) {
+        const shadow = glyph.kind === "glyph" ? `filter:drop-shadow(${at(32 / 36)} ${at(32 / 36)} 0 #000);` : "";
+        parts.push(Object.assign(part("img", glyphBox + shadow), { src: glyph.url, alt: "" }));
+    } else if (release.letters) {
+        parts.push(part("span", glyphBox + "display:flex; align-items:center; justify-content:flex-start; "
+            + `font:700 ${at(10)}/1 ${FONT_UI}; letter-spacing:-0.04em; `
+            + `text-shadow:${at(32 / 36)} ${at(32 / 36)} 0 #000;`, release.letters));
+    }
+    if (release.version) {
+        parts.push(part("span", `position:absolute; right:${at(small ? 1.5 : 2.5)}; top:${at(small ? 15.5 : 14)}; `
+            + `font:600 ${at(small ? 5.5 : 7.5)}/1 ${FONT_UI}; letter-spacing:-0.02em; `
+            + `text-shadow:${at(32 / 45)} ${at(32 / 45)} 0 #000;`, release.version));
+    }
+    parts.push(part("span", `position:absolute; inset:0 0 auto 0; padding:${at(2)}; background:rgba(0,0,0,0.78); `
+        + `font:400 ${at(7)}/1 ${FONT_UI}; letter-spacing:-0.02em; text-align:center; white-space:nowrap; `
+        + "border-radius:inherit; border-bottom-left-radius:0; border-bottom-right-radius:0;", release.name));
+    return parts;
+}
+
+// `mdi-lightning-bolt`, the icon PixlStash's tab draws a few-step model with.
+const BOLT = '<svg viewBox="0 0 24 24" style="height:1em; width:1em; fill:currentColor;" aria-hidden="true">'
+    + '<path d="M11 15H6L13 1V9H18L11 23V15Z"/></svg>';
+
 /**
  * Paint `box` as a row's mark: its initials, on its tile, in its ink, and the
  * version on a tab at the corner, the tile's own pair inverted as on the shelf.
+ * With `named`, a row the server named (PixlStash #1951) draws its named
+ * tile instead, with its role or a bolt on the tab: for a mark large enough
+ * to carry a maker's glyph (a node's square, a picker card), never the 20px
+ * favicon, which is too small for it.
  *
  * The letters are 55% of the tile, as on the shelf, so they fill it at any
  * size: `box` becomes a size container for them, which every caller's box can
@@ -164,24 +319,38 @@ export function generatedMark(row) {
  * not read. The tab hangs past the corner, unless `inside` keeps it within a
  * box that clips.
  */
-export function paintMark(box, row, { tab = "15px", inside = false } = {}) {
+export function paintMark(box, row, { tab = "15px", inside = false, named = false } = {}) {
     const mark = generatedMark(row);
-    const initials = document.createElement("span");
-    initials.textContent = mark.initials;
-    initials.style.cssText = "font-size:55cqmin; letter-spacing:-0.02em; line-height:1;";
+    const tile = named ? namedTile(row, mark.color) : null;
     box.style.containerType = "size";
-    box.replaceChildren(initials);
-    box.style.background = mark.color;
+    if (tile) {
+        // Its band, glyph and version are placed absolutely within it.
+        if (!box.style.position) box.style.position = "relative";
+        box.replaceChildren(...namedParts(tile));
+        box.style.background = tile.background;
+    } else {
+        const initials = document.createElement("span");
+        initials.textContent = mark.initials;
+        initials.style.cssText = "font-size:55cqmin; letter-spacing:-0.02em; line-height:1;";
+        box.replaceChildren(initials);
+        box.style.background = mark.color;
+    }
     box.style.color = mark.ink;
-    if (!mark.version) return;
+    if (tile ? !tile.tab : !mark.version) return;
     if (!box.style.position) box.style.position = "relative";
-    const edge = inside ? "4px" : `calc(${tab} * -0.4)`;
+    // A named tile's tab sits in the very corner, inside, so it clears the
+    // release's version down to the node's smallest square.
+    const edge = inside ? (tile ? "1px" : "4px") : `calc(${tab} * -0.4)`;
     const version = document.createElement("span");
-    version.textContent = mark.version;
+    // The named tile's tab is a plain pill in the tile's last colour: an
+    // outline in it read as a smudge against the tile.
+    const [ink, border] = tile ? [tile.edge, "0"] : [mark.color, `1px solid ${mark.color}`];
     version.style.cssText = `position:absolute; right:${edge}; bottom:${edge}; z-index:1; `
-        + `box-sizing:border-box; min-width:${tab}; height:${tab}; padding:0 2px; `
+        + `box-sizing:border-box; min-width:${tab}; height:${tab}; padding:0 ${tile ? "0.3em" : "2px"}; gap:0.1em; `
         + "display:inline-flex; align-items:center; justify-content:center; "
-        + `border:1px solid ${mark.color}; border-radius:999px; background:${mark.ink}; color:${mark.color}; `
-        + `font-size:max(11px, calc(${tab} * 0.72)); font-weight:700; line-height:1;`;
+        + `border:${border}; border-radius:999px; background:${mark.ink}; color:${ink}; `
+        + `font-size:max(${tile ? "9px" : "11px"}, calc(${tab} * ${tile ? "0.6" : "0.72"})); font-weight:700; line-height:1;`;
+    if (tile?.tab.bolt) version.innerHTML = BOLT;
+    version.append(tile ? tile.tab.text : mark.version);
     box.appendChild(version);
 }
