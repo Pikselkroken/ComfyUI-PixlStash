@@ -687,7 +687,7 @@ export async function openAdapterPicker(valueWidget, credentials, filters, onPic
     const cancelBtn  = mkBtn("Cancel");
     // Says what confirming will do to the rows. Empty when one file is picked.
     const sayEl  = el("span", {
-        textContent: several ? "" : "Double-click a card to use it straight away",
+        textContent: panel ? "Double-click a card to use it straight away" : "",
         style: "flex:1; font-size:.85em; color:#aaa;",
     });
     const footer = el("div", { style: "display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-shrink:0;" });

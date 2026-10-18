@@ -45,7 +45,7 @@ read them at runtime, so they never end up in saved workflow JSON.
 | Picture Likeness Gate | Same, judged on whole-image likeness to a reference picture set. | 1.3.1 | 1.4 |
 | Adapter (LoRA) Loader | Applies a LoRA from the model shelf. | 1.5 | 1.10 |
 | Multi Adapter (LoRA) Loader | Applies several LoRAs from the model shelf, one row each, in one node. Can list people instead of files. | 1.7 | 1.12 |
-| Checkpoint Loader | Loads a checkpoint from the model shelf. Its picker shows how many pictures each checkpoint made, and nine of the selected one's. | 1.5 | 1.10 |
+| Checkpoint Loader | Loads a checkpoint from the model shelf. Its picker shows nine of the selected checkpoint's pictures, and from PixlStash 1.12 how many each checkpoint made. | 1.5 | 1.10 |
 | VAE Loader | Loads a VAE from the model shelf. | 1.5 | 1.10 |
 | CLIP Loader | Loads one or two text encoders from the model shelf. | 1.5 | 1.10 |
 | ControlNet Loader | Loads a ControlNet from the model shelf. | 1.7 | 1.12 |
