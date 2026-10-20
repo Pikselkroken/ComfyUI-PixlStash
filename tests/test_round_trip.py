@@ -235,6 +235,23 @@ const valueOf = (node, name) => node.widgets.find((w) => w.name === name).value;
         steps: valueOf(graph.getNodeById(3), "steps"), text: valueOf(graph.getNodeById(6), "text"),
     };
 }
+{
+    // A draft (PixlStash #2000): no graph, its template opens as it is.
+    const { toasts, store } = comfy();
+    const editor = { nodes: [], extra: { pixlstash_workflow_id: OTHER }, canvas: () => chain() };
+    const sent = await openLink(OTHER, { name: "Template", workflow: null, draft: true, editor, version: 1, people_loader: PLACE });
+    const opening = openings.get("workflows/pixlstash/Template.json");
+    results.draft = {
+        sent, toasts, loads: app.loads, wires: app.wires, saved: store.saved,
+        loaders: loaders(app.rootGraph).length, version: opening?.version ?? null,
+    };
+}
+{
+    // A PixlStash that answers a draft with no document to open: said, nothing opened.
+    const { toasts } = comfy();
+    await openLink(OTHER, { name: "Template", workflow: null, draft: true, detail: "It is a draft." });
+    results.draft_without_editor = { toasts, loads: app.loads };
+}
 // A layout that is not of the graph PixlStash sent is not used, whatever it is.
 const refused = {
     // Another graph altogether: a node the workflow does not have.
@@ -1100,6 +1117,28 @@ class RoundTripTests(unittest.TestCase):
         # Arranged again, since ComfyUI arranged before the loader was on.
         self.assertEqual(opened["arranged"], 1)
 
+    def test_a_draft_opens_as_its_template_linked_to_its_workflow(self):
+        """PixlStash #2000. Wrong if the API loader is asked for a graph there
+        is none of, if a loader for people is put on a template, or if the file
+        is not linked: its save is what gives the draft its graph."""
+        draft = self.results["draft"]
+        [(url, _method)] = draft["sent"]
+        self.assertIn("drafts=true", url)
+        self.assertEqual(draft["loads"], [["editor", "pixlstash/Template"]])
+        path = "workflows/pixlstash/Template.json"
+        self.assertEqual(
+            draft["saved"],
+            [[path, {"pixlstash_workflow_id": OTHER, "pixlstash_file": path}]],
+        )
+        self.assertEqual(draft["version"], 1)
+        self.assertEqual((draft["loaders"], draft["wires"]), (0, []))
+        self._one_toast("draft", "info", "draft from a ComfyUI template")
+
+    def test_a_draft_with_nothing_to_open_is_said(self):
+        result = self.results["draft_without_editor"]
+        self.assertEqual(result["loads"], [])
+        self._one_toast("draft_without_editor", "error", "It is a draft.")
+
     def test_a_layout_opens_with_the_values_of_now(self):
         laid = self.results["laid_out"]
         self.assertEqual(laid["loads"], [["editor", "pixlstash/Laid out"]])
@@ -1484,7 +1523,7 @@ class RoundTripTests(unittest.TestCase):
         self.assertIn(f"run={'d' * 32}", url)
         self.assertIn("workflow_key=auto%3A", url)
         # PixlStash holds the run's graph whole: nothing else is asked of it.
-        for other in ("waiting", "all_stages", "pixlstash_nodes"):
+        for other in ("waiting", "all_stages", "pixlstash_nodes", "drafts"):
             self.assertNotIn(other, url)
         # Off the address, so a reload does not open it again.
         self.assertEqual(opened["address"], "http://comfy.test/")

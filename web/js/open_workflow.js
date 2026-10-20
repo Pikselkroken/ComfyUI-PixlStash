@@ -41,6 +41,12 @@
  *   and a toast names the files among them only PixlStash's shelf holds
  *   (`shelf_only`), which ComfyUI shows missing with no hint why.
  *
+ * - **A draft** (PixlStash #2000): a workflow PixlStash made from a ComfyUI
+ *   template and could not convert, so it has no graph yet. It is asked for
+ *   (`drafts`), and PixlStash answers the template as it stored it
+ *   (`draft`, `editor`); that opens as it is, linked like any other, and the
+ *   first save of it gives the workflow its graph.
+ *
  * - **A run from the Run popup** (`open_run.js`, which calls `openFromUrl`
  *   with what PixlStash holds the run as): the workflow with that run's
  *   changes in it, always as a file of its own, and marked so that a save of
@@ -66,6 +72,9 @@ const FOLDER = "workflows/pixlstash/";
 const STARTUP_TIMEOUT_MS = 30000;
 // How long to wait for a graph handed to ComfyUI's API loader to be on the canvas.
 const LOAD_TIMEOUT_MS = 30000;
+
+/** An editor document: what ComfyUI's own loader opens. */
+const isEditor = (document) => !!document && typeof document === "object" && Array.isArray(document.nodes);
 
 function takeKeyFromUrl() {
     const url = new URL(window.location.href);
@@ -659,7 +668,9 @@ export async function openFromUrl(key, original = false, run = null) {
         // a stage cut out of a graph saved back could not be switched on again.
         // A run is held whole by PixlStash, so it is asked for by itself.
         const query = new URLSearchParams(
-            run ? { workflow_key: key, run } : { workflow_key: key, waiting: "true", all_stages: "true" },
+            run
+                ? { workflow_key: key, run }
+                : { workflow_key: key, waiting: "true", all_stages: "true", drafts: "true" },
         );
         // This pack's savers and Adapter Loader in place of the stock nodes,
         // unless the link asks for the workflow as it is.
@@ -675,7 +686,9 @@ export async function openFromUrl(key, original = false, run = null) {
         return;
     }
     await startupFinished();
-    if (!body.workflow) {
+    // A draft has no graph to open: its template is the canvas. A run is never one.
+    const draft = !run && body.draft === true && !body.workflow && isEditor(body.editor);
+    if (!body.workflow && !draft) {
         notify("error", body.detail || "PixlStash could not open that workflow.");
         return;
     }
@@ -690,7 +703,13 @@ export async function openFromUrl(key, original = false, run = null) {
     let arranged = false;
     // Nodes replaced inside a subgraph, which nobody sees from outside it.
     let inside = [];
-    if (body.editor) {
+    if (draft) {
+        if ((await app.loadGraphData(body.editor, true, true, loadAs)) === false) {
+            notify("error", `ComfyUI would not open ${name}.`);
+            return;
+        }
+        arranged = true;
+    } else if (body.editor) {
         // Whatever goes wrong with a layout costs the layout and nothing
         // else: one that will not load, will not convert, is of something
         // else, or holds a value this could not write. The graph itself then
@@ -734,8 +753,9 @@ export async function openFromUrl(key, original = false, run = null) {
 
     // A layout that was used converts to the graph, so a loader for people
     // it kept holds nobody: it is where it was left, and no other is put on.
-    const kept = arranged ? keptPeopleLoader(graph, body.workflow) : null;
-    if (!kept && body.people_loader && placePeopleLoader(graph, body.people_loader) && !arranged) {
+    // A draft is its template as ComfyUI ships it, and gets none.
+    const kept = arranged && !draft ? keptPeopleLoader(graph, body.workflow) : null;
+    if (!draft && !kept && body.people_loader && placePeopleLoader(graph, body.people_loader) && !arranged) {
         // The API loader arranged the graph before the loader was on it, in
         // columns with no room for one more: arranged again, after placing.
         graph.arrange?.();
@@ -763,6 +783,14 @@ export async function openFromUrl(key, original = false, run = null) {
     }
     if (run && path) {
         notify("info", `${name} is open as PixlStash's Run popup had it. Saving it here saves a new workflow to PixlStash.`);
+    }
+    if (draft && path) {
+        notify(
+            "info",
+            `${name} is a draft from a ComfyUI template. Save it here and PixlStash keeps ComfyUI's graph of it, ` +
+                "so it runs from PixlStash from then on.",
+            12000,
+        );
     }
     // A graph rebuilt from a stored recipe can hold no seed, or name models
     // PixlStash has forgotten: say so, or the first queue fails unexplained.
