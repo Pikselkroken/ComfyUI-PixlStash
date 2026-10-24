@@ -18,9 +18,20 @@
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "localized_name": "pixlstash_project",
+          "name": "pixlstash_project",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_project"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -34,7 +45,10 @@
       },
       "widgets_values": [
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_project": ""
+      }
     },
     {
       "id": 2,
@@ -45,33 +59,64 @@
       ],
       "size": [
         320,
-        130
+        206
       ],
       "flags": {},
       "order": 1,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
+          "shape": 7,
           "type": "PIXLSTASH_PROJECT",
-          "link": 1,
-          "shape": 7
+          "link": 1
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
+          "shape": 7,
           "type": "PIXLSTASH_SET",
-          "link": null,
-          "shape": 7
+          "link": null
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
+          "shape": 7,
           "type": "PIXLSTASH_CHARACTER",
-          "link": null,
-          "shape": 7
+          "link": null
+        },
+        {
+          "localized_name": "query",
+          "name": "query",
+          "type": "STRING",
+          "widget": {
+            "name": "query"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "limit",
+          "name": "limit",
+          "type": "INT",
+          "widget": {
+            "name": "limit"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "threshold",
+          "name": "threshold",
+          "type": "FLOAT",
+          "widget": {
+            "name": "threshold"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "links": [
@@ -79,26 +124,31 @@
           ]
         },
         {
+          "localized_name": "mask",
           "name": "mask",
           "type": "MASK",
           "links": []
         },
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": []
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "type": "PIXLSTASH_SET",
           "links": []
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": []
         },
         {
+          "localized_name": "batch_size",
           "name": "batch_size",
           "type": "INT",
           "links": []
@@ -112,7 +162,12 @@
         "cyberpunk city street at night, neon",
         24,
         0.5
-      ]
+      ],
+      "widgets_values_named": {
+        "query": "cyberpunk city street at night, neon",
+        "limit": 24,
+        "threshold": 0.5
+      }
     },
     {
       "id": 3,
@@ -130,16 +185,23 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "images",
           "name": "images",
           "type": "IMAGE",
           "link": 2
         }
       ],
-      "outputs": [],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
       "properties": {
         "Node name for S&R": "PreviewImage"
-      },
-      "widgets_values": []
+      }
     }
   ],
   "links": [
@@ -162,6 +224,14 @@
   ],
   "groups": [],
   "config": {},
-  "extra": {},
+  "extra": {
+    "ds": {
+      "scale": 0.9056603773584906,
+      "offset": [
+        886.6666666666665,
+        152.5
+      ]
+    }
+  },
   "version": 0.4
 }

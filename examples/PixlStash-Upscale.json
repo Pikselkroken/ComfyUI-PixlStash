@@ -2,7 +2,7 @@
   "id": "85170cb1-7132-49b9-bc1b-fd9961678bee",
   "revision": 0,
   "last_node_id": 137,
-  "last_link_id": 233,
+  "last_link_id": 235,
   "nodes": [
     {
       "id": 133,
@@ -12,7 +12,7 @@
         910.5016778182139
       ],
       "size": [
-        264.63999938964844,
+        267,
         370
       ],
       "flags": {},
@@ -20,26 +20,49 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 216
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "shape": 7,
           "type": "PIXLSTASH_SET",
           "link": 217
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "shape": 7,
           "type": "PIXLSTASH_CHARACTER",
           "link": 218
+        },
+        {
+          "localized_name": "picture_ids",
+          "name": "picture_ids",
+          "type": "STRING",
+          "widget": {
+            "name": "picture_ids"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "library",
+          "name": "library",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "library"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "links": [
@@ -47,11 +70,13 @@
           ]
         },
         {
+          "localized_name": "mask",
           "name": "mask",
           "type": "MASK",
           "links": null
         },
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -59,6 +84,7 @@
           ]
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "type": "PIXLSTASH_SET",
           "links": [
@@ -66,6 +92,7 @@
           ]
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": [
@@ -73,15 +100,16 @@
           ]
         },
         {
+          "localized_name": "batch_size",
           "name": "batch_size",
           "type": "INT",
           "links": null
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashPictureLoader",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashPictureLoader",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -91,8 +119,14 @@
       },
       "widgets_values": [
         "37767",
+        "",
         null
-      ]
+      ],
+      "widgets_values_named": {
+        "picture_ids": "37767",
+        "library": "",
+        "Browse PixlStash…": null
+      }
     },
     {
       "id": 134,
@@ -112,14 +146,25 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 219
+        },
+        {
+          "localized_name": "pixlstash_character",
+          "name": "pixlstash_character",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_character"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -127,6 +172,7 @@
           ]
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": [
@@ -135,9 +181,9 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashCharacterLoader",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashCharacterLoader",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -147,7 +193,10 @@
       },
       "widgets_values": [
         "Veronica #20"
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_character": "Veronica #20"
+      }
     },
     {
       "id": 131,
@@ -165,19 +214,31 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 215
+        },
+        {
+          "localized_name": "pixlstash_set",
+          "name": "pixlstash_set",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_set"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": []
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "type": "PIXLSTASH_SET",
           "links": [
@@ -186,9 +247,9 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashSetLoader",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashSetLoader",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -198,7 +259,10 @@
       },
       "widgets_values": [
         "— None —"
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_set": "— None —"
+      }
     },
     {
       "id": 132,
@@ -214,9 +278,20 @@
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "localized_name": "pixlstash_project",
+          "name": "pixlstash_project",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_project"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -226,9 +301,9 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashProjectLoader",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashProjectLoader",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -238,7 +313,10 @@
       },
       "widgets_values": [
         "Demo Project #3"
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_project": "Demo Project #3"
+      }
     },
     {
       "id": 137,
@@ -256,9 +334,34 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "link": 232
+        },
+        {
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        },
+        {
+          "name": "clip_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name"
+          },
+          "link": null
+        },
+        {
+          "name": "vae_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name"
+          },
+          "link": null
         },
         {
           "label": "upscale_model",
@@ -268,11 +371,36 @@
             "name": "model_name"
           },
           "link": null
+        },
+        {
+          "name": "denoise",
+          "type": "FLOAT",
+          "widget": {
+            "name": "denoise"
+          },
+          "link": null
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
           "label": "IMAGE",
+          "localized_name": "IMAGE_1",
           "name": "IMAGE_1",
           "type": "IMAGE",
           "links": [
@@ -281,49 +409,49 @@
         }
       ],
       "properties": {
-        "proxyWidgets": [
-          [
-            "66",
-            "unet_name"
-          ],
-          [
-            "62",
-            "clip_name"
-          ],
-          [
-            "63",
-            "vae_name"
-          ],
-          [
-            "76",
-            "model_name"
-          ],
-          [
-            "69",
-            "denoise"
-          ],
-          [
-            "67",
-            "text"
-          ],
-          [
-            "69",
-            "seed"
-          ],
-          [
-            "69",
-            "control_after_generate"
-          ]
-        ],
         "cnr_id": "comfy-core",
         "ver": "0.14.1",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
           "version": "7.8"
-        }
+        },
+        "proxyWidgetErrorQuarantine": [
+          {
+            "originalEntry": [
+              "69",
+              "control_after_generate"
+            ],
+            "reason": "missingSubgraphInput",
+            "attemptedAtVersion": 1
+          }
+        ],
+        "previewExposures": [
+          {
+            "name": "$$canvas-image-preview",
+            "sourceNodeId": "69",
+            "sourcePreviewName": "$$canvas-image-preview"
+          }
+        ]
       },
-      "widgets_values": []
+      "widgets_values": [
+        "z_image_turbo_bf16.safetensors",
+        "zImageTurbo_textEncoder.safetensors",
+        "zImageTurbo_vae.safetensors",
+        "RealESRGAN_x4.pth",
+        0.15,
+        "masterpiece, 8k, highly detailed skin, natural blemishes",
+        1081387271713503
+      ],
+      "widgets_values_named": {
+        "unet_name": "z_image_turbo_bf16.safetensors",
+        "clip_name": "zImageTurbo_textEncoder.safetensors",
+        "vae_name": "zImageTurbo_vae.safetensors",
+        "model_name": "RealESRGAN_x4.pth",
+        "denoise": 0.15,
+        "text": "masterpiece, 8k, highly detailed skin, natural blemishes",
+        "seed": 1081387271713503
+      }
     },
     {
       "id": 136,
@@ -341,40 +469,63 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "images",
           "name": "images",
           "type": "IMAGE",
           "link": 233
         },
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 227
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "shape": 7,
           "type": "PIXLSTASH_SET",
           "link": 228
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "shape": 7,
           "type": "PIXLSTASH_CHARACTER",
           "link": 229
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "save_workflow",
+          "name": "save_workflow",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "save_workflow"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "picture_ids",
           "name": "picture_ids",
           "type": "STRING",
           "links": []
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashPictureSaver",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashPictureSaver",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -385,7 +536,11 @@
       "widgets_values": [
         "ComfyUI",
         true
-      ]
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "ComfyUI",
+        "save_workflow": true
+      }
     }
   ],
   "links": [
@@ -479,7 +634,7 @@
         "state": {
           "lastGroupId": 7,
           "lastNodeId": 137,
-          "lastLinkId": 233,
+          "lastLinkId": 235,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -578,6 +733,30 @@
               -40.76000213623047,
               514
             ]
+          },
+          {
+            "id": "63e86f8d-4283-49e0-ace0-9bdba056df4a",
+            "name": "text",
+            "type": "STRING",
+            "linkIds": [
+              234
+            ],
+            "pos": [
+              0,
+              0
+            ]
+          },
+          {
+            "id": "5c4447a5-a0d4-49e8-8d99-c7c5f03b49d8",
+            "name": "seed",
+            "type": "INT",
+            "linkIds": [
+              235
+            ],
+            "pos": [
+              0,
+              0
+            ]
           }
         ],
         "outputs": [
@@ -619,6 +798,15 @@
                 "name": "clip",
                 "type": "CLIP",
                 "link": 82
+              },
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -633,9 +821,9 @@
             ],
             "title": "CLIP Text Encode (Negative Prompt)",
             "properties": {
+              "Node name for S&R": "CLIPTextEncode",
               "cnr_id": "comfy-core",
               "ver": "0.3.73",
-              "Node name for S&R": "CLIPTextEncode",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -652,6 +840,9 @@
             "widgets_values": [
               ""
             ],
+            "widgets_values_named": {
+              "text": ""
+            },
             "color": "#323",
             "bgcolor": "#535"
           },
@@ -694,16 +885,15 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "ImageUpscaleWithModel",
               "cnr_id": "comfy-core",
               "ver": "0.13.0",
-              "Node name for S&R": "ImageUpscaleWithModel",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
                 "version": "7.8"
               }
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 80,
@@ -744,16 +934,15 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "VAEEncode",
               "cnr_id": "comfy-core",
               "ver": "0.13.0",
-              "Node name for S&R": "VAEEncode",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
                 "version": "7.8"
               }
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 81,
@@ -775,6 +964,24 @@
                 "name": "image",
                 "type": "IMAGE",
                 "link": 92
+              },
+              {
+                "localized_name": "upscale_method",
+                "name": "upscale_method",
+                "type": "COMBO",
+                "widget": {
+                  "name": "upscale_method"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "scale_by",
+                "name": "scale_by",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "scale_by"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -788,9 +995,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "ImageScaleBy",
               "cnr_id": "comfy-core",
               "ver": "0.13.0",
-              "Node name for S&R": "ImageScaleBy",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -800,7 +1007,11 @@
             "widgets_values": [
               "lanczos",
               0.5
-            ]
+            ],
+            "widgets_values_named": {
+              "upscale_method": "lanczos",
+              "scale_by": 0.5
+            }
           },
           {
             "id": 66,
@@ -825,6 +1036,15 @@
                   "name": "unet_name"
                 },
                 "link": 109
+              },
+              {
+                "localized_name": "weight_dtype",
+                "name": "weight_dtype",
+                "type": "COMBO",
+                "widget": {
+                  "name": "weight_dtype"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -838,9 +1058,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "UNETLoader",
               "cnr_id": "comfy-core",
               "ver": "0.3.73",
-              "Node name for S&R": "UNETLoader",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -864,7 +1084,11 @@
             "widgets_values": [
               "z_image_turbo_bf16.safetensors",
               "default"
-            ]
+            ],
+            "widgets_values_named": {
+              "unet_name": "z_image_turbo_bf16.safetensors",
+              "weight_dtype": "default"
+            }
           },
           {
             "id": 62,
@@ -889,6 +1113,25 @@
                   "name": "clip_name"
                 },
                 "link": 110
+              },
+              {
+                "localized_name": "type",
+                "name": "type",
+                "type": "COMBO",
+                "widget": {
+                  "name": "type"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "device",
+                "name": "device",
+                "shape": 7,
+                "type": "COMBO",
+                "widget": {
+                  "name": "device"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -903,9 +1146,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "CLIPLoader",
               "cnr_id": "comfy-core",
               "ver": "0.3.73",
-              "Node name for S&R": "CLIPLoader",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -930,7 +1173,12 @@
               "zImageTurbo_textEncoder.safetensors",
               "lumina2",
               "default"
-            ]
+            ],
+            "widgets_values_named": {
+              "clip_name": "zImageTurbo_textEncoder.safetensors",
+              "type": "lumina2",
+              "device": "default"
+            }
           },
           {
             "id": 67,
@@ -952,6 +1200,15 @@
                 "name": "clip",
                 "type": "CLIP",
                 "link": 78
+              },
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": 234
               }
             ],
             "outputs": [
@@ -966,9 +1223,9 @@
             ],
             "title": "CLIP Text Encode (Positive Prompt)",
             "properties": {
+              "Node name for S&R": "CLIPTextEncode",
               "cnr_id": "comfy-core",
               "ver": "0.3.73",
-              "Node name for S&R": "CLIPTextEncode",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -985,6 +1242,9 @@
             "widgets_values": [
               "masterpiece, 8k, highly detailed skin, natural blemishes"
             ],
+            "widgets_values_named": {
+              "text": "masterpiece, 8k, highly detailed skin, natural blemishes"
+            },
             "color": "#232",
             "bgcolor": "#353"
           },
@@ -1025,9 +1285,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "VAELoader",
               "cnr_id": "comfy-core",
               "ver": "0.3.73",
-              "Node name for S&R": "VAELoader",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -1050,7 +1310,10 @@
             },
             "widgets_values": [
               "zImageTurbo_vae.safetensors"
-            ]
+            ],
+            "widgets_values_named": {
+              "vae_name": "zImageTurbo_vae.safetensors"
+            }
           },
           {
             "id": 76,
@@ -1088,9 +1351,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "UpscaleModelLoader",
               "cnr_id": "comfy-core",
               "ver": "0.13.0",
-              "Node name for S&R": "UpscaleModelLoader",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -1106,7 +1369,10 @@
             },
             "widgets_values": [
               "RealESRGAN_x4.pth"
-            ]
+            ],
+            "widgets_values_named": {
+              "model_name": "RealESRGAN_x4.pth"
+            }
           },
           {
             "id": 70,
@@ -1117,7 +1383,7 @@
             ],
             "size": [
               371.9791666666667,
-              80.1171875
+              82
             ],
             "flags": {},
             "order": 6,
@@ -1128,6 +1394,25 @@
                 "name": "model",
                 "type": "MODEL",
                 "link": 104
+              },
+              {
+                "localized_name": "shift",
+                "name": "shift",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "shift"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "sampling",
+                "name": "sampling",
+                "shape": 7,
+                "type": "COMBO",
+                "widget": {
+                  "name": "sampling"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -1142,9 +1427,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "ModelSamplingAuraFlow",
               "cnr_id": "comfy-core",
               "ver": "0.3.64",
-              "Node name for S&R": "ModelSamplingAuraFlow",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -1159,8 +1444,13 @@
               "secondTabWidth": 65
             },
             "widgets_values": [
-              3
-            ]
+              3,
+              "flow"
+            ],
+            "widgets_values_named": {
+              "shift": 3,
+              "sampling": "flow"
+            }
           },
           {
             "id": 65,
@@ -1202,9 +1492,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "VAEDecode",
               "cnr_id": "comfy-core",
               "ver": "0.3.64",
-              "Node name for S&R": "VAEDecode",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -1217,8 +1507,7 @@
               "secondTabText": "Send Back",
               "secondTabOffset": 80,
               "secondTabWidth": 65
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 69,
@@ -1260,6 +1549,51 @@
                 "link": 91
               },
               {
+                "localized_name": "seed",
+                "name": "seed",
+                "type": "INT",
+                "widget": {
+                  "name": "seed"
+                },
+                "link": 235
+              },
+              {
+                "localized_name": "steps",
+                "name": "steps",
+                "type": "INT",
+                "widget": {
+                  "name": "steps"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "cfg",
+                "name": "cfg",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "cfg"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "sampler_name",
+                "name": "sampler_name",
+                "type": "COMBO",
+                "widget": {
+                  "name": "sampler_name"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "scheduler",
+                "name": "scheduler",
+                "type": "COMBO",
+                "widget": {
+                  "name": "scheduler"
+                },
+                "link": null
+              },
+              {
                 "localized_name": "denoise",
                 "name": "denoise",
                 "type": "FLOAT",
@@ -1281,9 +1615,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "KSampler",
               "cnr_id": "comfy-core",
               "ver": "0.3.64",
-              "Node name for S&R": "KSampler",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -1305,7 +1639,16 @@
               "dpmpp_2m_sde",
               "beta",
               0.15
-            ]
+            ],
+            "widgets_values_named": {
+              "seed": 1081387271713503,
+              "control_after_generate": "randomize",
+              "steps": 5,
+              "cfg": 1,
+              "sampler_name": "dpmpp_2m_sde",
+              "scheduler": "beta",
+              "denoise": 0.15
+            }
           },
           {
             "id": 78,
@@ -1327,6 +1670,33 @@
                 "name": "image",
                 "type": "IMAGE",
                 "link": 86
+              },
+              {
+                "localized_name": "upscale_method",
+                "name": "upscale_method",
+                "type": "COMBO",
+                "widget": {
+                  "name": "upscale_method"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "megapixels",
+                "name": "megapixels",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "megapixels"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "resolution_steps",
+                "name": "resolution_steps",
+                "type": "INT",
+                "widget": {
+                  "name": "resolution_steps"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -1340,9 +1710,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "ImageScaleToTotalPixels",
               "cnr_id": "comfy-core",
               "ver": "0.13.0",
-              "Node name for S&R": "ImageScaleToTotalPixels",
               "ue_properties": {
                 "widget_ue_connectable": {},
                 "input_ue_unconnectable": {},
@@ -1353,7 +1723,12 @@
               "lanczos",
               1,
               1
-            ]
+            ],
+            "widgets_values_named": {
+              "upscale_method": "lanczos",
+              "megapixels": 1,
+              "resolution_steps": 1
+            }
           }
         ],
         "groups": [
@@ -1548,8 +1923,24 @@
             "origin_id": -10,
             "origin_slot": 5,
             "target_id": 69,
-            "target_slot": 4,
+            "target_slot": 9,
             "type": "FLOAT"
+          },
+          {
+            "id": 234,
+            "origin_id": -10,
+            "origin_slot": 6,
+            "target_id": 67,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 235,
+            "origin_id": -10,
+            "origin_slot": 7,
+            "target_id": 69,
+            "target_slot": 4,
+            "type": "INT"
           }
         ],
         "extra": {

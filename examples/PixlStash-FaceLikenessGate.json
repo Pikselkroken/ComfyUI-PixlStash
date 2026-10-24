@@ -12,7 +12,7 @@
         120
       ],
       "size": [
-        264.44000244140625,
+        267,
         186
       ],
       "flags": {},
@@ -20,24 +20,40 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "link": 3
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "link": 2
         },
         {
-          "name": "pixlstash_project",
+          "localized_name": "threshold",
+          "name": "threshold",
+          "type": "FLOAT",
+          "widget": {
+            "name": "threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "combine",
+          "name": "combine",
           "shape": 7,
-          "type": "PIXLSTASH_PROJECT",
+          "type": "COMBO",
+          "widget": {
+            "name": "combine"
+          },
           "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "accepted",
           "name": "accepted",
           "type": "IMAGE",
           "links": [
@@ -45,6 +61,7 @@
           ]
         },
         {
+          "localized_name": "rejected",
           "name": "rejected",
           "type": "IMAGE",
           "links": [
@@ -52,25 +69,28 @@
           ]
         },
         {
+          "localized_name": "accepted_count",
           "name": "accepted_count",
           "type": "INT",
           "links": []
         },
         {
+          "localized_name": "rejected_count",
           "name": "rejected_count",
           "type": "INT",
           "links": []
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": []
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashFaceLikenessGate",
         "cnr_id": "pixlstash",
         "ver": "1902d8fd4cd0c7290aea45120f20a3510596ad4c",
-        "Node name for S&R": "PixlStashFaceLikenessGate",
         "aux_id": "Pikselkroken/ComfyUI-PixlStash",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -80,9 +100,12 @@
       },
       "widgets_values": [
         0.7,
-        true,
-        120
-      ]
+        "mean"
+      ],
+      "widgets_values_named": {
+        "threshold": 0.7,
+        "combine": "mean"
+      }
     },
     {
       "id": 5,
@@ -100,24 +123,31 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "images",
           "name": "images",
           "type": "IMAGE",
           "link": 4
         }
       ],
-      "outputs": [],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
       "title": "Accepted",
       "properties": {
+        "Node name for S&R": "PreviewImage",
         "cnr_id": "comfy-core",
         "ver": "0.23.0",
-        "Node name for S&R": "PreviewImage",
         "ue_properties": {
           "widget_ue_connectable": {},
           "version": "7.8",
           "input_ue_unconnectable": {}
         }
-      },
-      "widgets_values": []
+      }
     },
     {
       "id": 6,
@@ -135,24 +165,31 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "images",
           "name": "images",
           "type": "IMAGE",
           "link": 5
         }
       ],
-      "outputs": [],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
       "title": "Rejected",
       "properties": {
+        "Node name for S&R": "PreviewImage",
         "cnr_id": "comfy-core",
         "ver": "0.23.0",
-        "Node name for S&R": "PreviewImage",
         "ue_properties": {
           "widget_ue_connectable": {},
           "version": "7.8",
           "input_ue_unconnectable": {}
         }
-      },
-      "widgets_values": []
+      }
     },
     {
       "id": 2,
@@ -162,7 +199,7 @@
         120
       ],
       "size": [
-        250.36000061035156,
+        251,
         90
       ],
       "flags": {},
@@ -170,19 +207,31 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 1
+        },
+        {
+          "localized_name": "pixlstash_character",
+          "name": "pixlstash_character",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_character"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": []
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": [
@@ -191,9 +240,9 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashCharacterLoader",
         "cnr_id": "pixlstash",
         "ver": "1902d8fd4cd0c7290aea45120f20a3510596ad4c",
-        "Node name for S&R": "PixlStashCharacterLoader",
         "aux_id": "Pikselkroken/ComfyUI-PixlStash",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -203,7 +252,10 @@
       },
       "widgets_values": [
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_character": ""
+      }
     },
     {
       "id": 1,
@@ -219,9 +271,20 @@
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "localized_name": "pixlstash_project",
+          "name": "pixlstash_project",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_project"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -231,9 +294,9 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashProjectLoader",
         "cnr_id": "pixlstash",
         "ver": "1902d8fd4cd0c7290aea45120f20a3510596ad4c",
-        "Node name for S&R": "PixlStashProjectLoader",
         "aux_id": "Pikselkroken/ComfyUI-PixlStash",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -243,7 +306,10 @@
       },
       "widgets_values": [
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_project": ""
+      }
     },
     {
       "id": 3,
@@ -253,7 +319,7 @@
         280
       ],
       "size": [
-        264.44000244140625,
+        267,
         370
       ],
       "flags": {},
@@ -261,26 +327,49 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 7
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "shape": 7,
           "type": "PIXLSTASH_SET",
           "link": null
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "shape": 7,
           "type": "PIXLSTASH_CHARACTER",
+          "link": null
+        },
+        {
+          "localized_name": "picture_ids",
+          "name": "picture_ids",
+          "type": "STRING",
+          "widget": {
+            "name": "picture_ids"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "library",
+          "name": "library",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "library"
+          },
           "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "links": [
@@ -288,35 +377,40 @@
           ]
         },
         {
+          "localized_name": "mask",
           "name": "mask",
           "type": "MASK",
           "links": []
         },
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": []
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "type": "PIXLSTASH_SET",
           "links": []
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": []
         },
         {
+          "localized_name": "batch_size",
           "name": "batch_size",
           "type": "INT",
           "links": []
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashPictureLoader",
         "cnr_id": "pixlstash",
         "ver": "1902d8fd4cd0c7290aea45120f20a3510596ad4c",
-        "Node name for S&R": "PixlStashPictureLoader",
         "aux_id": "Pikselkroken/ComfyUI-PixlStash",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -326,8 +420,14 @@
       },
       "widgets_values": [
         "",
-        ""
-      ]
+        "",
+        null
+      ],
+      "widgets_values_named": {
+        "picture_ids": "",
+        "library": "",
+        "Browse PixlStash…": null
+      }
     }
   ],
   "links": [

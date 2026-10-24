@@ -2,7 +2,7 @@
   "id": "92112d97-bb64-4b44-86f2-ea5691ef8f6e",
   "revision": 0,
   "last_node_id": 136,
-  "last_link_id": 230,
+  "last_link_id": 231,
   "nodes": [
     {
       "id": 133,
@@ -12,7 +12,7 @@
         827.0234265550495
       ],
       "size": [
-        264.63999938964844,
+        267,
         370.0000000000001
       ],
       "flags": {},
@@ -20,26 +20,49 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 216
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "shape": 7,
           "type": "PIXLSTASH_SET",
           "link": 217
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "shape": 7,
           "type": "PIXLSTASH_CHARACTER",
           "link": 218
+        },
+        {
+          "localized_name": "picture_ids",
+          "name": "picture_ids",
+          "type": "STRING",
+          "widget": {
+            "name": "picture_ids"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "library",
+          "name": "library",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "library"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "links": [
@@ -47,11 +70,13 @@
           ]
         },
         {
+          "localized_name": "mask",
           "name": "mask",
           "type": "MASK",
           "links": null
         },
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -59,6 +84,7 @@
           ]
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "type": "PIXLSTASH_SET",
           "links": [
@@ -66,6 +92,7 @@
           ]
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": [
@@ -73,15 +100,16 @@
           ]
         },
         {
+          "localized_name": "batch_size",
           "name": "batch_size",
           "type": "INT",
           "links": null
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashPictureLoader",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashPictureLoader",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -91,8 +119,14 @@
       },
       "widgets_values": [
         "37648",
+        "",
         null
-      ]
+      ],
+      "widgets_values_named": {
+        "picture_ids": "37648",
+        "library": "",
+        "Browse PixlStash…": null
+      }
     },
     {
       "id": 131,
@@ -110,19 +144,31 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 215
+        },
+        {
+          "localized_name": "pixlstash_set",
+          "name": "pixlstash_set",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_set"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": []
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "type": "PIXLSTASH_SET",
           "links": [
@@ -131,9 +177,9 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashSetLoader",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashSetLoader",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -143,7 +189,10 @@
       },
       "widgets_values": [
         "— None —"
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_set": "— None —"
+      }
     },
     {
       "id": 75,
@@ -161,6 +210,30 @@
       "mode": 0,
       "inputs": [
         {
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        },
+        {
+          "name": "clip_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name"
+          },
+          "link": null
+        },
+        {
+          "name": "vae_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name"
+          },
+          "link": null
+        },
+        {
           "label": "prompt",
           "name": "text",
           "type": "STRING",
@@ -173,10 +246,19 @@
           "name": "image",
           "type": "IMAGE",
           "link": 224
+        },
+        {
+          "name": "noise_seed",
+          "type": "INT",
+          "widget": {
+            "name": "noise_seed"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "IMAGE",
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
@@ -185,32 +267,6 @@
         }
       ],
       "properties": {
-        "proxyWidgets": [
-          [
-            "70",
-            "unet_name"
-          ],
-          [
-            "71",
-            "clip_name"
-          ],
-          [
-            "72",
-            "vae_name"
-          ],
-          [
-            "74",
-            "text"
-          ],
-          [
-            "73",
-            "noise_seed"
-          ],
-          [
-            "73",
-            "control_after_generate"
-          ]
-        ],
         "cnr_id": "comfy-core",
         "ver": "0.8.2",
         "enableTabs": false,
@@ -226,9 +282,33 @@
           },
           "version": "7.7",
           "input_ue_unconnectable": {}
-        }
+        },
+        "proxyWidgetErrorQuarantine": [
+          {
+            "originalEntry": [
+              "73",
+              "control_after_generate"
+            ],
+            "reason": "missingSubgraphInput",
+            "attemptedAtVersion": 1
+          }
+        ],
+        "previewExposures": []
       },
-      "widgets_values": []
+      "widgets_values": [
+        "flux-2-klein-9b.safetensors",
+        "qwen38BFluxKlein9BTE_38b.safetensors",
+        "full_encoder_small_decoder.safetensors",
+        "Replace her top with a blue wooly jumper",
+        271769575585861
+      ],
+      "widgets_values_named": {
+        "unet_name": "flux-2-klein-9b.safetensors",
+        "clip_name": "qwen38BFluxKlein9BTE_38b.safetensors",
+        "vae_name": "full_encoder_small_decoder.safetensors",
+        "text": "Replace her top with a blue wooly jumper",
+        "noise_seed": 271769575585861
+      }
     },
     {
       "id": 136,
@@ -246,40 +326,63 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "images",
           "name": "images",
           "type": "IMAGE",
           "link": 226
         },
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 227
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "shape": 7,
           "type": "PIXLSTASH_SET",
           "link": 228
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "shape": 7,
           "type": "PIXLSTASH_CHARACTER",
           "link": 229
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "save_workflow",
+          "name": "save_workflow",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "save_workflow"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "picture_ids",
           "name": "picture_ids",
           "type": "STRING",
           "links": []
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashPictureSaver",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashPictureSaver",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -290,7 +393,11 @@
       "widgets_values": [
         "ComfyUI",
         true
-      ]
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "ComfyUI",
+        "save_workflow": true
+      }
     },
     {
       "id": 132,
@@ -306,9 +413,20 @@
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "localized_name": "pixlstash_project",
+          "name": "pixlstash_project",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_project"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -318,9 +436,9 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashProjectLoader",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashProjectLoader",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -330,7 +448,10 @@
       },
       "widgets_values": [
         "— None —"
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_project": "— None —"
+      }
     },
     {
       "id": 134,
@@ -350,14 +471,25 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "shape": 7,
           "type": "PIXLSTASH_PROJECT",
           "link": 219
+        },
+        {
+          "localized_name": "pixlstash_character",
+          "name": "pixlstash_character",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_character"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -365,6 +497,7 @@
           ]
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": [
@@ -373,9 +506,9 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "PixlStashCharacterLoader",
         "cnr_id": "pixlstash",
         "ver": "bd42915749f12addf9a2dd36cc96e53fe4266b7f",
-        "Node name for S&R": "PixlStashCharacterLoader",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
@@ -385,7 +518,10 @@
       },
       "widgets_values": [
         "Veronica #20"
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_character": "Veronica #20"
+      }
     }
   ],
   "links": [
@@ -430,14 +566,6 @@
       "PIXLSTASH_PROJECT"
     ],
     [
-      224,
-      133,
-      0,
-      75,
-      1,
-      "IMAGE"
-    ],
-    [
       226,
       75,
       0,
@@ -468,6 +596,14 @@
       136,
       3,
       "PIXLSTASH_CHARACTER"
+    ],
+    [
+      224,
+      133,
+      0,
+      75,
+      4,
+      "IMAGE"
     ]
   ],
   "groups": [],
@@ -479,7 +615,7 @@
         "state": {
           "lastGroupId": 7,
           "lastNodeId": 136,
-          "lastLinkId": 230,
+          "lastLinkId": 231,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -564,6 +700,18 @@
               -472.33334639866393,
               663.0277780034634
             ]
+          },
+          {
+            "id": "af6c3ab7-746f-4ac3-8aeb-e2275d5d880b",
+            "name": "noise_seed",
+            "type": "INT",
+            "linkIds": [
+              231
+            ],
+            "pos": [
+              0,
+              0
+            ]
           }
         ],
         "outputs": [
@@ -597,7 +745,17 @@
             "flags": {},
             "order": 0,
             "mode": 0,
-            "inputs": [],
+            "inputs": [
+              {
+                "localized_name": "sampler_name",
+                "name": "sampler_name",
+                "type": "COMBO",
+                "widget": {
+                  "name": "sampler_name"
+                },
+                "link": null
+              }
+            ],
             "outputs": [
               {
                 "localized_name": "SAMPLER",
@@ -609,9 +767,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "KSamplerSelect",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "KSamplerSelect",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -627,7 +785,10 @@
             },
             "widgets_values": [
               "euler"
-            ]
+            ],
+            "widgets_values_named": {
+              "sampler_name": "euler"
+            }
           },
           {
             "id": 64,
@@ -692,9 +853,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "SamplerCustomAdvanced",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "SamplerCustomAdvanced",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -707,8 +868,7 @@
                 "version": "7.7",
                 "input_ue_unconnectable": {}
               }
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 65,
@@ -750,9 +910,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "VAEDecode",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "VAEDecode",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -765,8 +925,7 @@
                 "version": "7.7",
                 "input_ue_unconnectable": {}
               }
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 73,
@@ -782,7 +941,17 @@
             "flags": {},
             "order": 1,
             "mode": 0,
-            "inputs": [],
+            "inputs": [
+              {
+                "localized_name": "noise_seed",
+                "name": "noise_seed",
+                "type": "INT",
+                "widget": {
+                  "name": "noise_seed"
+                },
+                "link": 231
+              }
+            ],
             "outputs": [
               {
                 "localized_name": "NOISE",
@@ -794,9 +963,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "RandomNoise",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "RandomNoise",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -813,7 +982,11 @@
             "widgets_values": [
               271769575585861,
               "randomize"
-            ]
+            ],
+            "widgets_values_named": {
+              "noise_seed": 271769575585861,
+              "control_after_generate": "randomize"
+            }
           },
           {
             "id": 70,
@@ -838,6 +1011,15 @@
                   "name": "unet_name"
                 },
                 "link": 159
+              },
+              {
+                "localized_name": "weight_dtype",
+                "name": "weight_dtype",
+                "type": "COMBO",
+                "widget": {
+                  "name": "weight_dtype"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -851,9 +1033,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "UNETLoader",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "UNETLoader",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -877,7 +1059,11 @@
             "widgets_values": [
               "flux-2-klein-9b.safetensors",
               "default"
-            ]
+            ],
+            "widgets_values_named": {
+              "unet_name": "flux-2-klein-9b.safetensors",
+              "weight_dtype": "default"
+            }
           },
           {
             "id": 71,
@@ -902,6 +1088,25 @@
                   "name": "clip_name"
                 },
                 "link": 160
+              },
+              {
+                "localized_name": "type",
+                "name": "type",
+                "type": "COMBO",
+                "widget": {
+                  "name": "type"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "device",
+                "name": "device",
+                "shape": 7,
+                "type": "COMBO",
+                "widget": {
+                  "name": "device"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -916,9 +1121,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "CLIPLoader",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "CLIPLoader",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -943,7 +1148,12 @@
               "qwen38BFluxKlein9BTE_38b.safetensors",
               "flux2",
               "default"
-            ]
+            ],
+            "widgets_values_named": {
+              "clip_name": "qwen38BFluxKlein9BTE_38b.safetensors",
+              "type": "flux2",
+              "device": "default"
+            }
           },
           {
             "id": 74,
@@ -989,9 +1199,9 @@
             ],
             "title": "CLIP Text Encode (Positive Prompt)",
             "properties": {
+              "Node name for S&R": "CLIPTextEncode",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "CLIPTextEncode",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1008,6 +1218,9 @@
             "widgets_values": [
               "Replace her top with a blue wooly jumper"
             ],
+            "widgets_values_named": {
+              "text": "Replace her top with a blue wooly jumper"
+            },
             "color": "#232",
             "bgcolor": "#353"
           },
@@ -1031,6 +1244,15 @@
                 "name": "clip",
                 "type": "CLIP",
                 "link": 152
+              },
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -1046,9 +1268,9 @@
             ],
             "title": "CLIP Text Encode (Negative Prompt)",
             "properties": {
+              "Node name for S&R": "CLIPTextEncode",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "CLIPTextEncode",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1065,6 +1287,9 @@
             "widgets_values": [
               ""
             ],
+            "widgets_values_named": {
+              "text": ""
+            },
             "color": "#322",
             "bgcolor": "#533"
           },
@@ -1105,9 +1330,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "VAELoader",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "VAELoader",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1130,7 +1355,10 @@
             },
             "widgets_values": [
               "full_encoder_small_decoder.safetensors"
-            ]
+            ],
+            "widgets_values_named": {
+              "vae_name": "full_encoder_small_decoder.safetensors"
+            }
           },
           {
             "id": 66,
@@ -1164,6 +1392,15 @@
                   "name": "height"
                 },
                 "link": 174
+              },
+              {
+                "localized_name": "batch_size",
+                "name": "batch_size",
+                "type": "INT",
+                "widget": {
+                  "name": "batch_size"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -1177,9 +1414,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "EmptyFlux2LatentImage",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "EmptyFlux2LatentImage",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1197,7 +1434,12 @@
               1024,
               1024,
               1
-            ]
+            ],
+            "widgets_values_named": {
+              "width": 1024,
+              "height": 1024,
+              "batch_size": 1
+            }
           },
           {
             "id": 100,
@@ -1248,9 +1490,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "GetImageSize",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "GetImageSize",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1263,8 +1505,7 @@
                 "version": "7.7",
                 "input_ue_unconnectable": {}
               }
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 122,
@@ -1308,9 +1549,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "ReferenceLatent",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "ReferenceLatent",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1323,8 +1564,7 @@
                 "version": "7.7",
                 "input_ue_unconnectable": {}
               }
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 123,
@@ -1368,9 +1608,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "VAEEncode",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "VAEEncode",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1383,8 +1623,7 @@
                 "version": "7.7",
                 "input_ue_unconnectable": {}
               }
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 124,
@@ -1428,9 +1667,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "ReferenceLatent",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "ReferenceLatent",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1443,8 +1682,7 @@
                 "version": "7.7",
                 "input_ue_unconnectable": {}
               }
-            },
-            "widgets_values": []
+            }
           },
           {
             "id": 62,
@@ -1461,6 +1699,15 @@
             "order": 2,
             "mode": 0,
             "inputs": [
+              {
+                "localized_name": "steps",
+                "name": "steps",
+                "type": "INT",
+                "widget": {
+                  "name": "steps"
+                },
+                "link": null
+              },
               {
                 "localized_name": "width",
                 "name": "width",
@@ -1491,9 +1738,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "Flux2Scheduler",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "Flux2Scheduler",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1511,7 +1758,12 @@
               8,
               1024,
               1024
-            ]
+            ],
+            "widgets_values_named": {
+              "steps": 8,
+              "width": 1024,
+              "height": 1024
+            }
           },
           {
             "id": 63,
@@ -1545,6 +1797,15 @@
                 "name": "negative",
                 "type": "CONDITIONING",
                 "link": 198
+              },
+              {
+                "localized_name": "cfg",
+                "name": "cfg",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "cfg"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -1558,9 +1819,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "CFGGuider",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "CFGGuider",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1576,7 +1837,10 @@
             },
             "widgets_values": [
               1
-            ]
+            ],
+            "widgets_values_named": {
+              "cfg": 1
+            }
           },
           {
             "id": 80,
@@ -1598,6 +1862,33 @@
                 "name": "image",
                 "type": "IMAGE",
                 "link": 175
+              },
+              {
+                "localized_name": "upscale_method",
+                "name": "upscale_method",
+                "type": "COMBO",
+                "widget": {
+                  "name": "upscale_method"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "megapixels",
+                "name": "megapixels",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "megapixels"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "resolution_steps",
+                "name": "resolution_steps",
+                "type": "INT",
+                "widget": {
+                  "name": "resolution_steps"
+                },
+                "link": null
               }
             ],
             "outputs": [
@@ -1612,9 +1903,9 @@
               }
             ],
             "properties": {
+              "Node name for S&R": "ImageScaleToTotalPixels",
               "cnr_id": "comfy-core",
               "ver": "0.8.2",
-              "Node name for S&R": "ImageScaleToTotalPixels",
               "enableTabs": false,
               "tabWidth": 65,
               "tabXOffset": 10,
@@ -1632,7 +1923,12 @@
               "lanczos",
               2,
               1
-            ]
+            ],
+            "widgets_values_named": {
+              "upscale_method": "lanczos",
+              "megapixels": 2,
+              "resolution_steps": 1
+            }
           }
         ],
         "groups": [
@@ -1815,27 +2111,11 @@
             "type": "IMAGE"
           },
           {
-            "id": 171,
-            "origin_id": 100,
-            "origin_slot": 0,
-            "target_id": 62,
-            "target_slot": 0,
-            "type": "INT"
-          },
-          {
             "id": 172,
             "origin_id": 100,
             "origin_slot": 0,
             "target_id": 66,
             "target_slot": 0,
-            "type": "INT"
-          },
-          {
-            "id": 173,
-            "origin_id": 100,
-            "origin_slot": 1,
-            "target_id": 62,
-            "target_slot": 1,
             "type": "INT"
           },
           {
@@ -1917,6 +2197,30 @@
             "target_id": 63,
             "target_slot": 2,
             "type": "CONDITIONING"
+          },
+          {
+            "id": 171,
+            "origin_id": 100,
+            "origin_slot": 0,
+            "target_id": 62,
+            "target_slot": 1,
+            "type": "INT"
+          },
+          {
+            "id": 173,
+            "origin_id": 100,
+            "origin_slot": 1,
+            "target_id": 62,
+            "target_slot": 2,
+            "type": "INT"
+          },
+          {
+            "id": 231,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 73,
+            "target_slot": 0,
+            "type": "INT"
           }
         ],
         "extra": {
