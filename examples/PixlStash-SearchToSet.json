@@ -18,9 +18,20 @@
       "flags": {},
       "order": 0,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "localized_name": "pixlstash_project",
+          "name": "pixlstash_project",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_project"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -35,7 +46,10 @@
       },
       "widgets_values": [
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_project": ""
+      }
     },
     {
       "id": 2,
@@ -45,7 +59,7 @@
         120
       ],
       "size": [
-        230,
+        235,
         90
       ],
       "flags": {},
@@ -53,14 +67,25 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
+          "shape": 7,
           "type": "PIXLSTASH_PROJECT",
-          "link": 1,
-          "shape": 7
+          "link": 1
+        },
+        {
+          "localized_name": "pixlstash_set",
+          "name": "pixlstash_set",
+          "type": "COMBO",
+          "widget": {
+            "name": "pixlstash_set"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": [
@@ -68,6 +93,7 @@
           ]
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "type": "PIXLSTASH_SET",
           "links": [
@@ -81,7 +107,10 @@
       },
       "widgets_values": [
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "pixlstash_set": ""
+      }
     },
     {
       "id": 3,
@@ -92,33 +121,64 @@
       ],
       "size": [
         320,
-        130
+        206
       ],
       "flags": {},
       "order": 2,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
+          "shape": 7,
           "type": "PIXLSTASH_PROJECT",
-          "link": 2,
-          "shape": 7
+          "link": 2
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
+          "shape": 7,
           "type": "PIXLSTASH_SET",
-          "link": null,
-          "shape": 7
+          "link": null
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
+          "shape": 7,
           "type": "PIXLSTASH_CHARACTER",
-          "link": null,
-          "shape": 7
+          "link": null
+        },
+        {
+          "localized_name": "query",
+          "name": "query",
+          "type": "STRING",
+          "widget": {
+            "name": "query"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "limit",
+          "name": "limit",
+          "type": "INT",
+          "widget": {
+            "name": "limit"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "threshold",
+          "name": "threshold",
+          "type": "FLOAT",
+          "widget": {
+            "name": "threshold"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "links": [
@@ -127,26 +187,31 @@
           ]
         },
         {
+          "localized_name": "mask",
           "name": "mask",
           "type": "MASK",
           "links": []
         },
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
           "type": "PIXLSTASH_PROJECT",
           "links": []
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
           "type": "PIXLSTASH_SET",
           "links": []
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
           "type": "PIXLSTASH_CHARACTER",
           "links": []
         },
         {
+          "localized_name": "batch_size",
           "name": "batch_size",
           "type": "INT",
           "links": []
@@ -160,7 +225,12 @@
         "product shot on white background",
         40,
         0.55
-      ]
+      ],
+      "widgets_values_named": {
+        "query": "product shot on white background",
+        "limit": 40,
+        "threshold": 0.55
+      }
     },
     {
       "id": 4,
@@ -171,38 +241,61 @@
       ],
       "size": [
         300,
-        130
+        142
       ],
       "flags": {},
       "order": 3,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "images",
           "name": "images",
           "type": "IMAGE",
           "link": 3
         },
         {
+          "localized_name": "pixlstash_project",
           "name": "pixlstash_project",
+          "shape": 7,
           "type": "PIXLSTASH_PROJECT",
-          "link": 5,
-          "shape": 7
+          "link": 5
         },
         {
+          "localized_name": "pixlstash_set",
           "name": "pixlstash_set",
+          "shape": 7,
           "type": "PIXLSTASH_SET",
-          "link": 6,
-          "shape": 7
+          "link": 6
         },
         {
+          "localized_name": "pixlstash_character",
           "name": "pixlstash_character",
+          "shape": 7,
           "type": "PIXLSTASH_CHARACTER",
-          "link": null,
-          "shape": 7
+          "link": null
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "save_workflow",
+          "name": "save_workflow",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "save_workflow"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "picture_ids",
           "name": "picture_ids",
           "type": "STRING",
           "links": []
@@ -215,7 +308,11 @@
       "widgets_values": [
         "semantic-pick",
         true
-      ]
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "semantic-pick",
+        "save_workflow": true
+      }
     },
     {
       "id": 5,
@@ -233,16 +330,23 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "images",
           "name": "images",
           "type": "IMAGE",
           "link": 4
         }
       ],
-      "outputs": [],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
       "properties": {
         "Node name for S&R": "PreviewImage"
-      },
-      "widgets_values": []
+      }
     }
   ],
   "links": [
@@ -297,6 +401,14 @@
   ],
   "groups": [],
   "config": {},
-  "extra": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7111111111111111,
+      "offset": [
+        1215,
+        141.25
+      ]
+    }
+  },
   "version": 0.4
 }
