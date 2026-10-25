@@ -20,7 +20,7 @@ from requests.exceptions import (
 
 log = logging.getLogger(__name__)
 
-VERSION = "1.6.0"  # kept equal to pyproject.toml by tests/test_server_version.py
+VERSION = "1.8.0"  # kept equal to pyproject.toml by tests/test_server_version.py
 _USER_AGENT = f"ComfyUI-PixlStash/{VERSION}"
 
 # The oldest PixlStash this package runs against at all. A node that needs a

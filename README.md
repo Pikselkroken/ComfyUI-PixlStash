@@ -290,6 +290,10 @@ with it is linked to the PixlStash workflow it came from:
   pick is never saved into the workflow: `Nothing new to save. The people
   picked here stay in ComfyUI.` A person's LoRA in an ordinary loader is left
   out of the workflow too, and the toast names it.
+- **A draft opens as its template.** A workflow PixlStash made from a ComfyUI
+  template but could not convert has no graph yet. It opens as the template
+  it came from, linked like any other, and its first save gives the workflow
+  its graph.
 - **Save As makes a copy that is not linked.** Use *Save as new workflow in
   PixlStash* to send a copy, or any other workflow, to PixlStash as a new
   workflow.
@@ -397,6 +401,13 @@ The same pipeline with every model off the shelf:
 from a Browse grid, render saved straight into a project.
 
 [![Flux.2 Klein 9B generating from shelf-loaded models in ComfyUI](screenshots/PixlStash-Flux2-Models.jpg)](examples/PixlStash-Flux2-Models.json)
+
+**Inpaint.** Repaint the masked part of a picture with
+[Flux.2 Klein 9B](examples/Inpaint-FLUX.2-Klein-9B.json),
+[MOSS Image](examples/Inpaint-MOSS-Image.json) or
+[Qwen Image Edit 2511](examples/Inpaint-Qwen-Image-Edit-2511.json). These are
+in ComfyUI's API format and need
+[ComfyUI-Inpaint-CropAndStitch](https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch).
 
 Some of these use subgraphs, so they need a recent ComfyUI. Bare diffusion
 models like Flux.2 Klein 9B and Z-Image Turbo are filed as checkpoints, so only

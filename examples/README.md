@@ -16,6 +16,7 @@ Before running, set your vault **URL** and **API Token** under **Settings → Pi
 | `PixlStash-FaceLikenessGate-Upscale.json` | Face Likeness Gate end-to-end (T2I + upscale) | T2I (Z-Image Turbo + character LoRA) → Face Likeness Gate → upscale accepted → Picture Saver (accepted set) **and** Picture Saver (rejected set) |
 | `PixlStash-FaceLikenessGateUpscaleModels.json` | Adapter (LoRA) / Checkpoint / CLIP Loaders + Face Likeness Gate | Checkpoint Loader → Adapter (LoRA) Loader (Character Loader wired in) + CLIP Loader → T2I → Face Likeness Gate → `Image Upscale(Z-image-Turbo)` subgraph → Picture Saver (accepted set) **and** Picture Saver (rejected set) |
 | `PixlStash-Flux2-Models.json` | Checkpoint / VAE / CLIP Loaders | Checkpoint + VAE + CLIP Loader (all off the shelf) → `Text to Image (Flux.2 Klein 9B)` subgraph → Picture Saver, with a Project Loader for the target |
+| `Inpaint-FLUX.2-Klein-9B.json`, `Inpaint-MOSS-Image.json`, `Inpaint-Qwen-Image-Edit-2511.json` | Inpainting (API format) | Load Image (with mask) → Inpaint Crop → sample the masked area → Inpaint Stitch → Save Image. Needs [ComfyUI-Inpaint-CropAndStitch](https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch) |
 
 Notes:
 - **SemanticSearch** widgets are `query`, `limit`, `threshold`. Lower the threshold (e.g. 0.3) if a query returns nothing.
