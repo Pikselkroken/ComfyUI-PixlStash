@@ -2,6 +2,8 @@
 
 Drop these `.json` files onto the ComfyUI canvas (or use **Workflow → Open**). They use only PixlStash nodes plus core ComfyUI nodes (`LoadImage`, `PreviewImage`, samplers), so they load on any install once the PixlStash extension is present. The pipeline examples — every one with a sampler or an upscale in it — wrap that half in a **subgraph**, so those need a ComfyUI new enough to have subgraphs; the loader and search examples are plain graphs and load anywhere.
 
+Each `.json` has a `.jpg` of the same name beside it: the picture ComfyUI's template browser and PixlStash's Templates tab show on its card. It is the picture the template makes (or, for a search or gate, a mosaic of what comes back), 720 × 600, with the PixlStash padlock in the bottom-right corner. Keep the names in step when renaming a template. `Inpaint-MOSS-Image.jpg`, `Inpaint-Qwen-Image-Edit-2511.jpg` and `PixlStash-Outpaint.jpg` are built from [Comfy-Org/workflow_templates](https://github.com/Comfy-Org/workflow_templates) art, MIT License, Copyright (c) 2023-present Comfy Org.
+
 Before running, set your vault **URL** and **API Token** under **Settings → PixlStash**. The dropdowns on the loader nodes populate live from your vault, so pick your own project / set / character after loading — the saved selections are placeholders.
 
 | File | Showcases | Flow |
