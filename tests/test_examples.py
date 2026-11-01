@@ -1,4 +1,5 @@
-"""The shipped example workflows: each has its card picture and loads as-is.
+"""The shipped example workflows: each has its card picture, and no crop dropdown
+is left empty.
 
 ComfyUI and PixlStash list every ``examples/*.json`` as a template and show the
 ``.jpg`` of the same name on its card. An API-format graph is validated against
