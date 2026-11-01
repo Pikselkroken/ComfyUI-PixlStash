@@ -404,7 +404,9 @@ from a Browse grid, render saved straight into a project.
 
 **Inpaint.** Repaint the masked part of a picture with
 [Flux.2 Klein 9B](examples/Inpaint-FLUX.2-Klein-9B.json),
-[MOSS Image](examples/Inpaint-MOSS-Image.json) or
+[MOSS Image](examples/Inpaint-MOSS-Image.json),
+[MOSS Image with its edit LoRA](examples/Inpaint-MOSS-Image-Edit-LoRA.json),
+[Qwen Image 2.1](examples/Inpaint-Qwen-Image-2.1.json) or
 [Qwen Image Edit 2511](examples/Inpaint-Qwen-Image-Edit-2511.json). These are
 in ComfyUI's API format and need
 [ComfyUI-Inpaint-CropAndStitch](https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch).

@@ -19,7 +19,7 @@
       "downscale_algorithm": "bilinear",
       "upscale_algorithm": "bicubic",
       "preresize": false,
-      "preresize_mode": "",
+      "preresize_mode": "ensure minimum resolution",
       "preresize_min_width": 1024,
       "preresize_min_height": 1024,
       "preresize_max_width": 16384,
@@ -39,7 +39,7 @@
       "output_target_width": 1024,
       "output_target_height": 1024,
       "output_padding": "16",
-      "device_mode": ""
+      "device_mode": "gpu (much faster)"
     }
   },
   "3": {
