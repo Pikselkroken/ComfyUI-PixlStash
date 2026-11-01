@@ -1,0 +1,228 @@
+{
+  "8": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage"
+  },
+  "9": {
+    "inputs": {
+      "images": [
+        "44",
+        0
+      ],
+      "filename_prefix": "PixlStash"
+    },
+    "class_type": "SaveImage"
+  },
+  "30": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "moss_image_sft_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "31": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "30",
+        0
+      ],
+      "lora_name": "moss_image_edit_lora_rank_64_bf16.safetensors",
+      "strength_model": 1.0
+    }
+  },
+  "32": {
+    "inputs": {
+      "model": [
+        "31",
+        0
+      ],
+      "double_layers": "",
+      "single_layers": "22",
+      "start_percent": 0.0,
+      "end_percent": 1.0
+    },
+    "class_type": "SkipLayerGuidanceDiTSimple"
+  },
+  "33": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_9b_w4a8_gptq.safetensors",
+      "type": "moss_image",
+      "device": "default"
+    }
+  },
+  "34": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae_small.safetensors"
+    }
+  },
+  "36": {
+    "inputs": {
+      "clip": [
+        "33",
+        0
+      ],
+      "prompt": "nsfw, worst quality, bad anatomy, watermark, jpeg artifact",
+      "edit_format": "Moss-Image-Edit",
+      "image_strength": 1.0,
+      "vae": [
+        "34",
+        0
+      ],
+      "images.image_0": [
+        "40",
+        1
+      ]
+    },
+    "class_type": "TextEncodeMOSSImageEdit"
+  },
+  "37": {
+    "inputs": {
+      "model": [
+        "43",
+        0
+      ],
+      "seed": 0,
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "positive": [
+        "39",
+        0
+      ],
+      "negative": [
+        "36",
+        0
+      ],
+      "latent_image": [
+        "42",
+        0
+      ],
+      "denoise": 1.0
+    },
+    "class_type": "KSampler"
+  },
+  "38": {
+    "inputs": {
+      "samples": [
+        "37",
+        0
+      ],
+      "vae": [
+        "34",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "39": {
+    "inputs": {
+      "clip": [
+        "33",
+        0
+      ],
+      "prompt": "",
+      "edit_format": "Moss-Image-Edit",
+      "image_strength": 1.0,
+      "vae": [
+        "34",
+        0
+      ],
+      "images.image_0": [
+        "40",
+        1
+      ]
+    },
+    "class_type": "TextEncodeMOSSImageEdit"
+  },
+  "40": {
+    "class_type": "InpaintCropImproved",
+    "inputs": {
+      "image": [
+        "8",
+        0
+      ],
+      "mask": [
+        "8",
+        1
+      ],
+      "downscale_algorithm": "bilinear",
+      "upscale_algorithm": "bicubic",
+      "preresize": false,
+      "preresize_mode": "ensure minimum resolution",
+      "preresize_min_width": 1024,
+      "preresize_min_height": 1024,
+      "preresize_max_width": 16384,
+      "preresize_max_height": 16384,
+      "mask_fill_holes": true,
+      "mask_expand_pixels": 8,
+      "mask_invert": false,
+      "mask_blend_pixels": 32,
+      "mask_hipass_filter": 0.1,
+      "extend_for_outpainting": false,
+      "extend_up_factor": 1.0,
+      "extend_down_factor": 1.0,
+      "extend_left_factor": 1.0,
+      "extend_right_factor": 1.0,
+      "context_from_mask_extend_factor": 1.6,
+      "output_resize_to_target_size": true,
+      "output_padding": "16",
+      "device_mode": "gpu (much faster)",
+      "output_target_width": 1024,
+      "output_target_height": 1024
+    }
+  },
+  "41": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "40",
+        1
+      ],
+      "vae": [
+        "34",
+        0
+      ]
+    }
+  },
+  "42": {
+    "class_type": "SetLatentNoiseMask",
+    "inputs": {
+      "samples": [
+        "41",
+        0
+      ],
+      "mask": [
+        "40",
+        2
+      ]
+    }
+  },
+  "43": {
+    "class_type": "DifferentialDiffusion",
+    "inputs": {
+      "model": [
+        "32",
+        0
+      ]
+    }
+  },
+  "44": {
+    "class_type": "InpaintStitchImproved",
+    "inputs": {
+      "stitcher": [
+        "40",
+        0
+      ],
+      "inpainted_image": [
+        "38",
+        0
+      ]
+    }
+  }
+}
