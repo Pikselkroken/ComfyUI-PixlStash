@@ -461,5 +461,101 @@ class CheckpointLookupTests(unittest.TestCase):
                 self.assertIn("no checkpoint selected", str(ctx.exception))
 
 
+class CheckpointCastTests(unittest.TestCase):
+    """The weight cast `UNETLoader` offers, so PixlStash can put this node in
+    for a diffusion model's loader that casts without dropping the cast."""
+
+    def _load(self, weight_dtype, *, all_in_one=False):
+        seen = {}
+        comfy = types.ModuleType("comfy")
+        comfy.__path__ = []
+        sd = types.ModuleType("comfy.sd")
+
+        def guess(path, **kwargs):
+            seen["guess"] = kwargs
+            if all_in_one:
+                return ("model", "clip", "vae", None)
+            raise RuntimeError("Could not detect model type")
+
+        def load_diffusion_model(path, **kwargs):
+            seen["diffusion"] = kwargs
+            return "model"
+
+        sd.load_checkpoint_guess_config = guess
+        sd.load_diffusion_model = load_diffusion_model
+        comfy.sd = sd
+        folder_paths = types.ModuleType("folder_paths")
+        folder_paths.get_folder_paths = lambda name: []
+        torch = types.ModuleType("torch")
+        torch.float8_e4m3fn, torch.float8_e5m2 = "e4m3fn", "e5m2"
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "comfy": comfy,
+                "comfy.sd": sd,
+                "folder_paths": folder_paths,
+                "torch": torch,
+            },
+        ):
+            outputs = checkpoint_loader.load_file(
+                "/shelf/klein.safetensors", weight_dtype=weight_dtype
+            )
+        return outputs, seen
+
+    def test_the_casts_are_the_built_in_loaders(self):
+        spec = CKPT.INPUT_TYPES()["optional"]["weight_dtype"]
+        self.assertEqual(
+            spec[0], ["default", "fp8_e4m3fn", "fp8_e4m3fn_fast", "fp8_e5m2"]
+        )
+        self.assertEqual(spec[1]["default"], "default")
+
+    def test_an_uncast_load_calls_comfyui_as_it_always_has(self):
+        outputs, seen = self._load("default")
+        self.assertEqual(outputs, ("model", None, None))
+        self.assertNotIn("model_options", seen["guess"])
+        self.assertEqual(seen["diffusion"], {})
+
+    def test_a_cast_reaches_the_diffusion_model_as_unetloader_builds_it(self):
+        for weight_dtype, options in (
+            ("fp8_e4m3fn", {"dtype": "e4m3fn"}),
+            ("fp8_e4m3fn_fast", {"dtype": "e4m3fn", "fp8_optimizations": True}),
+            ("fp8_e5m2", {"dtype": "e5m2"}),
+        ):
+            with self.subTest(weight_dtype=weight_dtype):
+                _, seen = self._load(weight_dtype)
+                self.assertEqual(seen["diffusion"], {"model_options": options})
+
+    def test_a_cast_reaches_an_all_in_one_checkpoint_too(self):
+        outputs, seen = self._load("fp8_e5m2", all_in_one=True)
+        self.assertEqual(outputs, ("model", "clip", "vae"))
+        self.assertEqual(seen["guess"]["model_options"], {"dtype": "e5m2"})
+
+    def test_an_unknown_cast_is_refused_rather_than_ignored(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            self._load("int4")
+        self.assertIn("unknown weight type", str(ctx.exception))
+
+    def test_the_node_hands_its_cast_to_the_load(self):
+        seen = {}
+        with (
+            mock.patch.object(
+                CKPT, "_fetch_record", staticmethod(lambda wanted: {"id": 7})
+            ),
+            mock.patch.object(
+                checkpoint_loader, "local_copy", lambda record, label: "/p"
+            ),
+            mock.patch.object(
+                checkpoint_loader,
+                "load_file",
+                lambda path, **kw: seen.update(kw) or ("m", None, None),
+            ),
+            mock.patch.object(
+                checkpoint_loader.lock, "report", lambda outputs, models: outputs
+            ),
+        ):
+            CKPT().load_checkpoint("7", "", "fp8_e4m3fn_fast")
+        self.assertEqual(seen, {"weight_dtype": "fp8_e4m3fn_fast"})
+
+
 if __name__ == "__main__":
     unittest.main()
