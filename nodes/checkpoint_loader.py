@@ -107,8 +107,10 @@ def load_file(
     file and which turns off the outputs its set replaces. A bare diffusion
     model, and every GGUF, comes back as ``(model, None, None)``.
 
-    ``weight_dtype`` casts the diffusion model's weights as ``UNETLoader``
-    does. A GGUF is quantised already and takes no cast.
+    ``weight_dtype`` casts the weights as ``UNETLoader`` does, and like it
+    loads the file as a diffusion model only: a cast is a diffusion model's
+    loader's, and ``load_checkpoint_guess_config`` drops it for a file it
+    cannot classify. A GGUF is quantised already and takes no cast.
     """
     if gguf_support.is_gguf(path):
         if weight_dtype not in (None, "", "default"):
@@ -123,10 +125,13 @@ def load_file(
     import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
     import folder_paths  # noqa: PLC0415
 
+    loader = getattr(comfy.sd, "load_diffusion_model", None) or getattr(
+        comfy.sd, "load_unet", None
+    )
     options = model_options(weight_dtype)
-    # Only a cast is passed on, so an uncast load calls ComfyUI exactly as
-    # it always has.
-    cast = {"model_options": options} if options else {}
+    if options and loader is not None:
+        return loader(path, model_options=options), None, None
+
     embeddings = folder_paths.get_folder_paths("embeddings")
     try:
         outputs = comfy.sd.load_checkpoint_guess_config(
@@ -134,16 +139,12 @@ def load_file(
             output_vae=output_vae,
             output_clip=output_clip,
             embedding_directory=embeddings,
-            **cast,
         )[:3]
     except RuntimeError as exc:
         # Comfy's own "could not detect model type" — the shape a bare
         # diffusion model has here. Re-raised untouched if the fallback
         # cannot read it either, so a genuinely broken file still reports
         # what ComfyUI said about it.
-        loader = getattr(comfy.sd, "load_diffusion_model", None) or getattr(
-            comfy.sd, "load_unet", None
-        )
         if loader is None:
             raise
         log.info(
@@ -152,7 +153,7 @@ def load_file(
             path,
             exc,
         )
-        outputs = (loader(path, **cast), None, None)
+        outputs = (loader(path), None, None)
     return outputs
 
 

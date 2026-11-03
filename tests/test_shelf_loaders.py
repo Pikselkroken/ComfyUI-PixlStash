@@ -515,20 +515,19 @@ class CheckpointCastTests(unittest.TestCase):
         self.assertNotIn("model_options", seen["guess"])
         self.assertEqual(seen["diffusion"], {})
 
-    def test_a_cast_reaches_the_diffusion_model_as_unetloader_builds_it(self):
+    def test_a_cast_loads_a_diffusion_model_as_unetloader_does(self):
+        # Straight to the diffusion-model loader, as UNETLoader does: the
+        # guessing loader drops `model_options` for a file it cannot classify.
         for weight_dtype, options in (
             ("fp8_e4m3fn", {"dtype": "e4m3fn"}),
             ("fp8_e4m3fn_fast", {"dtype": "e4m3fn", "fp8_optimizations": True}),
             ("fp8_e5m2", {"dtype": "e5m2"}),
         ):
             with self.subTest(weight_dtype=weight_dtype):
-                _, seen = self._load(weight_dtype)
+                outputs, seen = self._load(weight_dtype, all_in_one=True)
+                self.assertEqual(outputs, ("model", None, None))
                 self.assertEqual(seen["diffusion"], {"model_options": options})
-
-    def test_a_cast_reaches_an_all_in_one_checkpoint_too(self):
-        outputs, seen = self._load("fp8_e5m2", all_in_one=True)
-        self.assertEqual(outputs, ("model", "clip", "vae"))
-        self.assertEqual(seen["guess"]["model_options"], {"dtype": "e5m2"})
+                self.assertNotIn("guess", seen)
 
     def test_an_unknown_cast_is_refused_rather_than_ignored(self):
         with self.assertRaises(RuntimeError) as ctx:
