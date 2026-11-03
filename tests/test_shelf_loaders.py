@@ -533,6 +533,15 @@ class CheckpointCastTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             self._load("int4")
         self.assertIn("unknown weight type", str(ctx.exception))
+        # A GGUF takes no cast, but an unknown one is refused for it too.
+        with (
+            mock.patch.object(
+                checkpoint_loader.gguf_support, "is_gguf", lambda p: True
+            ),
+            self.assertRaises(RuntimeError) as ctx,
+        ):
+            self._load("int4")
+        self.assertIn("unknown weight type", str(ctx.exception))
 
     def test_the_node_hands_its_cast_to_the_load(self):
         seen = {}

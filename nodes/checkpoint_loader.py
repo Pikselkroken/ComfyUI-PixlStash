@@ -112,8 +112,11 @@ def load_file(
     loader's, and ``load_checkpoint_guess_config`` drops it for a file it
     cannot classify. A GGUF is quantised already and takes no cast.
     """
+    # Read before the GGUF branch, so an unknown cast is refused whatever
+    # the file is.
+    options = model_options(weight_dtype)
     if gguf_support.is_gguf(path):
-        if weight_dtype not in (None, "", "default"):
+        if options:
             log.info(
                 "[PixlStash] %s is a GGUF, which is quantised already: the "
                 "weight type %s is not applied to it.",
@@ -128,8 +131,13 @@ def load_file(
     loader = getattr(comfy.sd, "load_diffusion_model", None) or getattr(
         comfy.sd, "load_unet", None
     )
-    options = model_options(weight_dtype)
     if options and loader is not None:
+        log.info(
+            "[PixlStash] %s is loaded as a diffusion model for the weight type "
+            "%s: no CLIP or VAE comes out of it.",
+            path,
+            weight_dtype,
+        )
         return loader(path, model_options=options), None, None
 
     embeddings = folder_paths.get_folder_paths("embeddings")
