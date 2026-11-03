@@ -53,6 +53,29 @@ LABEL = "PixlStash Checkpoint Loader"
 # diffusion model only, loaded through ``gguf_support``.
 SUFFIXES = (".safetensors", ".gguf")
 
+# The casts ComfyUI's own diffusion-model loader offers (``UNETLoader``'s
+# ``weight_dtype``), so PixlStash can put this node in for one that casts
+# without dropping the owner's fp8 choice.
+WEIGHT_DTYPES = ("default", "fp8_e4m3fn", "fp8_e4m3fn_fast", "fp8_e5m2")
+
+
+def model_options(weight_dtype: str) -> dict:
+    """``model_options`` for a cast, as ``UNETLoader.load_unet`` builds them."""
+    if weight_dtype in (None, "", "default"):
+        return {}
+    import torch  # noqa: PLC0415 — only available inside ComfyUI
+
+    if weight_dtype == "fp8_e4m3fn":
+        return {"dtype": torch.float8_e4m3fn}
+    if weight_dtype == "fp8_e4m3fn_fast":
+        return {"dtype": torch.float8_e4m3fn, "fp8_optimizations": True}
+    if weight_dtype == "fp8_e5m2":
+        return {"dtype": torch.float8_e5m2}
+    raise RuntimeError(
+        f"{LABEL}: unknown weight type {weight_dtype!r}; expected one of "
+        f"{', '.join(WEIGHT_DTYPES)}."
+    )
+
 
 def local_copy(record: dict, *, label: str) -> str:
     """The checkpoint's path on this machine, or an error saying why not."""
@@ -71,19 +94,51 @@ def local_copy(record: dict, *, label: str) -> str:
 
 
 def load_file(
-    path: str, *, output_clip: bool = True, output_vae: bool = True, label: str = LABEL
+    path: str,
+    *,
+    output_clip: bool = True,
+    output_vae: bool = True,
+    label: str = LABEL,
+    weight_dtype: str = "default",
 ):
     """``(model, clip, vae)`` out of one checkpoint file on this machine.
 
     Shared with the Workflow Set Loader, whose checkpoint slot is this same
     file and which turns off the outputs its set replaces. A bare diffusion
     model, and every GGUF, comes back as ``(model, None, None)``.
+
+    ``weight_dtype`` casts the weights as ``UNETLoader`` does, and like it
+    loads the file as a diffusion model only: a cast is a diffusion model's
+    loader's, and ``load_checkpoint_guess_config`` drops it for a file it
+    cannot classify. A GGUF is quantised already and takes no cast.
     """
+    # Read before the GGUF branch, so an unknown cast is refused whatever
+    # the file is.
+    options = model_options(weight_dtype)
     if gguf_support.is_gguf(path):
+        if options:
+            log.info(
+                "[PixlStash] %s is a GGUF, which is quantised already: the "
+                "weight type %s is not applied to it.",
+                path,
+                weight_dtype,
+            )
         return gguf_support.load_unet(path, label=label), None, None
 
     import comfy.sd  # noqa: PLC0415 — only available inside ComfyUI
     import folder_paths  # noqa: PLC0415
+
+    loader = getattr(comfy.sd, "load_diffusion_model", None) or getattr(
+        comfy.sd, "load_unet", None
+    )
+    if options and loader is not None:
+        log.info(
+            "[PixlStash] %s is loaded as a diffusion model for the weight type "
+            "%s: no CLIP or VAE comes out of it.",
+            path,
+            weight_dtype,
+        )
+        return loader(path, model_options=options), None, None
 
     embeddings = folder_paths.get_folder_paths("embeddings")
     try:
@@ -98,9 +153,6 @@ def load_file(
         # diffusion model has here. Re-raised untouched if the fallback
         # cannot read it either, so a genuinely broken file still reports
         # what ComfyUI said about it.
-        loader = getattr(comfy.sd, "load_diffusion_model", None) or getattr(
-            comfy.sd, "load_unet", None
-        )
         if loader is None:
             raise
         log.info(
@@ -171,12 +223,27 @@ class PixlStashCheckpointLoader:
                         ),
                     },
                 ),
+                "weight_dtype": (
+                    list(WEIGHT_DTYPES),
+                    {
+                        "default": "default",
+                        "advanced": True,
+                        "tooltip": (
+                            "Cast the diffusion model's weights as it loads, "
+                            "as the built-in Load Diffusion Model does: an fp8 "
+                            "cast halves the memory a 16-bit model takes. Not "
+                            "applied to a GGUF."
+                        ),
+                    },
+                ),
             },
         }
 
-    def load_checkpoint(self, checkpoint_id: str, shelf: str = ""):
+    def load_checkpoint(
+        self, checkpoint_id: str, shelf: str = "", weight_dtype: str = "default"
+    ):
         record = self._fetch_record(checkpoint_id)
-        outputs = load_file(local_copy(record, label=LABEL))
+        outputs = load_file(local_copy(record, label=LABEL), weight_dtype=weight_dtype)
 
         # Both identifiers, because a checkpoint has an id from the moment it
         # is scanned and a sha256 only once the shelf's hasher has read it —
