@@ -25,7 +25,7 @@
  */
 
 import { app } from "../../scripts/app.js";
-import { apiToken, leftOutSentences, notify } from "./workflow_link.js";
+import { TOKEN_FIX, apiToken, leftOutSentences, notify } from "./workflow_link.js";
 
 
 /**
@@ -45,7 +45,7 @@ function savedContent(wf) {
 export async function exportActiveWorkflow() {
     const token = apiToken();
     if (!token) {
-        notify("error", "Set your PixlStash API token in Settings › PixlStash, then try again.");
+        notify("error", `No PixlStash API token is set. ${TOKEN_FIX} Then try again.`);
         return;
     }
     const wf = app.extensionManager?.workflow?.activeWorkflow;
