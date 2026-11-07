@@ -1,0 +1,1342 @@
+{
+  "id": "6ff47011-52de-469a-a750-fd9dfee5fc7c",
+  "revision": 0,
+  "last_node_id": 45,
+  "last_link_id": 30,
+  "nodes": [
+    {
+      "id": 8,
+      "type": "PixlStashPictureLoader",
+      "pos": [
+        100,
+        130
+      ],
+      "size": [
+        324.63999938964844,
+        182
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": null
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": null
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            17
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            18
+          ]
+        },
+        {
+          "name": "pixlstash_project",
+          "type": "PIXLSTASH_PROJECT",
+          "links": null
+        },
+        {
+          "name": "pixlstash_set",
+          "type": "PIXLSTASH_SET",
+          "links": null
+        },
+        {
+          "name": "pixlstash_character",
+          "type": "PIXLSTASH_CHARACTER",
+          "links": null
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashPictureLoader"
+      },
+      "widgets_values": [
+        "",
+        "ba162b89-2ba9-4bbc-9027-865a8de4267e",
+        null
+      ],
+      "widgets_values_named": {
+        "picture_ids": "",
+        "library": "ba162b89-2ba9-4bbc-9027-865a8de4267e",
+        "Browse PixlStash…": null
+      }
+    },
+    {
+      "id": 9,
+      "type": "PixlStashPictureSaver",
+      "pos": [
+        3255.640001678467,
+        130
+      ],
+      "size": [
+        276.7200012207031,
+        142
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "pixlstash_project",
+          "shape": 7,
+          "type": "PIXLSTASH_PROJECT",
+          "link": null
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": null
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "picture_ids",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashPictureSaver"
+      },
+      "widgets_values": [
+        "Inpaint-image_moss_image_edit",
+        true
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "Inpaint-image_moss_image_edit",
+        "save_workflow": true
+      }
+    },
+    {
+      "id": 20,
+      "type": "ImageCompare",
+      "pos": [
+        1108.6399993896484,
+        130
+      ],
+      "size": [
+        400,
+        350
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image_a",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "image_b",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ImageCompare"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {}
+    },
+    {
+      "id": 30,
+      "type": "PixlStashCheckpointLoader",
+      "pos": [
+        100,
+        442
+      ],
+      "size": [
+        289.5799926757812,
+        152
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            26
+          ]
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "links": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashCheckpointLoader",
+        "pixlstash_models": [
+          {
+            "input": "checkpoint_id",
+            "kind": "checkpoint",
+            "id": 194,
+            "sha256": "b4d1475bc7eeffd7b809e82ea13a1fba1fb85c4e18365af3813722faa5c0fe4f",
+            "filename": "moss_image_sft_int8_convrot.safetensors",
+            "display_name": null
+          }
+        ]
+      },
+      "widgets_values": [
+        "194",
+        "0815dd96eb614b4989bc2dac9f302b3d",
+        "default",
+        ""
+      ],
+      "widgets_values_named": {
+        "checkpoint_id": "194",
+        "shelf": "0815dd96eb614b4989bc2dac9f302b3d",
+        "weight_dtype": "default",
+        "checkpoint_id_browse": ""
+      }
+    },
+    {
+      "id": 31,
+      "type": "PixlStashAdapterLoader",
+      "pos": [
+        1108.6399993896484,
+        786
+      ],
+      "size": [
+        315.5399993896484,
+        286
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 30
+        },
+        {
+          "name": "clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": null
+        },
+        {
+          "name": "pixlstash_set",
+          "shape": 7,
+          "type": "PIXLSTASH_SET",
+          "link": null
+        },
+        {
+          "name": "pixlstash_character",
+          "shape": 7,
+          "type": "PIXLSTASH_CHARACTER",
+          "link": null
+        },
+        {
+          "name": "pixlstash_workflow_set",
+          "shape": 7,
+          "type": "PIXLSTASH_WORKFLOW_SET",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            4
+          ]
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "links": null
+        },
+        {
+          "name": "trigger_words",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Load LoRA",
+      "properties": {
+        "Node name for S&R": "PixlStashAdapterLoader",
+        "pixlstash_models": [
+          {
+            "input": "adapter_sha256",
+            "kind": "adapter",
+            "id": 212,
+            "sha256": "17a48b8c605dcffdedb92a2b887d18cf316505be90802717669fb6556098dcdf",
+            "filename": "moss_image_edit_lora_rank_64_bf16.safetensors",
+            "display_name": null
+          }
+        ]
+      },
+      "widgets_values": [
+        "— Any —",
+        "MOSS-Image",
+        "17a48b8c605dcffdedb92a2b887d18cf316505be90802717669fb6556098dcdf",
+        1,
+        1,
+        null,
+        ""
+      ],
+      "widgets_values_named": {
+        "adapter_kind": "— Any —",
+        "base_model": "MOSS-Image",
+        "adapter_sha256": "17a48b8c605dcffdedb92a2b887d18cf316505be90802717669fb6556098dcdf",
+        "strength_model": 1,
+        "strength_clip": 1,
+        "Adapter: moss_image_edit_lora_rank_6…": null,
+        "adapter_sha256_face": ""
+      }
+    },
+    {
+      "id": 32,
+      "type": "SkipLayerGuidanceDiTSimple",
+      "pos": [
+        1608.6399993896484,
+        306
+      ],
+      "size": [
+        294.7800048828125,
+        130
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SkipLayerGuidanceDiTSimple"
+      },
+      "widgets_values": [
+        "",
+        "22",
+        0,
+        1
+      ],
+      "widgets_values_named": {
+        "double_layers": "",
+        "single_layers": "22",
+        "start_percent": 0,
+        "end_percent": 1
+      }
+    },
+    {
+      "id": 33,
+      "type": "PixlStashCLIPLoader",
+      "pos": [
+        100,
+        718
+      ],
+      "size": [
+        270,
+        166
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "links": [
+            27
+          ]
+        }
+      ],
+      "title": "Load CLIP",
+      "properties": {
+        "Node name for S&R": "PixlStashCLIPLoader",
+        "pixlstash_models": [
+          {
+            "input": "clip_sha256",
+            "kind": "clip",
+            "id": 195,
+            "sha256": "4cc6a1543ad2061806da46f35f90cadb4801dcba246c44782cf42ec0feb6407c",
+            "filename": "qwen3.5_9b_w4a8_gptq.safetensors",
+            "display_name": null
+          }
+        ]
+      },
+      "widgets_values": [
+        "4cc6a1543ad2061806da46f35f90cadb4801dcba246c44782cf42ec0feb6407c",
+        "moss_image",
+        "",
+        "",
+        ""
+      ],
+      "widgets_values_named": {
+        "clip_sha256": "4cc6a1543ad2061806da46f35f90cadb4801dcba246c44782cf42ec0feb6407c",
+        "type": "moss_image",
+        "clip_sha256_2": "",
+        "clip_sha256_browse": "",
+        "clip_sha256_2_browse": ""
+      }
+    },
+    {
+      "id": 34,
+      "type": "PixlStashVAELoader",
+      "pos": [
+        100,
+        954
+      ],
+      "size": [
+        270,
+        88
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "links": [
+            6,
+            13,
+            15,
+            20
+          ]
+        }
+      ],
+      "title": "Load VAE",
+      "properties": {
+        "Node name for S&R": "PixlStashVAELoader",
+        "pixlstash_models": [
+          {
+            "input": "vae_sha256",
+            "kind": "vae",
+            "id": 211,
+            "sha256": "d8d52ba036475f5fb07c8b435e176d3d97ebfa82f0d1a1c317f9cc1e25bd013b",
+            "filename": "flux2-vae_small.safetensors",
+            "display_name": null
+          }
+        ]
+      },
+      "widgets_values": [
+        "d8d52ba036475f5fb07c8b435e176d3d97ebfa82f0d1a1c317f9cc1e25bd013b",
+        ""
+      ],
+      "widgets_values_named": {
+        "vae_sha256": "d8d52ba036475f5fb07c8b435e176d3d97ebfa82f0d1a1c317f9cc1e25bd013b",
+        "vae_sha256_browse": ""
+      }
+    },
+    {
+      "id": 36,
+      "type": "TextEncodeMOSSImageEdit",
+      "pos": [
+        1108.6399993896484,
+        1150
+      ],
+      "size": [
+        400,
+        216
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 28
+        },
+        {
+          "name": "images.image_0",
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "title": "Text Encode MOSS-Image Edit (negative)",
+      "properties": {
+        "Node name for S&R": "TextEncodeMOSSImageEdit"
+      },
+      "widgets_values": [
+        "nsfw, worst quality, bad anatomy, watermark, jpeg artifact",
+        "Moss-Image-Edit",
+        1
+      ],
+      "widgets_values_named": {
+        "prompt": "nsfw, worst quality, bad anatomy, watermark, jpeg artifact",
+        "edit_format": "Moss-Image-Edit",
+        "image_strength": 1
+      }
+    },
+    {
+      "id": 37,
+      "type": "KSampler",
+      "pos": [
+        2373.420004272461,
+        130
+      ],
+      "size": [
+        270,
+        262
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 8
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 9
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        42,
+        "randomize",
+        30,
+        4,
+        "euler",
+        "normal",
+        1
+      ],
+      "widgets_values_named": {
+        "seed": 42,
+        "control_after_generate": "randomize",
+        "steps": 30,
+        "cfg": 4,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1
+      }
+    },
+    {
+      "id": 38,
+      "type": "VAEDecode",
+      "pos": [
+        2743.420004272461,
+        130
+      ],
+      "size": [
+        140,
+        46
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 12
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            25
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 39,
+      "type": "TextEncodeMOSSImageEdit",
+      "pos": [
+        1108.6399993896484,
+        1480
+      ],
+      "size": [
+        400,
+        216
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 29
+        },
+        {
+          "name": "images.image_0",
+          "type": "IMAGE",
+          "link": 16
+        },
+        {
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "title": "Text Encode MOSS-Image Edit (positive)",
+      "properties": {
+        "Node name for S&R": "TextEncodeMOSSImageEdit"
+      },
+      "widgets_values": [
+        "Change only the pink floral blazer to a plain black wool coat. Keep both women, their faces, glasses, berets, poses, the embroidered cardigan and the concrete wall background unchanged.",
+        "Moss-Image-Edit",
+        1
+      ],
+      "widgets_values_named": {
+        "prompt": "Change only the pink floral blazer to a plain black wool coat. Keep both women, their faces, glasses, berets, poses, the embroidered cardigan and the concrete wall background unchanged.",
+        "edit_format": "Moss-Image-Edit",
+        "image_strength": 1
+      }
+    },
+    {
+      "id": 40,
+      "type": "InpaintCropImproved",
+      "pos": [
+        524.6399993896484,
+        130
+      ],
+      "size": [
+        357.44000244140625,
+        650
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 17
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 18
+        },
+        {
+          "name": "optional_context_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "stitcher",
+          "type": "STITCHER",
+          "links": [
+            24
+          ]
+        },
+        {
+          "name": "cropped_image",
+          "type": "IMAGE",
+          "links": [
+            2,
+            7,
+            16,
+            19
+          ]
+        },
+        {
+          "name": "cropped_mask",
+          "type": "MASK",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "title": "Crop to selection + context",
+      "properties": {
+        "Node name for S&R": "InpaintCropImproved"
+      },
+      "widgets_values": [
+        "bilinear",
+        "bicubic",
+        false,
+        "ensure minimum resolution",
+        1024,
+        1024,
+        16384,
+        16384,
+        true,
+        8,
+        false,
+        32,
+        0.1,
+        false,
+        1,
+        1,
+        1,
+        1,
+        1.6,
+        true,
+        1024,
+        1024,
+        "16",
+        "gpu (much faster)"
+      ],
+      "widgets_values_named": {
+        "downscale_algorithm": "bilinear",
+        "upscale_algorithm": "bicubic",
+        "preresize": false,
+        "preresize_mode": "ensure minimum resolution",
+        "preresize_min_width": 1024,
+        "preresize_min_height": 1024,
+        "preresize_max_width": 16384,
+        "preresize_max_height": 16384,
+        "mask_fill_holes": true,
+        "mask_expand_pixels": 8,
+        "mask_invert": false,
+        "mask_blend_pixels": 32,
+        "mask_hipass_filter": 0.1,
+        "extend_for_outpainting": false,
+        "extend_up_factor": 1,
+        "extend_down_factor": 1,
+        "extend_left_factor": 1,
+        "extend_right_factor": 1,
+        "context_from_mask_extend_factor": 1.6,
+        "output_resize_to_target_size": true,
+        "output_target_width": 1024,
+        "output_target_height": 1024,
+        "output_padding": "16",
+        "device_mode": "gpu (much faster)"
+      }
+    },
+    {
+      "id": 41,
+      "type": "VAEEncode",
+      "pos": [
+        1108.6399993896484,
+        610
+      ],
+      "size": [
+        140,
+        46
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pixels",
+          "type": "IMAGE",
+          "link": 19
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            21
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEEncode"
+      }
+    },
+    {
+      "id": 42,
+      "type": "SetLatentNoiseMask",
+      "pos": [
+        1608.6399993896484,
+        130
+      ],
+      "size": [
+        187.62000122070313,
+        46
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 21
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "title": "SetLatentNoiseMask",
+      "properties": {
+        "Node name for S&R": "SetLatentNoiseMask"
+      }
+    },
+    {
+      "id": 43,
+      "type": "DifferentialDiffusion",
+      "pos": [
+        2003.420004272461,
+        130
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DifferentialDiffusion"
+      },
+      "widgets_values": [
+        1
+      ],
+      "widgets_values_named": {
+        "strength": 1
+      }
+    },
+    {
+      "id": 44,
+      "type": "InpaintStitchImproved",
+      "pos": [
+        2983.420004272461,
+        130
+      ],
+      "size": [
+        183.0999969482422,
+        46
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "stitcher",
+          "type": "STITCHER",
+          "link": 24
+        },
+        {
+          "name": "inpainted_image",
+          "type": "IMAGE",
+          "link": 25
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "title": "Stitch into the original",
+      "properties": {
+        "Node name for S&R": "InpaintStitchImproved"
+      }
+    },
+    {
+      "id": 45,
+      "type": "PixlStashMultiAdapterLoader",
+      "pos": [
+        524.6399993896484,
+        910
+      ],
+      "size": [
+        484,
+        260
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 26
+        },
+        {
+          "name": "clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            30
+          ]
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "links": [
+            28,
+            29
+          ]
+        },
+        {
+          "name": "trigger_words",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PixlStashMultiAdapterLoader"
+      },
+      "widgets_values": [
+        "People who fit",
+        "— Any —",
+        "MOSS-Image",
+        "",
+        1,
+        1,
+        "",
+        1,
+        1,
+        "",
+        1,
+        1,
+        "",
+        1,
+        1,
+        "",
+        1,
+        1,
+        "",
+        1,
+        1,
+        "",
+        1,
+        1,
+        "",
+        1,
+        1,
+        ""
+      ],
+      "widgets_values_named": {
+        "show": "People who fit",
+        "adapter_kind": "— Any —",
+        "base_model": "MOSS-Image",
+        "adapter_sha256": "",
+        "strength_model": 1,
+        "strength_clip": 1,
+        "adapter_sha256_2": "",
+        "strength_model_2": 1,
+        "strength_clip_2": 1,
+        "adapter_sha256_3": "",
+        "strength_model_3": 1,
+        "strength_clip_3": 1,
+        "adapter_sha256_4": "",
+        "strength_model_4": 1,
+        "strength_clip_4": 1,
+        "adapter_sha256_5": "",
+        "strength_model_5": 1,
+        "strength_clip_5": 1,
+        "adapter_sha256_6": "",
+        "strength_model_6": 1,
+        "strength_clip_6": 1,
+        "adapter_sha256_7": "",
+        "strength_model_7": 1,
+        "strength_clip_7": 1,
+        "adapter_sha256_8": "",
+        "strength_model_8": 1,
+        "strength_clip_8": 1,
+        "adapter_rows": ""
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      44,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      40,
+      1,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      31,
+      0,
+      32,
+      0,
+      "MODEL"
+    ],
+    [
+      8,
+      43,
+      0,
+      37,
+      0,
+      "MODEL"
+    ],
+    [
+      9,
+      39,
+      0,
+      37,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      36,
+      0,
+      37,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      42,
+      0,
+      37,
+      3,
+      "LATENT"
+    ],
+    [
+      12,
+      37,
+      0,
+      38,
+      0,
+      "LATENT"
+    ],
+    [
+      13,
+      34,
+      0,
+      38,
+      1,
+      "VAE"
+    ],
+    [
+      17,
+      8,
+      0,
+      40,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      8,
+      1,
+      40,
+      1,
+      "MASK"
+    ],
+    [
+      19,
+      40,
+      1,
+      41,
+      0,
+      "IMAGE"
+    ],
+    [
+      20,
+      34,
+      0,
+      41,
+      1,
+      "VAE"
+    ],
+    [
+      21,
+      41,
+      0,
+      42,
+      0,
+      "LATENT"
+    ],
+    [
+      22,
+      40,
+      2,
+      42,
+      1,
+      "MASK"
+    ],
+    [
+      23,
+      32,
+      0,
+      43,
+      0,
+      "MODEL"
+    ],
+    [
+      24,
+      40,
+      0,
+      44,
+      0,
+      "STITCHER"
+    ],
+    [
+      25,
+      38,
+      0,
+      44,
+      1,
+      "IMAGE"
+    ],
+    [
+      26,
+      30,
+      0,
+      45,
+      0,
+      "MODEL"
+    ],
+    [
+      27,
+      33,
+      0,
+      45,
+      1,
+      "CLIP"
+    ],
+    [
+      30,
+      45,
+      0,
+      31,
+      0,
+      "MODEL"
+    ],
+    [
+      28,
+      45,
+      1,
+      36,
+      0,
+      "CLIP"
+    ],
+    [
+      7,
+      40,
+      1,
+      36,
+      1,
+      "IMAGE"
+    ],
+    [
+      6,
+      34,
+      0,
+      36,
+      3,
+      "VAE"
+    ],
+    [
+      29,
+      45,
+      1,
+      39,
+      0,
+      "CLIP"
+    ],
+    [
+      16,
+      40,
+      1,
+      39,
+      1,
+      "IMAGE"
+    ],
+    [
+      15,
+      34,
+      0,
+      39,
+      3,
+      "VAE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "pixlstash_workflow_id": "manual:2d98b307ba9f4899bfda88c301eabe99",
+    "pixlstash_file": "workflows/pixlstash/Inpaint MOSS-Image (2).json",
+    "ds": {
+      "scale": 0.8996834735385488,
+      "offset": [
+        -130.86890422732793,
+        12.306138625047694
+      ]
+    },
+    "frontendVersion": "1.59.0"
+  },
+  "version": 0.4
+}
