@@ -45,6 +45,13 @@ export function notify(severity, detail, life = 8000) {
     }
 }
 
+// How to get a working token. A link from PixlStash writes ComfyUI's stored
+// settings, which this page read when it loaded, so it needs a reload; a token
+// pasted into the Settings panel counts at once.
+export const TOKEN_FIX =
+    "Link ComfyUI in PixlStash (Settings › ComfyUI) and reload this page, " +
+    "or enter its URL and a current API token in ComfyUI Settings › PixlStash.";
+
 export function apiToken() {
     return (app.ui.settings.getSettingValue("PixlStash.APIToken", "") ?? "").trim();
 }

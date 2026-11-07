@@ -348,7 +348,11 @@ class PixlStashClient:
             raise RuntimeError(f"PixlStash: bad request — {self._detail(response)}")
 
         if response.status_code == 401:
-            raise RuntimeError("PixlStash: invalid or expired API token.")
+            raise RuntimeError(
+                "PixlStash: invalid or expired API token. Link ComfyUI again in "
+                "PixlStash (Settings › ComfyUI) and reload the ComfyUI page, or "
+                "paste a current token in ComfyUI Settings › PixlStash."
+            )
 
         if response.status_code == 403:
             if is_write:

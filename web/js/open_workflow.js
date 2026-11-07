@@ -58,7 +58,7 @@
 
 import { app } from "../../scripts/app.js";
 import {
-    FILE_TAG, KEY_RE, NEW_TAG, PEOPLE_LOADER, SHOW_PEOPLE, TAG, apiToken, flushCanvas, isUnsent,
+    FILE_TAG, KEY_RE, NEW_TAG, PEOPLE_LOADER, SHOW_PEOPLE, TAG, TOKEN_FIX, apiToken, flushCanvas, isUnsent,
     linkedWorkflow, newOpening, noteReadVersion, notify, openings, quietly, rootGraph,
 } from "./workflow_link.js";
 
@@ -657,7 +657,7 @@ export async function openFromUrl(key, original = false, run = null) {
     if (!token) {
         notify(
             "error",
-            "Set your PixlStash API token in Settings › PixlStash, then open the link from PixlStash again.",
+            `No PixlStash API token is set. ${TOKEN_FIX} Then open the link from PixlStash again.`,
         );
         return;
     }

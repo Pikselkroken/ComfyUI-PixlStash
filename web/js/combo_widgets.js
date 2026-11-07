@@ -24,7 +24,7 @@ import {
 import { paintMark } from "./model_mark.js";
 import { ROWS, readRows, rowField, withPicks, writeRows } from "./adapter_rows.js";
 import { el, fitLabel } from "./modal_dom.js";
-import { linkedWorkflow } from "./workflow_link.js";
+import { TOKEN_FIX, linkedWorkflow } from "./workflow_link.js";
 
 // ---------------------------------------------------------------------------
 // Setting IDs
@@ -269,7 +269,7 @@ function findUpstreamProjectId(node) {
 async function proxyFetch(path, credentials, extraParams = {}) {
     const { url, token, verifySsl } = credentials;
     if (!url || !token) {
-        throw new Error("Configure URL and API Token in ComfyUI Settings \u203a PixlStash.");
+        throw new Error(`No PixlStash URL or API token is set. ${TOKEN_FIX}`);
     }
     const params = new URLSearchParams({
         url,
@@ -436,7 +436,7 @@ function _invalidateKind(kind) {
  *
  * Called when the connection settings change. Without this, a failed fetch is
  * cached for the life of the page: drop a node before configuring a token and
- * every dropdown stays stuck on "⚠ Configure URL and API Token…" even after
+ * every dropdown stays stuck on "⚠ No PixlStash URL or API token is set…" even after
  * you configure one, which reads as the node being broken.
  */
 function _invalidateAll() {
@@ -911,7 +911,7 @@ function addShelfBrowseButton(node, valueWidget, opts) {
         () => {
             const creds = getSettingsCredentials();
             if (!creds.url || !creds.token) {
-                alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
+                alert(`PixlStash: no URL or API token is set. ${TOKEN_FIX}`);
                 return;
             }
             openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record) => {
@@ -1071,7 +1071,7 @@ function addShelfBrowseButtonInline(node, valueWidget, opts) {
         e.stopPropagation();
         const creds = getSettingsCredentials();
         if (!creds.url || !creds.token) {
-            alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
+            alert(`PixlStash: no URL or API token is set. ${TOKEN_FIX}`);
             return;
         }
         openAdapterPicker(valueWidget, creds, { fileKind, ...filters() }, (record, shelfId) => {
@@ -1241,7 +1241,7 @@ function addAdapterRows(node, { showWidget, kindWidget, baseWidget }) {
     const needCredentials = () => {
         const creds = getSettingsCredentials();
         if (creds.url && creds.token) return creds;
-        alert("PixlStash: configure URL and API Token in ComfyUI Settings › PixlStash first.");
+        alert(`PixlStash: no URL or API token is set. ${TOKEN_FIX}`);
         return null;
     };
 
@@ -1738,7 +1738,7 @@ app.registerExtension({
                     () => {
                         const creds = getSettingsCredentials();
                         if (!creds.url || !creds.token) {
-                            alert("PixlStash: configure URL and API Token in ComfyUI Settings \u203a PixlStash first.");
+                            alert(`PixlStash: no URL or API token is set. ${TOKEN_FIX}`);
                             return;
                         }
                         const filters = {
