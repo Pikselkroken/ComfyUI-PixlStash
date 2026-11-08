@@ -119,7 +119,12 @@ class OtherStatusTests(unittest.TestCase):
     """The messages that already worked, pinned so the refactor kept them."""
 
     def test_401_names_the_token(self):
-        self.assertIn("invalid or expired", check(401))
+        message = check(401)
+        self.assertIn("invalid or expired", message)
+        # Says how to fix it, both ways: link again, or paste a token.
+        self.assertIn("Settings › ComfyUI", message)
+        self.assertIn("reload the ComfyUI page", message)
+        self.assertIn("ComfyUI Settings › PixlStash", message)
 
     def test_403_on_a_write_names_the_write_scope(self):
         self.assertIn("write access", check(403, is_write=True))

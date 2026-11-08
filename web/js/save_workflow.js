@@ -37,7 +37,7 @@
 import { app } from "../../scripts/app.js";
 import { exportActiveWorkflow } from "./convert_workflow.js";
 import {
-    FILE_TAG, NEW_TAG, PEOPLE_LOADER, TAG, apiToken, flushCanvas, isQuiet, leftOutSentences,
+    FILE_TAG, NEW_TAG, PEOPLE_LOADER, TAG, TOKEN_FIX, apiToken, flushCanvas, isQuiet, leftOutSentences,
     linkedFile, linkedWorkflow, markUnsent, noteReadVersion, notify, openings, quietly, readVersion,
     rootGraph,
 } from "./workflow_link.js";
@@ -123,7 +123,7 @@ export async function saveToPixlStash(wf, { byHand = false } = {}) {
         );
     };
     const token = apiToken();
-    if (!token) return failed("set your PixlStash API token in Settings › PixlStash.");
+    if (!token) return failed(`no PixlStash API token is set. ${TOKEN_FIX}`);
 
     let prompt;
     try {
