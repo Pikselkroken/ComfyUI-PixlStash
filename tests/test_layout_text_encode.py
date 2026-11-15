@@ -60,13 +60,22 @@ class LayoutRegionsTests(unittest.TestCase):
             _layout(bbox_format="xyxy"),
             _layout(bbox_coord_space="relative"),
             _layout(canvas=[0, 1536]),
+            _layout(canvas=["a", "b"]),
+            _layout(summary="a sheet"),
         ):
             with self.subTest(text=text):
                 self.assertIsNone(lte.layout_regions(text))
 
     def test_an_item_with_no_area_is_skipped(self):
         _summary, regions = lte.layout_regions(
-            _layout(items=[{"caption": "x", "bbox": [5, 5, 5, 9]}, {"caption": "y"}])
+            _layout(
+                items=[
+                    {"caption": "x", "bbox": [5, 5, 5, 9]},
+                    {"caption": "y"},
+                    {"caption": "z", "bbox": [0, 0, "a", 1]},
+                    "not an item",
+                ]
+            )
         )
         self.assertEqual(regions, [])
 

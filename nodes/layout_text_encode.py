@@ -1,12 +1,12 @@
-"""A text encoder that draws a layout prompt as regions, on any model.
+"""A text encoder that draws a layout prompt as regions, on any CLIP-encoded model.
 
 MOSS-Image reads a layout prompt (JSON: a summary caption and items, each a
 caption with a box) and puts each item where its box says. Other models read
 the JSON as words. This node gives them the same layout through regional
 conditioning: the summary is encoded over the whole canvas and every item's
 caption over its box alone, as ComfyUI's own area conditioning does, so
-PixlStash's character sheets land in the grid the sheet cutter expects on
-Flux, Krea, SDXL and the rest.
+PixlStash's character sheets should land in the grid the sheet cutter expects
+whatever model draws them. No probe has measured how well each model holds it.
 
 A layout prompt here is MOSS's (``bbox_coord_space`` ``abs_centralized``,
 ``bbox_format`` ``yxyx``) plus a ``canvas`` ``[width, height]`` the boxes
@@ -41,7 +41,8 @@ def layout_regions(text: str):
         return None
     if not isinstance(layout, dict) or not isinstance(layout.get("items"), list):
         return None
-    summary = (layout.get("summary") or {}).get("caption")
+    summary = layout.get("summary")
+    summary = summary.get("caption") if isinstance(summary, dict) else None
     canvas = layout.get("canvas")
     if (
         not isinstance(summary, str)
@@ -55,7 +56,10 @@ def layout_regions(text: str):
             "size are needed), so it is encoded as plain text."
         )
         return None
-    width, height = (float(v) for v in canvas)
+    try:
+        width, height = (float(v) for v in canvas)
+    except (TypeError, ValueError):
+        width = height = 0.0
     if width <= 0 or height <= 0:
         log.warning("PixlStash Layout Text Encode: canvas %s has no area.", canvas)
         return None
@@ -65,14 +69,17 @@ def layout_regions(text: str):
 
     regions = []
     for item in layout["items"]:
-        caption = (item or {}).get("caption")
-        box = (item or {}).get("bbox")
-        if not isinstance(caption, str) or not (
-            isinstance(box, list) and len(box) == 4
-        ):
-            log.warning("PixlStash Layout Text Encode: item %r is skipped.", item)
+        caption = item.get("caption") if isinstance(item, dict) else None
+        box = item.get("bbox") if isinstance(item, dict) else None
+        try:
+            if not isinstance(caption, str) or len(box) != 4:
+                raise ValueError("no caption or no four-number box")
+            y1, x1, y2, x2 = (float(v) for v in box)
+        except (TypeError, ValueError) as exc:
+            log.warning(
+                "PixlStash Layout Text Encode: item %r is skipped: %s", item, exc
+            )
             continue
-        y1, x1, y2, x2 = (float(v) for v in box)
         top, bottom = clamp(y1 / height + 0.5), clamp(y2 / height + 0.5)
         left, right = clamp(x1 / width + 0.5), clamp(x2 / width + 0.5)
         if bottom <= top or right <= left:
