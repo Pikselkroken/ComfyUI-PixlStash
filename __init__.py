@@ -34,6 +34,7 @@ from .nodes.vae_loader import PixlStashVAELoader
 from .nodes.controlnet_loader import PixlStashControlNetLoader
 from .nodes.upscale_model_loader import PixlStashUpscaleModelLoader
 from .nodes.workflow_set_loader import PixlStashWorkflowSetLoader
+from .nodes.layout_text_encode import PixlStashLayoutTextEncode
 from .proxy_routes import register_routes
 from .serve_routes import register_routes as register_serve_routes
 
@@ -61,6 +62,7 @@ NODE_CLASS_MAPPINGS = {
     "PixlStashControlNetLoader": PixlStashControlNetLoader,
     "PixlStashUpscaleModelLoader": PixlStashUpscaleModelLoader,
     "PixlStashWorkflowSetLoader": PixlStashWorkflowSetLoader,
+    "PixlStashLayoutTextEncode": PixlStashLayoutTextEncode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -86,6 +88,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PixlStashControlNetLoader": "PixlStash ControlNet Loader",
     "PixlStashUpscaleModelLoader": "PixlStash Upscale Model Loader",
     "PixlStashWorkflowSetLoader": "PixlStash Workflow Set Loader",
+    "PixlStashLayoutTextEncode": "PixlStash Layout Text Encode",
 }
 
 WEB_DIRECTORY = "web/js"
