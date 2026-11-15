@@ -51,6 +51,7 @@ read them at runtime, so they never end up in saved workflow JSON.
 | ControlNet Loader | Loads a ControlNet from the model shelf. | 1.7 | 1.12 |
 | Upscale Model Loader | Loads an upscale model (`.pth` or `.safetensors`) from the model shelf. | 1.7 | 1.12 |
 | Workflow Set Loader | Loads a workflow set's checkpoint, text encoders and VAE in one node, and narrows an Adapter Loader to the set's LoRAs. | 1.6 | 1.12 |
+| Layout Text Encode | A text encoder for any model that reads a layout prompt (MOSS-Image's JSON plus a `canvas` size): the summary over the whole picture, each item's caption over its own box. Plain text encodes as CLIP Text Encode does. What PixlStash's character sheet workflows run. | 1.10 | — |
 
 "Added in" is the ComfyUI-PixlStash version. The Face Likeness Gate also needs a
 running face-extraction worker. A node checks the server's version before its
