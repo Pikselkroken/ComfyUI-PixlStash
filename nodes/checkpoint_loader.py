@@ -101,6 +101,10 @@ def local_copy(record: dict, *, label: str) -> str:
 # tensor under either is a bare diffusion model.
 CHECKPOINT_PREFIXES = ("model.", "net.")
 
+# The safetensors format's own cap on its JSON header. Anything larger is not
+# one, and reading it would pull a model's worth of bytes into memory.
+MAX_HEADER_BYTES = 100_000_000
+
 
 def is_bare_diffusion_model(path: str) -> bool:
     """Whether the safetensors file at *path* holds a diffusion model alone.
@@ -111,9 +115,13 @@ def is_bare_diffusion_model(path: str) -> bool:
     try:
         with open(path, "rb") as handle:
             (size,) = struct.unpack("<Q", handle.read(8))
+            if size > MAX_HEADER_BYTES:
+                raise ValueError(f"a {size}-byte header is past the format's cap")
             header = json.loads(handle.read(size))
     except (OSError, ValueError, struct.error) as exc:
         log.debug("[PixlStash] %s has no readable safetensors header: %s", path, exc)
+        return False
+    if not isinstance(header, dict):
         return False
     return not any(
         key.startswith(CHECKPOINT_PREFIXES) for key in header if key != "__metadata__"

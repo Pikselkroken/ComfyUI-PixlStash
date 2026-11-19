@@ -495,6 +495,14 @@ class CheckpointLockTests(unittest.TestCase):
                 handle.write(struct.pack("<Q", len(header)) + header)
             self.assertFalse(checkpoint_loader.is_bare_diffusion_model(path))
 
+            # Not safetensors: a size past the cap is refused, never read.
+            with open(path, "wb") as handle:
+                handle.write(struct.pack("<Q", 2**40) + b"x")
+            self.assertFalse(checkpoint_loader.is_bare_diffusion_model(path))
+            with open(path, "wb") as handle:
+                handle.write(struct.pack("<Q", 2) + b"[]")
+            self.assertFalse(checkpoint_loader.is_bare_diffusion_model(path))
+
 
 if __name__ == "__main__":
     unittest.main()
