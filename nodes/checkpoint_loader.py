@@ -33,15 +33,19 @@ this names its own shelf. The node itself loads by id alone.
 
 A *bare diffusion model* (a Flux UNET in ``models/diffusion_models``) is filed
 as a checkpoint by PixlStash's parameter-count rule, so it will show up in the
-grid.  ``load_checkpoint_guess_config`` cannot build a CLIP or a VAE out of one
-and raises; ``load_vae``/``load_diffusion_model`` is the fallback, and the node
-then returns a MODEL with the other two outputs empty — which is what ComfyUI's
-own checkpoint loader does for a checkpoint carrying no VAE.
+grid.  Its safetensors header says so (no tensor under a checkpoint's
+``model.``), and it goes straight to ``load_diffusion_model``, which keeps the
+file's metadata; ``load_checkpoint_guess_config``'s own fallback for one drops
+it. Any other file the checkpoint loader cannot read falls back the same way.
+The node then returns a MODEL with the other two outputs empty — which is what
+ComfyUI's own checkpoint loader does for a checkpoint carrying no VAE.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import struct
 
 from . import gguf_support, lock, shelf_file
 
@@ -93,6 +97,37 @@ def local_copy(record: dict, *, label: str) -> str:
     return path
 
 
+# Where an all-in-one checkpoint keeps its diffusion weights. A file with no
+# tensor under either is a bare diffusion model.
+CHECKPOINT_PREFIXES = ("model.", "net.")
+
+# The safetensors format's own cap on its JSON header. Anything larger is not
+# one, and reading it would pull a model's worth of bytes into memory.
+MAX_HEADER_BYTES = 100_000_000
+
+
+def is_bare_diffusion_model(path: str) -> bool:
+    """Whether the safetensors file at *path* holds a diffusion model alone.
+
+    Read from the header, so nothing is loaded. ``False`` when the header will
+    not read, which leaves the file to the checkpoint loader as before.
+    """
+    try:
+        with open(path, "rb") as handle:
+            (size,) = struct.unpack("<Q", handle.read(8))
+            if size > MAX_HEADER_BYTES:
+                raise ValueError(f"a {size}-byte header is past the format's cap")
+            header = json.loads(handle.read(size))
+    except (OSError, ValueError, struct.error) as exc:
+        log.debug("[PixlStash] %s has no readable safetensors header: %s", path, exc)
+        return False
+    if not isinstance(header, dict):
+        return False
+    return not any(
+        key.startswith(CHECKPOINT_PREFIXES) for key in header if key != "__metadata__"
+    )
+
+
 def load_file(
     path: str,
     *,
@@ -139,6 +174,12 @@ def load_file(
             weight_dtype,
         )
         return loader(path, model_options=options), None, None
+    # Straight to the diffusion-model loader, which keeps the file's metadata:
+    # the checkpoint loader's own fallback for such a file drops it, and a
+    # model configured from it (MiniMax H3 Image's sigma grid) cannot build.
+    if loader is not None and is_bare_diffusion_model(path):
+        log.info("[PixlStash] %s is a bare diffusion model: no CLIP or VAE.", path)
+        return loader(path), None, None
 
     embeddings = folder_paths.get_folder_paths("embeddings")
     try:

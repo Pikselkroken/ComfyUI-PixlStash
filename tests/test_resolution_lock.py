@@ -14,7 +14,11 @@ A lock that is merely wrong still looks like a lock, so an assertion on the
 count alone would pass with either bug in place.
 """
 
+import json
+import os
+import struct
 import sys
+import tempfile
 import types
 import unittest
 from unittest import mock
@@ -467,6 +471,37 @@ class CheckpointLockTests(unittest.TestCase):
         out = self._load({"id": 7, "sha256": None})
         self.assertEqual(out["result"], ("UNET", None, None))
         self.assertEqual(out["ui"][lock.UI_KEY][0]["models"][0]["id"], 7)
+
+    def test_a_bare_diffusion_model_skips_the_checkpoint_loader(self):
+        # Its metadata configures the model (MiniMax H3 Image's sigma grid),
+        # and only the diffusion-model loader passes it on.
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "h3.safetensors")
+            header = json.dumps(
+                {"__metadata__": {"config": "{}"}, "blocks.0.w": {}}
+            ).encode()
+            with open(path, "wb") as handle:
+                handle.write(struct.pack("<Q", len(header)) + header)
+
+            def refuse(path, **kwargs):
+                raise AssertionError("the checkpoint loader was asked")
+
+            self.sd.load_checkpoint_guess_config = refuse
+            self.sd.load_diffusion_model = lambda path: "UNET"
+            self.assertEqual(checkpoint_loader.load_file(path), ("UNET", None, None))
+
+            header = json.dumps({"model.diffusion_model.w": {}}).encode()
+            with open(path, "wb") as handle:
+                handle.write(struct.pack("<Q", len(header)) + header)
+            self.assertFalse(checkpoint_loader.is_bare_diffusion_model(path))
+
+            # Not safetensors: a size past the cap is refused, never read.
+            with open(path, "wb") as handle:
+                handle.write(struct.pack("<Q", 2**40) + b"x")
+            self.assertFalse(checkpoint_loader.is_bare_diffusion_model(path))
+            with open(path, "wb") as handle:
+                handle.write(struct.pack("<Q", 2) + b"[]")
+            self.assertFalse(checkpoint_loader.is_bare_diffusion_model(path))
 
 
 if __name__ == "__main__":
