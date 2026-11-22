@@ -1,0 +1,198 @@
+{
+  "3": {
+    "inputs": {
+      "unet_name": "minimax_h3_image_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "4": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "5": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_image_vae_fp16.safetensors"
+    },
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "6": {
+    "inputs": {
+      "clip": [
+        "4",
+        0
+      ],
+      "prompt": "A 26-year-old woman with shoulder-length brown hair, a head-and-shoulders portrait, wearing a black turtleneck. Taken by a friend on an iPhone main camera, held at chest height about a metre away, default photo mode, no portrait blur. Window daylight from one side, gentle shadows under the jaw, small window catchlights in the eyes. Smooth and youthful skin with a natural, unretouched look.",
+      "width": 3552,
+      "height": 4736
+    },
+    "class_type": "MiniMaxH3ImageConditioning"
+  },
+  "7": {
+    "inputs": {
+      "conditioning": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut"
+  },
+  "8": {
+    "inputs": {
+      "width": 3552,
+      "height": 4736,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Canvas"
+    }
+  },
+  "9": {
+    "inputs": {
+      "noise": [
+        "32",
+        0
+      ],
+      "guider": [
+        "13",
+        0
+      ],
+      "sampler": [
+        "14",
+        0
+      ],
+      "sigmas": [
+        "31",
+        1
+      ],
+      "latent_image": [
+        "33",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced"
+  },
+  "10": {
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "11": {
+    "inputs": {
+      "images": [
+        "10",
+        0
+      ],
+      "filename_prefix": "MiniMax-H3-Image-keep-seed"
+    },
+    "class_type": "SaveImage"
+  },
+  "12": {
+    "inputs": {
+      "noise_seed": 1
+    },
+    "class_type": "RandomNoise"
+  },
+  "13": {
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "cfg": 1.0
+    },
+    "class_type": "CFGGuider"
+  },
+  "14": {
+    "inputs": {
+      "s_noise": 1.1,
+      "s_noise_end": 0.9,
+      "noise_clip_std": 0.0
+    },
+    "class_type": "SamplerLCM"
+  },
+  "15": {
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": 6,
+      "denoise": 1.0
+    },
+    "class_type": "BasicScheduler"
+  },
+  "30": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "31": {
+    "class_type": "SplitSigmas",
+    "inputs": {
+      "sigmas": [
+        "15",
+        0
+      ],
+      "step": 1
+    }
+  },
+  "32": {
+    "class_type": "DisableNoise",
+    "inputs": {}
+  },
+  "33": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "12",
+        0
+      ],
+      "guider": [
+        "13",
+        0
+      ],
+      "sampler": [
+        "30",
+        0
+      ],
+      "sigmas": [
+        "31",
+        0
+      ],
+      "latent_image": [
+        "8",
+        0
+      ]
+    }
+  }
+}
