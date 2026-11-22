@@ -398,6 +398,21 @@ The same pipeline with every model off the shelf:
 
 [![Upscaling a vault image in ComfyUI](screenshots/ScreenshotUpscale.jpg)](examples/PixlStash-Upscale.json)
 
+**MiniMax H3 Image without the crunch.** Text to image with SamplerLCM and a
+32 x 32 blank picture for the first step only, which keeps skin and hair clean
+without making every seed draw the same person; a keep-a-seed variant (euler
+for one step, LCM for the rest); and character sheets from words or from a
+reference picture. Each in a stock-nodes version and one that loads its
+models through PixlStash. How they were tested:
+[pixlstash.dev/minimax-h3-image.html](https://pixlstash.dev/minimax-h3-image.html).
+
+- Stock nodes: [text to image](examples/MiniMax-H3-Image-T2I-NoPixlStash.json),
+  [keep a seed](examples/MiniMax-H3-Image-KeepASeed-NoPixlStash.json),
+  [sheet from a reference](examples/MiniMax-H3-Image-SheetFromReference-NoPixlStash.json)
+- PixlStash nodes: [text to image](examples/MiniMax-H3-Image-T2I-PixlStash.json),
+  [sheet](examples/MiniMax-H3-Image-Sheet-PixlStash.json),
+  [sheet from a reference](examples/MiniMax-H3-Image-SheetFromReference-PixlStash.json)
+
 **Generate from the model shelf.** Checkpoint, VAE and text encoder all picked
 from a Browse grid, render saved straight into a project.
 
